@@ -44,10 +44,32 @@ type schemaDoc struct {
 	// (vc:minVersion/vc:maxVersion); later passes must not look at them.
 	pruned map[*xmltree.Node]bool
 
-	// scoped shadows the global registry with this document's redefine/
-	// override replacements; resolution from inside this document consults
-	// it first (M7 wires the cross-document semantics).
+	// scoped, when set, shadows the global registry for resolution from
+	// inside this document. The loader sets it only on the per-child
+	// pseudo-documents of redefine children, mapping the redefined name to
+	// the suppressed original.
 	scoped *registry
+
+	// chameleonNS is the absorbed namespace of a chameleon include
+	// (src-include.2.2): the document had no targetNamespace and took the
+	// includer's. Unqualified component references inside the document are
+	// remapped to it; targetNamespace already holds the effective value.
+	chameleonNS string
+
+	// importedNS is the set of namespaces this document imports ("" for an
+	// import without a namespace attribute). References may only reach the
+	// target namespace, the XSD namespace, and these.
+	importedNS map[string]bool
+
+	// targets are the documents this one includes/redefines/overrides;
+	// suppression of replaced components propagates through them.
+	targets []*schemaDoc
+
+	// suppressed marks globals replaced by a redefine/override elsewhere;
+	// they stay out of the global registry. originals keeps their
+	// declarations for redefine self-references.
+	suppressed map[symKey]bool
+	originals  map[symKey]*decl
 }
 
 // loadDoc structurally validates one parsed schema document and extracts

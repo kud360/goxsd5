@@ -420,7 +420,10 @@ func TestConditionalInclusion(t *testing.T) {
 	})
 }
 
-func TestRedefineOverrideScoping(t *testing.T) {
+func TestRedefineOverrideRegistration(t *testing.T) {
+	// Pass 1 alone records compositions; the loader registers redefine/
+	// override children once their targets are loaded (parser_test.go covers
+	// the cross-document semantics).
 	doc, reg, errs := load(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
   <xs:redefine schemaLocation="base.xsd">
     <xs:simpleType name="t"><xs:restriction base="tns:t"><xs:maxLength value="3"/></xs:restriction></xs:simpleType>
@@ -432,21 +435,11 @@ func TestRedefineOverrideScoping(t *testing.T) {
   <xs:simpleType name="t2"><xs:restriction base="xs:int"/></xs:simpleType>
 </xs:schema>`)
 	wantClean(t, errs)
-	tQ := xsd.QName{Namespace: "urn:t", Local: "t"}
-	// The redefined type is visible through the document's scoped registry
-	// but not in the global one.
-	if reg.lookup(spaceType, tQ) != nil {
-		t.Error("redefine child leaked into the global registry")
+	if reg.lookup(spaceType, xsd.QName{Namespace: "urn:t", Local: "t"}) != nil {
+		t.Error("redefine child registered without the loader")
 	}
-	if doc.scoped.lookup(spaceType, tQ) == nil {
-		t.Error("redefine child missing from the scoped registry")
-	}
-	// Scoped resolution falls through to globals and builtins.
-	if doc.scoped.lookup(spaceType, xsd.QName{Namespace: "urn:t", Local: "t2"}) == nil {
-		t.Error("scoped lookup does not reach the global registry")
-	}
-	if doc.scoped.lookup(spaceElement, xsd.QName{Namespace: "urn:t", Local: "e"}) == nil {
-		t.Error("override element missing from the scoped registry")
+	if reg.lookup(spaceType, xsd.QName{Namespace: "urn:t", Local: "t2"}) == nil {
+		t.Error("ordinary global missing from the registry")
 	}
 	if len(doc.compositions) != 2 {
 		t.Errorf("compositions = %+v, want redefine+override", doc.compositions)

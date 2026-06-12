@@ -1,19 +1,73 @@
 package parser
 
-// Schema assembly: build every global component of one validated document
-// into an xsd.Schema. (M7 extends this over the transitive closure of
-// includes/imports; redefine/override children are registered in the scoped
-// registry but their cross-document semantics are not wired yet.)
+// Schema assembly: build every global component of the loaded documents
+// into xsd.Schemas, one per target namespace (include merges documents;
+// import links separate namespaces). Redefine/override replacement children
+// are global components of their namespace and are added alongside.
 
 import (
+	"slices"
+
 	"github.com/kud360/goxsd5/builtin"
+	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 )
 
-// buildSchema runs pass 2 over doc and returns the linked schema.
+// buildSchemas runs pass 2 over every loaded document and returns the
+// linked schemas in first-encounter namespace order (the root document's
+// namespace first).
+func buildSchemas(reg *registry, l *loader, errs *xsd.ErrorList) []*xsd.Schema {
+	b := newBuilder(reg, errs)
+	byTNS := map[string]*xsd.Schema{}
+	var schemas []*xsd.Schema
+	for _, doc := range l.order {
+		s := byTNS[doc.targetNamespace]
+		if s == nil {
+			s = newSchemaShell(doc)
+			byTNS[doc.targetNamespace] = s
+			schemas = append(schemas, s)
+		}
+		for _, comp := range doc.compositions {
+			if comp.kind == "import" && !slices.Contains(s.Imports, comp.namespace) {
+				s.Imports = append(s.Imports, comp.namespace)
+			}
+		}
+		b.addDocComponents(s, doc)
+	}
+	for _, rep := range l.reps {
+		if s := byTNS[rep.owner.targetNamespace]; s != nil {
+			b.addReplacementComponents(s, rep)
+		}
+	}
+	for _, s := range schemas {
+		b.checkTypeCycles(s)
+	}
+	b.finishComplexTypes()
+	return schemas
+}
+
+// buildSchema runs pass 2 over a single registered document (no
+// compositions) and returns the linked schema.
 func buildSchema(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) *xsd.Schema {
 	b := newBuilder(reg, errs)
-	s := &xsd.Schema{
+	s := newSchemaShell(doc)
+	for _, comp := range doc.compositions {
+		if comp.kind == "import" {
+			s.Imports = append(s.Imports, comp.namespace)
+		}
+	}
+	b.addDocComponents(s, doc)
+	b.checkTypeCycles(s)
+	b.finishComplexTypes()
+	return s
+}
+
+// newSchemaShell creates the schema for a namespace from its first
+// document's properties. (Per-document properties like the form defaults
+// keep applying per document during building; the schema-level fields are
+// informational.)
+func newSchemaShell(doc *schemaDoc) *xsd.Schema {
+	return &xsd.Schema{
 		TargetNamespace:        doc.targetNamespace,
 		Location:               doc.uri,
 		Pos:                    doc.root.Pos,
@@ -31,61 +85,72 @@ func buildSchema(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) *xsd.Schema
 		Notations:              map[xsd.QName]*xsd.Notation{},
 		Extensions:             extensionsOf(doc.root),
 	}
-	for _, comp := range doc.compositions {
-		if comp.kind == "import" {
-			s.Imports = append(s.Imports, comp.namespace)
-		}
-	}
+}
 
-	r := b.registryFor(doc)
+// addDocComponents builds doc's global components into s.
+func (b *builder) addDocComponents(s *xsd.Schema, doc *schemaDoc) {
 	for _, c := range xsdElems(doc.root, doc) {
-		name, _ := c.Attr("name")
-		q := xsd.QName{Namespace: doc.targetNamespace, Local: name}
-		// Build through the registry declaration so that memoization and
-		// cycle marks are shared with reference resolution. A node that is
-		// not the registered declaration is a duplicate (already reported);
-		// it is skipped rather than built.
-		current := func(space space) *decl {
-			d := r.lookup(space, q)
-			if d == nil || d.node != c {
-				return nil
-			}
-			return d
-		}
-		switch c.Name.Local {
-		case "simpleType", "complexType":
-			if d := current(spaceType); d != nil {
-				s.Types[q] = b.buildTypeDecl(d)
-			}
-		case "element":
-			if d := current(spaceElement); d != nil {
-				s.Elements[q] = b.buildElementDecl(d.node, d.doc, true)
-			}
-		case "attribute":
-			if d := current(spaceAttribute); d != nil {
-				s.Attributes[q] = b.buildAttributeDecl(d.node, d.doc, true)
-			}
-		case "group":
-			if d := current(spaceGroup); d != nil {
-				if g := b.buildGroup(d); g != nil {
-					s.Groups[q] = g
-				}
-			}
-		case "attributeGroup":
-			if d := current(spaceAttrGroup); d != nil {
-				if g := b.buildAttributeGroup(d); g != nil {
-					s.AttributeGroups[q] = g
-				}
-			}
-		case "notation":
-			s.Notations[q] = b.buildNotation(c, doc)
-		case "annotation":
-			s.Annotations = append(s.Annotations, buildAnnotation(c, doc))
-		}
+		b.addComponent(s, c, doc)
 	}
-	b.checkTypeCycles(s)
-	b.finishComplexTypes()
-	return s
+}
+
+// addReplacementComponents builds the redefine/override children of one
+// composition into s. Children the loader did not register (unmatched
+// override children, duplicates) are skipped by the same registry check
+// that guards ordinary globals.
+func (b *builder) addReplacementComponents(s *xsd.Schema, rep *replacement) {
+	for _, c := range xsdElems(rep.node, rep.owner) {
+		b.addComponent(s, c, rep.owner)
+	}
+}
+
+// addComponent builds one top-level component node into s. The component is
+// built through its registry declaration so that memoization and cycle
+// marks are shared with reference resolution. A node that is not the
+// registered declaration is a duplicate or suppressed original (already
+// reported or replaced); it is skipped rather than built.
+func (b *builder) addComponent(s *xsd.Schema, c *xmltree.Node, doc *schemaDoc) {
+	name, _ := c.Attr("name")
+	q := xsd.QName{Namespace: doc.targetNamespace, Local: name}
+	current := func(space space) *decl {
+		d := b.reg.lookup(space, q)
+		if d == nil || d.node != c {
+			return nil
+		}
+		return d
+	}
+	switch c.Name.Local {
+	case "simpleType", "complexType":
+		if d := current(spaceType); d != nil {
+			s.Types[q] = b.buildTypeDecl(d)
+		}
+	case "element":
+		if d := current(spaceElement); d != nil {
+			s.Elements[q] = b.buildElementDecl(d.node, d.doc, true)
+		}
+	case "attribute":
+		if d := current(spaceAttribute); d != nil {
+			s.Attributes[q] = b.buildAttributeDecl(d.node, d.doc, true)
+		}
+	case "group":
+		if d := current(spaceGroup); d != nil {
+			if g := b.buildGroup(d); g != nil {
+				s.Groups[q] = g
+			}
+		}
+	case "attributeGroup":
+		if d := current(spaceAttrGroup); d != nil {
+			if g := b.buildAttributeGroup(d); g != nil {
+				s.AttributeGroups[q] = g
+			}
+		}
+	case "notation":
+		if d := current(spaceNotation); d != nil {
+			s.Notations[q] = b.buildNotation(d.node, d.doc)
+		}
+	case "annotation":
+		s.Annotations = append(s.Annotations, buildAnnotation(c, doc))
+	}
 }
 
 // finishComplexTypes merges every complex type's base-dependent properties:

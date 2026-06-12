@@ -48,12 +48,12 @@ constant name in code.
 | sch-props-correct.2 (unique globals) | §3.17.6 | M5 | done | |
 | p-props-correct.2.1 (min ≤ max) | §3.9.6 | M5 | done | |
 | n-props-correct (public/system) | §3.14.6 | M5 | done | |
-| src-import | §4.2.6.2 | M5/M7 | wip (clause 1 done) | |
-| src-include | §4.2.3 | M5/M7 | wip (representation done) | |
-| src-include.2 (chameleon) | §4.2.3 | M7 | | |
-| src-redefine | §4.2.5 | M5/M7 | wip (representation done) | |
-| src-override | §4.2.4 | M5/M7 | wip (representation done) | |
-| src-resolve | §3.15.3 | M6/M7 | wip (single-document resolution done; cross-document → M7) | |
+| src-import | §4.2.6.2 | M5/M7 | done (1.1/1.2 same-ns + no-ns, 3 imported-doc ns match; unresolvable location tolerated) | |
+| src-include | §4.2.3 | M5/M7 | done (2.1 ns match, unresolvable location errors) | |
+| src-include.2 (chameleon) | §4.2.3 | M7 | done (absorbed ns + unqualified-reference remapping) | |
+| src-redefine | §4.2.5 | M5/M7 | wip (pervasive replacement, existence check, type self-derivation; group/attrGroup occurrence checks deferred) | |
+| src-override | §4.2.4 | M5/M7 | done (pervasive transitive replacement, unmatched children ignored) | |
+| src-resolve | §3.15.3 | M6/M7 | done (cross-document via global registry; 4.2 namespace-not-imported check) | |
 
 ### Schema Component Constraints — props-correct (`*-props-correct`)
 

@@ -7,7 +7,7 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — M6 DONE (2026-06-12). Next: M7.
+## Status — M7 DONE (2026-06-12). Next: M9.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
 - [x] M1 parser/xmltree (NS-scoped tree, line/col, src-qname, foreign content)
 - [x] M2 xsd model skeleton (model.go — full Part 1 §3 component shapes)
@@ -15,12 +15,90 @@ baseline `testdata/xsd11-expectations.txt`.
 - [x] M4 builtin package (all 1.1 builtins incl. dateTimeStamp/yearMonth/dayTimeDuration)
 - [x] M5 parser pass 1 (structural table, walker, registry — see below)
 - [x] M6 parser pass 2 (builder + finishComplexTypes post-pass + test suite)
-- [ ] M7 imports/includes/override/redefine + resolver — RESUME HERE
-  (design already decided, see "Plan for M6–M7" below; also extend
-  GOXSD5_SCAN to run buildSchema once composition exists — single-doc scan
-  would drown in src-resolve from imports/includes)
-- [ ] M9 W3C harness + expectations baseline
+- [x] M7 composition (import/include/redefine/override, SchemaResolver,
+  public Parse) — see "M7 shape" below; GOXSD5_SCAN now runs the FULL
+  pipeline per suite group: 5231 valid groups → 99 with errors (triage below)
+- [ ] M9 W3C harness + expectations baseline — RESUME HERE (also fix the
+  pre-M7 bugs found by the full scan, see "M7 scan triage")
 - [ ] M8 mutation API, CONFORMANCE.md fill-in, cmd/goxsd5
+
+## M7 scan triage (full-pipeline scan over 1.1-valid-expected groups)
+99/5231 groups report errors; NONE are composition bugs:
+- regex-valid:16 — GENUINE M3 BUG: `[-]` (class whose only member is a
+  literal hyphen) is mistranslated → RE2 "empty character class". Fix in
+  xsd regex translator before/within M9.
+- src-resolve:42 — mostly xml:lang & co after the import of
+  http://www.w3.org/2001/xml.xsd fails (FileResolver can't fetch URLs;
+  unresolvable import is legal, the later reference then errors). M9
+  decision: ship built-in xml-namespace attribute decls or map the URL in
+  the harness resolver; suite has a local common/xml.xsd? (check).
+- a-props-correct:15 + e-props-correct:8 + ct-props-correct:16 — ALL the
+  1.0 ID rules (ID-derived w/ value constraint; >1 ID attribute). XSD 1.1
+  RELAXED these (suite marks them valid) — verify against docs/clean and
+  drop/gate the three checks (a-props-correct.3, e-props-correct.5,
+  ct-props-correct.5 as implemented in M6).
+- src-restriction-base-or-simpleType:8 — the known precisionDecimal
+  optional-feature family → M9 skip list.
+- leftovers (sch-props-correct:4, mg-props-correct:1, src-include:1,
+  min/max facet:5, parseFail:9 XML-1.1/DTD docs) → M9 skip list / triage.
+
+## M7 shape (as built)
+- resolver.go: SchemaResolver{Resolve(location, base) (io.ReadCloser,
+  error)}; FileResolver; resolveLocation joins URL-aware (RFC 3986) with
+  filepath fallback and doubles as the loader's dedup key.
+- loader.go: trees cached per URI (treeEntry distinguishes resolveErr —
+  tolerated for import, fatal for include/redefine/override — from
+  parseErr, always fatal); schemaDoc INSTANCES cached per (uri,
+  effectiveTNS) — chameleon include (src-include.2.2) re-instances the
+  same tree under the includer's TNS with chameleonNS set; cyclic
+  import/include terminate on the instance cache. Pass-1 validation runs
+  once per URI (second instance discards duplicate diagnostics).
+  src-import.1.1/.1.2/.3 and src-include.2.1 enforced in compose().
+- Redefine/override: replacement children register as THE globals; the
+  originals are suppressed from global registration (suppression
+  propagates transitively through the target's own compositions via
+  doc.targets) and parked in doc.originals. Redefine children get a
+  per-child pseudo-doc whose scoped registry maps ONLY their own name to
+  the original (self-derivation per src-redefine.5, checked for types);
+  override children with no matching original are IGNORED per the
+  override transformation (not added). Unmatched redefine = src-redefine
+  error. Group/attrGroup redefine occurrence checks (exactly-one self-ref
+  min=max=1 / superset) deferred.
+- Chameleon reference remapping: qnameAttr is doc-aware; chameleonQName
+  maps a reference resolved to "" → absorbed TNS. Token-list sites
+  (memberTypes, substitutionGroup, notQName) mapped too;
+  doc.defaultAttributes mapped at instance creation.
+- lookupRef(builder): every registry resolution now checks namespace
+  reachability first (target NS, XSD NS always, doc.importedNS — recorded
+  from import compositions regardless of resolution success) →
+  src-resolve "not imported here", else "not declared". xml namespace is
+  NOT special-cased (strict; see scan triage).
+- buildschema.go: buildSchemas groups l.order docs by TNS (root's first),
+  one xsd.Schema per namespace; newSchemaShell takes doc-level props from
+  the first doc (form defaults etc. keep applying PER DOC during build —
+  they ride on decl.doc); addComponent guards every kind (now incl.
+  notation) with the registered-decl check, so suppressed originals and
+  dups don't build into the maps; replacement children added via
+  addReplacementComponents. checkTypeCycles per schema, finishComplexTypes
+  once. Single-doc buildSchema kept for the M5/M6 tests.
+- parser.go: Parse(location, *Options{Resolver}) → ([]*xsd.Schema, error);
+  error is errs.Err() aggregate; unloadable ROOT returns a plain error.
+  finish(l, errs) is the register+build tail, shared with the suite scan
+  (multi-root: loadRoot per schemaDocument of a group, then finish).
+- Known limitations (accepted): builder memoizes per NODE, so one
+  document chameleon-included into TWO different namespaces in one schema
+  set would share components (rare; revisit if the suite hits it);
+  within a redefine child, ALL references to its own name resolve to the
+  original (spec limits this to the self-derivation reference); ICs of
+  suppressed (overridden) elements are skipped wholesale, ICs inside
+  override children register normally.
+- Tests: parser_test.go (mapResolver double keyed by resolveLocation;
+  import incl. cyclic + not-imported + mismatches; include incl.
+  chameleon remapping, cyclic, relative paths; redefine incl. pervasive
+  replacement, base-doc-sees-redefinition, group self-ref to original,
+  existence + self-derivation negatives; override incl. pervasive +
+  transitive-through-include + unmatched-ignored); testdata/m7 fixtures
+  for the default FileResolver path.
 
 ## M6 shape (as built)
 Files (all under parser/, tests in build_test.go + TestBuildSmoke):
@@ -116,18 +194,7 @@ ref'ing a key). The builder was right; the fixtures were wrong.
 - xmltree fix: strip U+FEFF after transcode (UTF-16 BOM survived as
   CharData and broke ~30 suite docs).
 
-## Plan for M6–M7 (decided, not yet built)
-- Pass 2 = build-on-demand recursion with memoization + in-progress marks
-  (equivalent to topo sort; back-edge = cyclic type error per
-  ct-props-correct.3 / st-props-correct.2). Each built SimpleType:
-  facet construction parses enum/bounds lexicals **with the base type**
-  (gives enumeration-valid-restriction for free), then ValidateFacetSet +
-  CheckFacetRestriction (xsd/facets_check.go), then MergeFacets.
-  QName-typed facet values resolve via the node's captured NSContext
-  (xmltree.Node.NS / ResolveQName).
-- Override/redefine: per-schema scoped registry shadowing the global one.
-- Discovery: SchemaResolver interface {Resolve(location, base) (io.ReadCloser, error)},
-  default FileResolver; load transitive closure once; cyclic imports fine.
+## Still-deferred (carry into M9 expectations)
 - UPA (cos-nonambig), EDC, complex-type restriction particle checks
   (cos-particle-restrict): defer; expectations ratchet tolerates.
 - Assertions/CTA (xs:assert/xs:alternative XPath): stored in model, never

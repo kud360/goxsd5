@@ -1,0 +1,4 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:tns="urn:m7" targetNamespace="urn:m7">
+  <xs:include schemaLocation="types.xsd"/>
+  <xs:element name="e" type="tns:T"/>
+</xs:schema>

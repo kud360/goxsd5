@@ -1,9 +1,10 @@
 package parser
 
-// An informational scan of the W3C test suite: pass 1 must not report
-// errors on schema documents the suite expects to be valid under XSD 1.1
-// (false positives would sink the M9 ratchet before it starts). Opt-in via
-// GOXSD5_SCAN=1 because it walks ~15k files; the real harness is M9.
+// An informational scan of the W3C test suite: the full pipeline (discovery
+// + both passes) must not report errors on schema groups the suite expects
+// to be valid under XSD 1.1 (false positives would sink the M9 ratchet
+// before it starts). Opt-in via GOXSD5_SCAN=1 because it walks ~15k files;
+// the real harness is M9.
 
 import (
 	"encoding/xml"
@@ -14,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 )
 
@@ -93,27 +93,24 @@ func TestScanW3CSuiteValidSchemas(t *testing.T) {
 			if scanExpectedValidity(g.Schema.Expected) != "valid" {
 				continue
 			}
+			// All of a group's schema documents form one schema: load them
+			// as roots of a shared loader, then register and build.
 			errs := &xsd.ErrorList{}
+			l := newLoader(FileResolver{}, errs)
 			docOK := true
 			for _, d := range g.Schema.Docs {
 				p := filepath.Join(filepath.Dir(sf), filepath.FromSlash(d.Href))
-				f, err := os.Open(p)
-				if err != nil {
+				if err := l.loadRoot(p); err != nil {
+					if !os.IsNotExist(err) {
+						parseFail++
+					}
 					docOK = false
-					continue
 				}
-				node, err := xmltree.Parse(f, p)
-				f.Close()
-				if err != nil {
-					parseFail++
-					docOK = false
-					continue
-				}
-				loadDoc(node, p, errs)
 			}
 			if !docOK {
 				continue
 			}
+			finish(l, errs)
 			total++
 			if !errs.Empty() {
 				failed++

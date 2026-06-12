@@ -41,7 +41,7 @@ func (b *builder) buildSimpleType(n *xmltree.Node, doc *schemaDoc, name xsd.QNam
 // It is also the facet half of simpleContent restrictions (buildcomplex).
 func (b *builder) buildSTRestriction(st *xsd.SimpleType, r *xmltree.Node, doc *schemaDoc) {
 	base := builtin.AnySimpleType
-	if q, ok := qnameAttr(r, "base"); ok {
+	if q, ok := qnameAttr(r, doc, "base"); ok {
 		// spec: cos-st-restricts — XSD 1.1 Part 2 §4.1.6: the special types
 		// must not be restriction bases in schema documents.
 		if q.Namespace == xsd.XSDNS && (q.Local == "anySimpleType" || q.Local == "anyAtomicType") {
@@ -89,7 +89,7 @@ func (b *builder) applyRestriction(st *xsd.SimpleType, base *xsd.SimpleType, r *
 
 func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDoc) {
 	item := builtin.AnySimpleType
-	if q, ok := qnameAttr(l, "itemType"); ok {
+	if q, ok := qnameAttr(l, doc, "itemType"); ok {
 		item = b.resolveSimpleType(q, l.Pos, doc, xsd.SpecCosSTRestricts)
 	} else if inline := firstChild(l, doc, "simpleType"); inline != nil {
 		item, _ = b.buildAnonType(l, doc, builtin.AnySimpleType).(*xsd.SimpleType)
@@ -127,7 +127,7 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 			if err != nil {
 				continue // reported by pass 1
 			}
-			members = append(members, b.resolveSimpleType(q, u.Pos, doc, xsd.SpecCosSTRestricts))
+			members = append(members, b.resolveSimpleType(chameleonQName(q, doc), u.Pos, doc, xsd.SpecCosSTRestricts))
 		}
 	}
 	for _, c := range xsdElems(u, doc) {

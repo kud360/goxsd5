@@ -85,13 +85,31 @@ func (b *builder) registryFor(doc *schemaDoc) *registry {
 	return b.reg
 }
 
+// lookupRef resolves a component reference from within doc, enforcing that
+// the referenced namespace is reachable: the target namespace, the XSD
+// namespace (built-ins are predefined everywhere), or an imported one. It
+// reports src-resolve and returns nil on failure.
+func (b *builder) lookupRef(s space, q xsd.QName, p xsd.Pos, doc *schemaDoc) *decl {
+	if doc != nil && q.Namespace != doc.targetNamespace && q.Namespace != xsd.XSDNS && !doc.importedNS[q.Namespace] {
+		// spec: src-resolve.4 — XSD 1.1 Part 1 §3.15.3: a reference may only
+		// reach the target namespace or a namespace named by an import.
+		b.errf(xsd.SpecSrcResolve, p, "%s %s references namespace %q, which is not imported here", s, q, q.Namespace)
+		return nil
+	}
+	d := b.registryFor(doc).lookup(s, q)
+	if d == nil {
+		// spec: src-resolve — XSD 1.1 Part 1 §3.15.3 (src-resolve)
+		b.errf(xsd.SpecSrcResolve, p, "%s %s is not declared", s, q)
+		return nil
+	}
+	return d
+}
+
 // resolveType resolves a type QName from within doc. A failed resolution
 // reports src-resolve and returns xs:anyType (never nil).
 func (b *builder) resolveType(q xsd.QName, p xsd.Pos, doc *schemaDoc) xsd.Type {
-	d := b.registryFor(doc).lookup(spaceType, q)
+	d := b.lookupRef(spaceType, q, p, doc)
 	if d == nil {
-		// spec: src-resolve — XSD 1.1 Part 1 §3.15.3 (src-resolve)
-		b.errf(xsd.SpecSrcResolve, p, "type %s is not declared", q)
 		return builtin.AnyType
 	}
 	if d.builtin != nil {
@@ -211,8 +229,9 @@ func (c nsContext) ResolveQName(prefix, local string) (xsd.QName, bool) {
 }
 
 // qnameAttr resolves a QName-valued attribute; ok is false when absent or
-// unresolvable (already reported by pass 1).
-func qnameAttr(n *xmltree.Node, name string) (xsd.QName, bool) {
+// unresolvable (already reported by pass 1). Component references inside a
+// chameleon-included document are remapped to the absorbed namespace.
+func qnameAttr(n *xmltree.Node, doc *schemaDoc, name string) (xsd.QName, bool) {
 	v, ok := n.Attr(name)
 	if !ok {
 		return xsd.QName{}, false
@@ -221,7 +240,18 @@ func qnameAttr(n *xmltree.Node, name string) (xsd.QName, bool) {
 	if err != nil {
 		return xsd.QName{}, false
 	}
-	return q, true
+	return chameleonQName(q, doc), true
+}
+
+// chameleonQName applies the chameleon-include transformation to a component
+// reference: inside an absorbed document, a reference resolving to no
+// namespace means the absorbed (= target) namespace.
+// spec: src-include.2.2 — XSD 1.1 Part 1 §4.2.3 (src-include)
+func chameleonQName(q xsd.QName, doc *schemaDoc) xsd.QName {
+	if q.Namespace == "" && doc != nil && doc.chameleonNS != "" {
+		q.Namespace = doc.chameleonNS
+	}
+	return q
 }
 
 func boolAttr(n *xmltree.Node, name string, def bool) bool {

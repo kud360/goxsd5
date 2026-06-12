@@ -74,10 +74,8 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 			if err != nil {
 				continue // reported by pass 1
 			}
-			d := b.registryFor(doc).lookup(spaceElement, q)
+			d := b.lookupRef(spaceElement, chameleonQName(q, doc), n.Pos, doc)
 			if d == nil {
-				// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-				b.errf(xsd.SpecSrcResolve, n.Pos, "substitution group head %s is not declared", q)
 				continue
 			}
 			e.SubstitutionGroups = append(e.SubstitutionGroups, b.buildElementDecl(d.node, d.doc, true))
@@ -86,7 +84,7 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 
 	e.Type = b.buildAnonType(n, doc, nil)
 	if e.Type == nil {
-		if q, ok := qnameAttr(n, "type"); ok {
+		if q, ok := qnameAttr(n, doc, "type"); ok {
 			e.Type = b.resolveType(q, n.Pos, doc)
 		} else if len(e.SubstitutionGroups) > 0 && e.SubstitutionGroups[0].Type != nil {
 			e.Type = e.SubstitutionGroups[0].Type
@@ -141,7 +139,7 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 			alt.Test, _ = c.Attr("test")
 			alt.Type = b.buildAnonType(c, doc, nil)
 			if alt.Type == nil {
-				if q, ok := qnameAttr(c, "type"); ok {
+				if q, ok := qnameAttr(c, doc, "type"); ok {
 					alt.Type = b.resolveType(q, c.Pos, doc)
 				}
 			}
@@ -257,7 +255,7 @@ func (b *builder) buildAttributeDecl(n *xmltree.Node, doc *schemaDoc, global boo
 
 	if inline := firstChild(n, doc, "simpleType"); inline != nil {
 		a.Type, _ = b.buildAnonType(n, doc, builtin.AnySimpleType).(*xsd.SimpleType)
-	} else if q, ok := qnameAttr(n, "type"); ok {
+	} else if q, ok := qnameAttr(n, doc, "type"); ok {
 		// spec: a-props-correct.2 — the type of an attribute declaration
 		// must be a simple type definition.
 		a.Type = b.resolveSimpleType(q, n.Pos, doc, xsd.SpecAPropsCorrect)
@@ -304,14 +302,12 @@ func (b *builder) buildAttrUses(parent *xmltree.Node, doc *schemaDoc) (uses []*x
 				uses = append(uses, u)
 			}
 		case "attributeGroup":
-			q, ok := qnameAttr(c, "ref")
+			q, ok := qnameAttr(c, doc, "ref")
 			if !ok {
 				continue
 			}
-			d := b.registryFor(doc).lookup(spaceAttrGroup, q)
+			d := b.lookupRef(spaceAttrGroup, q, c.Pos, doc)
 			if d == nil {
-				// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-				b.errf(xsd.SpecSrcResolve, c.Pos, "attribute group %s is not declared", q)
 				continue
 			}
 			g := b.buildAttributeGroup(d)
@@ -334,7 +330,7 @@ func (b *builder) buildAttrUses(parent *xmltree.Node, doc *schemaDoc) (uses []*x
 // attrUseName computes the expanded name a use refers to (its ref target
 // or its local declaration's name).
 func (b *builder) attrUseName(c *xmltree.Node, doc *schemaDoc) xsd.QName {
-	if q, ok := qnameAttr(c, "ref"); ok {
+	if q, ok := qnameAttr(c, doc, "ref"); ok {
 		return q
 	}
 	if name, ok := c.Attr("name"); ok {
@@ -346,11 +342,9 @@ func (b *builder) attrUseName(c *xmltree.Node, doc *schemaDoc) xsd.QName {
 func (b *builder) buildAttrUse(c *xmltree.Node, doc *schemaDoc) *xsd.AttributeUse {
 	use, _ := c.Attr("use")
 	u := &xsd.AttributeUse{Required: strings.TrimSpace(use) == "required", Pos: c.Pos}
-	if q, ok := qnameAttr(c, "ref"); ok {
-		d := b.registryFor(doc).lookup(spaceAttribute, q)
+	if q, ok := qnameAttr(c, doc, "ref"); ok {
+		d := b.lookupRef(spaceAttribute, q, c.Pos, doc)
 		if d == nil {
-			// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-			b.errf(xsd.SpecSrcResolve, c.Pos, "attribute %s is not declared", q)
 			return nil
 		}
 		u.Decl = b.buildAttributeDecl(d.node, d.doc, true)
@@ -428,11 +422,9 @@ func (b *builder) buildParticle(c *xmltree.Node, doc *schemaDoc) *xsd.Particle {
 	p := &xsd.Particle{MinOccurs: min, MaxOccurs: max, Pos: c.Pos}
 	switch c.Name.Local {
 	case "element":
-		if q, ok := qnameAttr(c, "ref"); ok {
-			d := b.registryFor(doc).lookup(spaceElement, q)
+		if q, ok := qnameAttr(c, doc, "ref"); ok {
+			d := b.lookupRef(spaceElement, q, c.Pos, doc)
 			if d == nil {
-				// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-				b.errf(xsd.SpecSrcResolve, c.Pos, "element %s is not declared", q)
 				return nil
 			}
 			p.Term = b.buildElementDecl(d.node, d.doc, true)
@@ -440,14 +432,12 @@ func (b *builder) buildParticle(c *xmltree.Node, doc *schemaDoc) *xsd.Particle {
 			p.Term = b.buildElementDecl(c, doc, false)
 		}
 	case "group":
-		q, ok := qnameAttr(c, "ref")
+		q, ok := qnameAttr(c, doc, "ref")
 		if !ok {
 			return nil
 		}
-		d := b.registryFor(doc).lookup(spaceGroup, q)
+		d := b.lookupRef(spaceGroup, q, c.Pos, doc)
 		if d == nil {
-			// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-			b.errf(xsd.SpecSrcResolve, c.Pos, "model group %s is not declared", q)
 			return nil
 		}
 		g := b.buildGroup(d)
@@ -571,7 +561,7 @@ func (b *builder) buildWildcard(n *xmltree.Node, doc *schemaDoc) *xsd.Wildcard {
 				continue
 			}
 			if q, err := n.ResolveQName(tok); err == nil {
-				w.NotQName = append(w.NotQName, q)
+				w.NotQName = append(w.NotQName, chameleonQName(q, doc))
 			}
 		}
 	}
@@ -596,11 +586,9 @@ func (b *builder) buildIC(n *xmltree.Node, doc *schemaDoc) *xsd.IdentityConstrai
 		"unique": xsd.ICUnique, "key": xsd.ICKey, "keyref": xsd.ICKeyref,
 	}[n.Name.Local]
 
-	if q, ok := qnameAttr(n, "ref"); ok {
-		d := b.registryFor(doc).lookup(spaceIC, q)
+	if q, ok := qnameAttr(n, doc, "ref"); ok {
+		d := b.lookupRef(spaceIC, q, n.Pos, doc)
 		if d == nil {
-			// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-			b.errf(xsd.SpecSrcResolve, n.Pos, "identity constraint %s is not declared", q)
 			return nil
 		}
 		target := b.buildIC(d.node, d.doc)
@@ -632,11 +620,10 @@ func (b *builder) buildIC(n *xmltree.Node, doc *schemaDoc) *xsd.IdentityConstrai
 		}
 	}
 	if category == xsd.ICKeyref {
-		if q, ok := qnameAttr(n, "refer"); ok {
-			d := b.registryFor(doc).lookup(spaceIC, q)
+		if q, ok := qnameAttr(n, doc, "refer"); ok {
+			d := b.lookupRef(spaceIC, q, n.Pos, doc)
 			if d == nil {
-				// spec: src-resolve — XSD 1.1 Part 1 §3.15.3
-				b.errf(xsd.SpecSrcResolve, n.Pos, "referenced key %s is not declared", q)
+				// reported by lookupRef
 			} else if ref := b.buildIC(d.node, d.doc); ref != nil {
 				// spec: c-props-correct.2 — XSD 1.1 Part 1 §3.11.6: the
 				// referenced constraint is a key or unique with the same

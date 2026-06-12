@@ -64,7 +64,7 @@ func (b *builder) buildSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc 
 	}
 
 	base := xsd.Type(builtin.AnyType)
-	if q, ok := qnameAttr(r, "base"); ok {
+	if q, ok := qnameAttr(r, doc, "base"); ok {
 		base = b.resolveType(q, r.Pos, doc)
 	}
 	ct.BaseType = base
@@ -150,7 +150,7 @@ func (b *builder) buildComplexContent(ct *xsd.ComplexType, n, cc *xmltree.Node, 
 	}
 
 	base := xsd.Type(builtin.AnyType)
-	if q, ok := qnameAttr(r, "base"); ok {
+	if q, ok := qnameAttr(r, doc, "base"); ok {
 		base = b.resolveType(q, r.Pos, doc)
 	}
 	if _, isST := base.(*xsd.SimpleType); isST {
@@ -261,11 +261,10 @@ func (b *builder) applyDefaultAttributes(ct *xsd.ComplexType, n *xmltree.Node, d
 	if doc.defaultAttributes.IsZero() || !boolAttr(n, "defaultAttributesApply", true) {
 		return
 	}
-	d := b.registryFor(doc).lookup(spaceAttrGroup, doc.defaultAttributes)
+	// Resolution failure reports once per type use; the schema-level
+	// reference has no other resolution point.
+	d := b.lookupRef(spaceAttrGroup, doc.defaultAttributes, n.Pos, doc)
 	if d == nil {
-		// spec: src-resolve — XSD 1.1 Part 1 §3.15.3 (reported once per type
-		// use; the schema-level reference has no other resolution point).
-		b.errf(xsd.SpecSrcResolve, n.Pos, "defaultAttributes group %s is not declared", doc.defaultAttributes)
 		return
 	}
 	g := b.buildAttributeGroup(d)

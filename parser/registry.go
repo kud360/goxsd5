@@ -123,45 +123,41 @@ var globalSpaces = map[string]space{
 	"notation":       spaceNotation,
 }
 
-// registerDoc enters every global declaration of doc into reg, the
-// redefine/override children into doc.scoped, and every named identity
-// constraint (wherever it appears) into the identity-constraint space.
+// registerDoc enters every global declaration of doc into reg, and every
+// named identity constraint (wherever it appears) into the identity-
+// constraint space. Globals suppressed by a redefine/override elsewhere are
+// kept in doc.originals instead (with their identity constraints skipped);
+// the loader registers the replacement children itself.
 func registerDoc(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) {
-	doc.scoped = reg.scope()
 	for _, c := range doc.root.Children {
 		if doc.pruned[c] || c.Name.Space != xsd.XSDNS {
 			continue
 		}
 		if s, ok := globalSpaces[c.Name.Local]; ok {
-			registerGlobal(reg, s, c, doc, errs)
-			continue
-		}
-		if c.Name.Local == "redefine" || c.Name.Local == "override" {
-			for _, rc := range c.Children {
-				if doc.pruned[rc] || rc.Name.Space != xsd.XSDNS {
-					continue
-				}
-				if s, ok := globalSpaces[rc.Name.Local]; ok {
-					registerGlobal(doc.scoped, s, rc, doc, errs)
-				}
+			name, ok := c.Attr("name")
+			if !ok {
+				// Already reported as a missing required attribute.
+				continue
 			}
+			d := &decl{
+				name: xsd.QName{Namespace: doc.targetNamespace, Local: name},
+				pos:  c.Pos,
+				node: c,
+				doc:  doc,
+			}
+			if k := (symKey{s, d.name}); doc.suppressed[k] {
+				if doc.originals == nil {
+					doc.originals = map[symKey]*decl{}
+				}
+				if doc.originals[k] == nil {
+					doc.originals[k] = d
+				}
+				continue
+			}
+			reg.register(s, d, errs)
 		}
+		collectICs(reg, c, doc, errs)
 	}
-	collectICs(reg, doc.root, doc, errs)
-}
-
-func registerGlobal(into *registry, s space, n *xmltree.Node, doc *schemaDoc, errs *xsd.ErrorList) {
-	name, ok := n.Attr("name")
-	if !ok {
-		// Already reported as a missing required attribute.
-		return
-	}
-	into.register(s, &decl{
-		name: xsd.QName{Namespace: doc.targetNamespace, Local: name},
-		pos:  n.Pos,
-		node: n,
-		doc:  doc,
-	}, errs)
 }
 
 // collectICs registers named unique/key/keyref definitions. They are

@@ -1,0 +1,5 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:m7">
+  <xs:simpleType name="T">
+    <xs:restriction base="xs:string"/>
+  </xs:simpleType>
+</xs:schema>
