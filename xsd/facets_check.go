@@ -208,4 +208,3 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 
 	return errs.Err()
 }
-

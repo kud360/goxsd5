@@ -84,26 +84,26 @@ func rep(s string, n int) string {
 
 func TestRegexInvalid(t *testing.T) {
 	for _, pattern := range []string{
-		"a{2,1}",   // max < min
-		"a{",       // malformed quantifier
-		"+a",       // quantifier without atom
-		"a**",      // double quantifier
-		"(a",       // unterminated group
-		"a)",       // stray close
-		"[a",       // unterminated class
-		"[]",       // empty class
-		"[^]",      // empty negated class
-		`\q`,       // invalid escape
-		`\$`,       // $ is not escapable in XSD
-		`\p{Foo}`,  // unknown category
-		`\p{Lx}`,   // unknown category
-		`\px`,      // malformed \p
-		"[z-a]",    // reversed range
-		`[\d-x]`,   // multi-char escape as range start
-		"a\\",      // trailing backslash
-		"[a-z-b]",  // misplaced - in class
-		"]",        // unescaped ] outside class
-		"}",        // unescaped } outside class (strict)
+		"a{2,1}",  // max < min
+		"a{",      // malformed quantifier
+		"+a",      // quantifier without atom
+		"a**",     // double quantifier
+		"(a",      // unterminated group
+		"a)",      // stray close
+		"[a",      // unterminated class
+		"[]",      // empty class
+		"[^]",     // empty negated class
+		`\q`,      // invalid escape
+		`\$`,      // $ is not escapable in XSD
+		`\p{Foo}`, // unknown category
+		`\p{Lx}`,  // unknown category
+		`\px`,     // malformed \p
+		"[z-a]",   // reversed range
+		`[\d-x]`,  // multi-char escape as range start
+		"a\\",     // trailing backslash
+		"[a-z-b]", // misplaced - in class
+		"]",       // unescaped ] outside class
+		"}",       // unescaped } outside class (strict)
 	} {
 		if _, err := CompileRegex(pattern); err == nil {
 			t.Errorf("CompileRegex(%q) should fail", pattern)

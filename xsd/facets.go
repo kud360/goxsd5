@@ -206,13 +206,13 @@ func (t *SimpleType) compareFunc() CompareFunc {
 
 // ParseValue runs the full lexical→value facet pipeline:
 //
-//	1. whiteSpace (lexical)
-//	2. pattern groups (lexical)
-//	3. lexical→value mapping (the space boundary)
-//	4. length facets (value: characters / octets / items)
-//	5. bounds, totalDigits, fractionDigits (value)
-//	6. enumeration (value)
-//	7. explicitTimezone (value, XSD 1.1)
+//  1. whiteSpace (lexical)
+//  2. pattern groups (lexical)
+//  3. lexical→value mapping (the space boundary)
+//  4. length facets (value: characters / octets / items)
+//  5. bounds, totalDigits, fractionDigits (value)
+//  6. enumeration (value)
+//  7. explicitTimezone (value, XSD 1.1)
 //
 // Assertions (stage 8) are stored but not evaluated (no XPath engine).
 // ctx may be nil except for QName/NOTATION values.

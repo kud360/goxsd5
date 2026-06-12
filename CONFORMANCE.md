@@ -27,16 +27,32 @@ constant name in code.
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| src-qname | §3.15.3 | M1 | | |
-| src-element | §3.3.3 | M5 | | |
-| src-attribute | §3.2.3 | M5 | | |
-| src-ct | §3.4.3 | M5 | | |
-| src-simple-type | §3.16.3 | M5 | | |
-| src-import | §4.2.6.2 | M5/M7 | | |
-| src-include | §4.2.3 | M5/M7 | | |
+| src-qname | §3.15.3 | M1 | done | |
+| src-element | §3.3.3 | M5 | wip (4.3 → M6) | |
+| src-attribute | §3.2.3 | M5 | wip (6.3 → M6) | |
+| src-ct | §3.4.3 | M5 | wip (semantic clauses → M6) | |
+| src-simple-type | §3.16.3 | M5 | done | |
+| src-restriction-base-or-simpleType | §3.16.3 | M5 | done | |
+| src-list-itemType-or-simpleType | §3.16.3 | M5 | done | |
+| src-union-memberTypes-or-simpleTypes | §3.16.3 | M5 | done | |
+| src-attribute_group | §3.6.3 | M5 | done | |
+| src-model_group_defn | §3.7.3 | M5 | done | |
+| src-identity-constraint | §3.11.3 | M5 | wip (5 → M6) | |
+| src-ta | §3.12.3 | M5 | done | |
+| src-schema | §3.17.3 | M5 | done | |
+| src-annotation | §3.15.3 | M5 | done | |
+| src-wildcard | §3.10.3 | M5 | done | |
+| src-id | §3.17.3 | M5 | done | |
+| no-xmlns | §3.2.6.3 | M5 | done | |
+| no-xsi | §3.2.6.4 | M5 | wip (ref'd uses → M6) | |
+| sch-props-correct.2 (unique globals) | §3.17.6 | M5 | done | |
+| p-props-correct.2.1 (min ≤ max) | §3.9.6 | M5 | done | |
+| n-props-correct (public/system) | §3.14.6 | M5 | done | |
+| src-import | §4.2.6.2 | M5/M7 | wip (clause 1 done) | |
+| src-include | §4.2.3 | M5/M7 | wip (representation done) | |
 | src-include.2 (chameleon) | §4.2.3 | M7 | | |
-| src-redefine | §4.2.5 | M5/M7 | | |
-| src-override | §4.2.4 | M5/M7 | | |
+| src-redefine | §4.2.5 | M5/M7 | wip (representation done) | |
+| src-override | §4.2.4 | M5/M7 | wip (representation done) | |
 | src-resolve | §3.15.3 | M7 | | |
 
 ### Schema Component Constraints — props-correct (`*-props-correct`)

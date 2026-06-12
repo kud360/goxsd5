@@ -153,6 +153,9 @@ func Parse(r io.Reader, uri string) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", uri, err)
 	}
+	// The transcoder preserves a byte order mark as U+FEFF, which
+	// encoding/xml would report as character data before the root element.
+	data = bytes.TrimPrefix(data, []byte("\uFEFF"))
 
 	p := &treeParser{uri: uri, data: data}
 	d := xml.NewDecoder(bytes.NewReader(data))

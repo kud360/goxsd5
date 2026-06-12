@@ -7,26 +7,47 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — STOPPED AFTER M4 (user request, 2026-06-11). Resume at M5.
+## Status — M5 done (2026-06-12). Resume at M6.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
 - [x] M1 parser/xmltree (NS-scoped tree, line/col, src-qname, foreign content)
 - [x] M2 xsd model skeleton (model.go — full Part 1 §3 component shapes)
 - [x] M3 value space + facet pipeline + Appendix-G regex
 - [x] M4 builtin package (all 1.1 builtins incl. dateTimeStamp/yearMonth/dayTimeDuration)
-- [ ] M5 parser pass 1 ← NEXT
-- [ ] M6 parser pass 2
+- [x] M5 parser pass 1 (structural table, walker, registry — see below)
+- [ ] M6 parser pass 2 ← NEXT
 - [ ] M7 imports/includes/override/redefine + resolver
 - [ ] M9 W3C harness + expectations baseline
 - [ ] M8 mutation API, CONFORMANCE.md fill-in, cmd/goxsd5
 
-## Plan for M5–M7 (decided, not yet built)
-- Pass 1 collects global components into a registry of (kind, QName) →
-  *xmltree.Node + owning schema doc; performs structural (src-*) validation
-  of each xs:* element via a table: allowed attributes (+ value types) and a
-  child content model per element, derived from the spec's XML
-  representations. This table is the biggest single win for the W3C
-  "syntax checking" negative tests. Also: per-document xs:ID uniqueness
-  (`src-id`; W3C tests stA002/stA004/stA005 check this).
+## M5 shape (as built — parser package)
+- `elemtable.go`: per-context table (variants `element@global` vs
+  `element@local`, `restriction@simple|simpleContent|complexContent`, …) of
+  allowed attrs (+ value checks) and a content model; `content.go` is a tiny
+  set-of-positions NFA matcher over child local names with
+  furthest-failure error reporting; `attrcheck.go` value checkers
+  (parse helpers `parseDerivationSet`/`parseMaxOccurs`/`parseNonNegInt`
+  are reused by pass 2). `refError` lets a checker override the reported
+  SpecRef (QName checks report src-qname).
+- `validate.go`: walker; also enforces src-id, p-props min≤max, and does
+  vc:minVersion/maxVersion pruning (pruned nodes recorded in
+  `schemaDoc.pruned` — pass 2 must skip them). Other vc:* conditions
+  (typeAvailable…) are NOT evaluated (elements retained).
+- `schemadoc.go`: `loadDoc` → `schemaDoc` (doc-level attrs, compositions
+  list for M7, defaultOpenContent node). `registry.go`: symbol spaces
+  (types/elements/attrs/groups/attrGroups/notations/ICs), global registry
+  seeded with builtins + AnyType, dup = sch-props-correct.2; redefine/
+  override children land in `schemaDoc.scoped` (chained registry), M7 wires
+  cross-doc semantics. Named identity constraints are registered globally.
+- Suite smoke scan (`suitescan_test.go`, opt-in `GOXSD5_SCAN=1`): 5231
+  1.1-valid-expected groups → only 8 pass-1 false positives, ALL from the
+  optional precisionDecimal feature (xs:minScale/maxScale, saxon PDecimal +
+  ibm D3_3_4) → M9 skip list, do NOT add to the facet table. Remaining
+  suite .xsd parse failures are out of scope: XML 1.1 docs (encoding/xml
+  can't), DTD entity refs, intentionally non-wf files → M9 skip list.
+- xmltree fix: strip U+FEFF after transcode (UTF-16 BOM survived as
+  CharData and broke ~30 suite docs).
+
+## Plan for M6–M7 (decided, not yet built)
 - Pass 2 = build-on-demand recursion with memoization + in-progress marks
   (equivalent to topo sort; back-edge = cyclic type error per
   ct-props-correct.3 / st-props-correct.2). Each built SimpleType:

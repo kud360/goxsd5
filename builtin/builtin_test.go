@@ -19,8 +19,8 @@ func (c testCtx) ResolveQName(prefix, local string) (xsd.QName, bool) {
 
 func TestParseValueAcceptReject(t *testing.T) {
 	cases := []struct {
-		typ    *xsd.SimpleType
-		valid  []string
+		typ     *xsd.SimpleType
+		valid   []string
 		invalid []string
 	}{
 		{Boolean, []string{"true", "false", "1", "0", " true "}, []string{"TRUE", "yes", "", "2"}},

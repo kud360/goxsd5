@@ -6,10 +6,10 @@ import (
 
 func TestDecimal(t *testing.T) {
 	cases := []struct {
-		in            string
-		canon         string
-		total, frac   int
-		ok            bool
+		in          string
+		canon       string
+		total, frac int
+		ok          bool
 	}{
 		{"1.5", "1.5", 2, 1, true},
 		{"-.5", "-0.5", 1, 1, true},
