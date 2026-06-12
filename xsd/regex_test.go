@@ -27,6 +27,8 @@ func TestRegexTranslate(t *testing.T) {
 		{"[a-c]+", []string{"abc", "a"}, []string{"d", ""}},
 		{"[-abc]", []string{"-", "a"}, []string{"d"}},
 		{"[abc-]", []string{"-", "c"}, []string{"d"}},
+		{"[-]", []string{"-"}, []string{"a", ""}},
+		{"[^-]", []string{"a"}, []string{"-"}},
 		{"[^a-c]", []string{"d", "-"}, []string{"a", "b"}},
 		// Class subtraction.
 		{"[a-z-[aeiou]]+", []string{"bcd", "xyz"}, []string{"a", "bea"}},

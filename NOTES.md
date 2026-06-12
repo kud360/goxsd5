@@ -23,10 +23,10 @@ baseline `testdata/xsd11-expectations.txt`.
 - [ ] M8 mutation API, CONFORMANCE.md fill-in, cmd/goxsd5
 
 ## M7 scan triage (full-pipeline scan over 1.1-valid-expected groups)
-99/5231 groups report errors; NONE are composition bugs:
-- regex-valid:16 — GENUINE M3 BUG: `[-]` (class whose only member is a
-  literal hyphen) is mistranslated → RE2 "empty character class". Fix in
-  xsd regex translator before/within M9.
+85/5231 groups report errors; NONE are composition bugs:
+- regex-valid:1 — was 16; the `[-]` lone-hyphen class bug is FIXED
+  (post-M7 polish commit). The 1 leftover is a different pattern → triage
+  in M9.
 - src-resolve:42 — mostly xml:lang & co after the import of
   http://www.w3.org/2001/xml.xsd fails (FileResolver can't fetch URLs;
   unresolvable import is legal, the later reference then errors). M9

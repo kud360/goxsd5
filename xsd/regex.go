@@ -374,9 +374,7 @@ func (p *reParser) charClassExpr() (rangeSet, error) {
 				}
 				sub = s
 			case ']':
-				if first {
-					return nil, fmt.Errorf("empty character class")
-				}
+				// Trailing literal '-' — legal even as the only member: [-].
 				p.pos++
 				set = addRange(set, '-', '-')
 				first = false
