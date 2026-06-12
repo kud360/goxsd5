@@ -10,8 +10,8 @@ baseline `testdata/xsd11-expectations.txt`.
 ## Status
 - [x] M0 foundations (xsd: Pos, QName, SpecRef, errors)
 - [x] M1 parser/xmltree
-- [ ] M2 xsd model skeleton
-- [ ] M3 value space + facet pipeline + Appendix-F regex
+- [x] M2 xsd model skeleton
+- [x] M3 value space + facet pipeline + Appendix-F regex (facet pipeline tests via builtins pending)
 - [ ] M4 builtin package
 - [ ] M5 parser pass 1
 - [ ] M6 parser pass 2
