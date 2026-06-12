@@ -8,8 +8,8 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 baseline `testdata/xsd11-expectations.txt`.
 
 ## Status
-- [ ] M0 foundations (xsd: Pos, QName, SpecRef, errors)
-- [ ] M1 parser/xmltree
+- [x] M0 foundations (xsd: Pos, QName, SpecRef, errors)
+- [x] M1 parser/xmltree
 - [ ] M2 xsd model skeleton
 - [ ] M3 value space + facet pipeline + Appendix-F regex
 - [ ] M4 builtin package
