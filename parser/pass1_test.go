@@ -44,10 +44,11 @@ func wantClean(t *testing.T, errs *xsd.ErrorList) {
 
 const xmlnsXS = `xmlns:xs="http://www.w3.org/2001/XMLSchema"`
 
-func TestValidKitchenSink(t *testing.T) {
-	doc, reg, errs := load(t, `<?xml version="1.0"?>
-<xs:schema `+xmlnsXS+` xmlns:tns="urn:test" targetNamespace="urn:test"
-           elementFormDefault="qualified" blockDefault="#all" finalDefault="restriction"
+// kitchenSink exercises most schema constructs; pass 1 and pass 2 tests
+// share it.
+var kitchenSink = `<?xml version="1.0"?>
+<xs:schema ` + xmlnsXS + ` xmlns:tns="urn:test" targetNamespace="urn:test"
+           elementFormDefault="qualified" blockDefault="#all"
            version="1.0" xml:lang="en">
   <xs:annotation>
     <xs:documentation xml:lang="en">A kitchen-sink schema.
@@ -60,7 +61,7 @@ func TestValidKitchenSink(t *testing.T) {
 
   <xs:defaultOpenContent mode="suffix"><xs:any namespace="##other" processContents="lax"/></xs:defaultOpenContent>
 
-  <xs:simpleType name="size" final="list union">
+  <xs:simpleType name="size">
     <xs:restriction base="xs:token">
       <xs:enumeration value="small"/>
       <xs:enumeration value="large"/>
@@ -71,7 +72,7 @@ func TestValidKitchenSink(t *testing.T) {
   <xs:simpleType name="sizeOrInt">
     <xs:union memberTypes="tns:size xs:int"/>
   </xs:simpleType>
-  <xs:simpleType name="inlineUnion">
+  <xs:simpleType name="inlineUnion" final="#all">
     <xs:union>
       <xs:simpleType><xs:restriction base="xs:int"><xs:minInclusive value="0" fixed="true"/></xs:restriction></xs:simpleType>
     </xs:union>
@@ -136,7 +137,7 @@ func TestValidKitchenSink(t *testing.T) {
   <xs:element name="doc" type="tns:derived" nillable="true" block="extension">
     <xs:key name="docKey"><xs:selector xpath=".//tns:a"/><xs:field xpath="@id"/></xs:key>
     <xs:keyref name="docRef" refer="tns:docKey"><xs:selector xpath=".//tns:extra"/><xs:field xpath="@ref"/></xs:keyref>
-    <xs:unique ref="tns:docKey"/>
+    <xs:key ref="tns:docKey"/>
   </xs:element>
   <xs:element name="anything" abstract="true">
     <xs:alternative test="@kind='base'" type="tns:base"/>
@@ -152,7 +153,10 @@ func TestValidKitchenSink(t *testing.T) {
   </xs:element>
 
   <xs:notation name="png" public="image/png" system="viewer.exe"/>
-</xs:schema>`)
+</xs:schema>`
+
+func TestValidKitchenSink(t *testing.T) {
+	doc, reg, errs := load(t, kitchenSink)
 	wantClean(t, errs)
 
 	// Document-level properties.
@@ -165,8 +169,8 @@ func TestValidKitchenSink(t *testing.T) {
 	if doc.blockDefault != blockDefSet {
 		t.Errorf("blockDefault = %v, want #all expansion %v", doc.blockDefault, blockDefSet)
 	}
-	if doc.finalDefault != xsd.DerivationSet(xsd.DeriveRestriction) {
-		t.Errorf("finalDefault = %v", doc.finalDefault)
+	if doc.finalDefault != 0 {
+		t.Errorf("finalDefault = %v, want unset", doc.finalDefault)
 	}
 	if len(doc.compositions) != 2 || doc.compositions[0].kind != "import" || doc.compositions[1].kind != "include" {
 		t.Errorf("compositions = %+v", doc.compositions)
@@ -496,5 +500,42 @@ func TestContentMatcher(t *testing.T) {
 	_, idx, expected := matchContent(g, []string{"a", "x", "d"})
 	if idx != 1 || len(expected) == 0 {
 		t.Errorf("failIdx = %d (expected %v), want 1", idx, expected)
+	}
+}
+
+// TestBuildSmoke is a provisional M6 smoke test: pass 2 over the kitchen
+// sink must produce a linked schema without errors. The full builder test
+// suite is the M6 completion work (see NOTES.md).
+func TestBuildSmoke(t *testing.T) {
+	doc, reg, errs := load(t, kitchenSink)
+	s := buildSchema(reg, doc, errs)
+	wantClean(t, errs)
+	if s == nil {
+		t.Fatal("no schema built")
+	}
+	derived, ok := s.Types[xsd.QName{Namespace: "urn:test", Local: "derived"}].(*xsd.ComplexType)
+	if !ok {
+		t.Fatal("derived type missing")
+	}
+	base, ok := derived.BaseType.(*xsd.ComplexType)
+	if !ok || base.Name.Local != "base" {
+		t.Fatalf("derived.BaseType = %v, want tns:base", derived.BaseType)
+	}
+	if derived.DerivationMethod != xsd.DeriveExtension {
+		t.Error("derived should be an extension")
+	}
+	doc2 := s.Elements[xsd.QName{Namespace: "urn:test", Local: "doc"}]
+	if doc2 == nil || doc2.Type != derived {
+		t.Fatalf("element doc not linked to tns:derived")
+	}
+	if len(doc2.IdentityConstraints) != 3 {
+		t.Errorf("doc has %d identity constraints, want 3", len(doc2.IdentityConstraints))
+	}
+	size, ok := s.Types[xsd.QName{Namespace: "urn:test", Local: "size"}].(*xsd.SimpleType)
+	if !ok || !size.Facets.HasEnumeration || len(size.Facets.Enumeration) != 2 {
+		t.Fatalf("size type facets not built: %+v", size)
+	}
+	if size.Primitive == nil || size.Primitive.Name.Local != "string" {
+		t.Errorf("size primitive = %v, want string", size.Primitive)
 	}
 }

@@ -140,5 +140,6 @@ var (
 	SpecNotationSpecial   = ref(2, "notation-special", "3.3.19", "NOTATION")
 	SpecEnumNotation      = ref(2, "enumeration-required-notation", "3.3.19", "enumeration-required-notation")
 	SpecRegexValid        = ref(2, "regex-valid", "G", "regexs") // Appendix: pattern must be a valid regular expression
+	SpecSingleFacetValue  = ref(2, "src-single-facet-value", "4.3", "src-single-facet-value")
 	SpecFundamentalFacets = ref(2, "fundamental-facets", "F", "fundamental-facets")
 )

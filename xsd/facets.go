@@ -192,6 +192,11 @@ func (t *SimpleType) parseFunc() ParseFunc {
 	return nil
 }
 
+// EffectiveCompare returns the comparison function in effect for t (its
+// own or the nearest ancestor's override, defaulting to CompareValues).
+// The parser uses it to drive ValidateFacetSet/CheckFacetRestriction.
+func (t *SimpleType) EffectiveCompare() CompareFunc { return t.compareFunc() }
+
 // compareFunc resolves value comparison the same way, defaulting to
 // CompareValues.
 func (t *SimpleType) compareFunc() CompareFunc {
