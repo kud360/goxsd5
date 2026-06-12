@@ -7,20 +7,23 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — PAUSED MID-M6 (quota, 2026-06-12). M6 code written, tests partial.
+## Status — M6 DONE (2026-06-12). Next: M7.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
 - [x] M1 parser/xmltree (NS-scoped tree, line/col, src-qname, foreign content)
 - [x] M2 xsd model skeleton (model.go — full Part 1 §3 component shapes)
 - [x] M3 value space + facet pipeline + Appendix-G regex
 - [x] M4 builtin package (all 1.1 builtins incl. dateTimeStamp/yearMonth/dayTimeDuration)
 - [x] M5 parser pass 1 (structural table, walker, registry — see below)
-- [~] M6 parser pass 2 — IMPLEMENTED + smoke-tested; REMAINING WORK below
-- [ ] M7 imports/includes/override/redefine + resolver
+- [x] M6 parser pass 2 (builder + finishComplexTypes post-pass + test suite)
+- [ ] M7 imports/includes/override/redefine + resolver — RESUME HERE
+  (design already decided, see "Plan for M6–M7" below; also extend
+  GOXSD5_SCAN to run buildSchema once composition exists — single-doc scan
+  would drown in src-resolve from imports/includes)
 - [ ] M9 W3C harness + expectations baseline
 - [ ] M8 mutation API, CONFORMANCE.md fill-in, cmd/goxsd5
 
-## M6 RESUME HERE — what exists and what's left
-Built (all compiling, kitchen-sink smoke test green — TestBuildSmoke):
+## M6 shape (as built)
+Files (all under parser/, tests in build_test.go + TestBuildSmoke):
 - builder.go: builder w/ per-node memo; ST cycles caught eagerly via
   building-marks (st-props-correct.2); CTs memoize their SHELL before
   content is built (content refs back into an unfinished type are legal!)
@@ -50,18 +53,29 @@ Built (all compiling, kitchen-sink smoke test green — TestBuildSmoke):
 - annot.go: Annotation + Extensions (foreign attrs/nodes) capture.
 - buildschema.go: buildSchema(reg, doc, errs) → linked *xsd.Schema; skips
   dup-named nodes (only the registered decl builds); redefine/override
-  children NOT assembled (M7).
+  children NOT assembled (M7). checkTypeCycles + finishComplexTypes
+  post-passes (see design note below).
 
-REMAINING for M6-done:
-1. Builder test suite (task: negatives for cyclic ST/CT, src-resolve,
-   facet-on-wrong-primitive, enumeration-valid-restriction, bounds
-   narrowing violations, NOTATION-without-enum, subst final exclusion,
-   a-props ID default, keyref arity, ct-props-correct.4/5, value model
-   assertions for lists/unions/simpleContent restriction facets).
-2. Extend GOXSD5_SCAN to run buildSchema — ONLY meaningful after M7
-   (single-doc scan would drown in src-resolve from imports/includes).
-3. CONFORMANCE.md rows for the M6 constraint family + NOTES design notes.
-4. gofmt/vet, checkpoint commit "M6: parser pass 2".
+DESIGN NOTE — finishComplexTypes (found by the M6 test suite, NOT by the
+smoke test): a base CT can still be MID-BUILD when a derived type is
+constructed, because the base's own content may legally reach back into the
+derived type (kitchen sink: base contains <element ref="doc"/>, doc's type
+is derived, derived extends base). At that moment base.Content/.AttributeUses
+are nil/empty, so anything reading base properties at build time silently
+loses data. Therefore ALL base-dependent merging is deferred to
+finishComplexTypes, a topological post-pass over b.types (runs after
+checkTypeCycles, so derivation chains are acyclic): (a) extension effective
+particle = sequence(base particle, own) — the base Particle component is
+SHARED, not copied; (b) attribute-use merging — each CT's declared material
+is parked in builder.pendingAttrs{own, wc, prohibited, override, wcFallback}
+during construction and merged with the completed base in the post-pass,
+followed by applyDefaultAttributes and checkAttrUses (ct-props-correct.4/5).
+Wildcard fallback to the base applies to extensions and simpleContent
+(wcFallback), NOT to complexContent restrictions. The simpleContent
+early-return path (extension of a simple-content base adding nothing) keeps
+its build-time shortcut; finishExtensionParticle has a defensive
+SimpleContent branch for the in-progress-base case.
+
 Deliberate deferrals (do NOT implement now): UPA (cos-nonambig), EDC,
 cos-particle-restrict, cos-ct-extends/restricts particle checks, wildcard
 union/intersection (cos-aw-*; first-wildcard-wins approximation in

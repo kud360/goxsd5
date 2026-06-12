@@ -30,14 +30,14 @@ constant name in code.
 | src-qname | §3.15.3 | M1 | done | |
 | src-element | §3.3.3 | M5 | wip (4.3 → M6) | |
 | src-attribute | §3.2.3 | M5 | wip (6.3 → M6) | |
-| src-ct | §3.4.3 | M5 | wip (semantic clauses → M6) | |
+| src-ct | §3.4.3 | M5/M6 | done (mixed-emptiable clause of 2.2 deferred) | |
 | src-simple-type | §3.16.3 | M5 | done | |
 | src-restriction-base-or-simpleType | §3.16.3 | M5 | done | |
 | src-list-itemType-or-simpleType | §3.16.3 | M5 | done | |
 | src-union-memberTypes-or-simpleTypes | §3.16.3 | M5 | done | |
-| src-attribute_group | §3.6.3 | M5 | done | |
+| src-attribute_group | §3.6.3 | M5/M6 | done (3 = circularity in M6) | |
 | src-model_group_defn | §3.7.3 | M5 | done | |
-| src-identity-constraint | §3.11.3 | M5 | wip (5 → M6) | |
+| src-identity-constraint | §3.11.3 | M5/M6 | done (5 = ref category match in M6) | |
 | src-ta | §3.12.3 | M5 | done | |
 | src-schema | §3.17.3 | M5 | done | |
 | src-annotation | §3.15.3 | M5 | done | |
@@ -53,27 +53,31 @@ constant name in code.
 | src-include.2 (chameleon) | §4.2.3 | M7 | | |
 | src-redefine | §4.2.5 | M5/M7 | wip (representation done) | |
 | src-override | §4.2.4 | M5/M7 | wip (representation done) | |
-| src-resolve | §3.15.3 | M7 | | |
+| src-resolve | §3.15.3 | M6/M7 | wip (single-document resolution done; cross-document → M7) | |
 
 ### Schema Component Constraints — props-correct (`*-props-correct`)
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| st-props-correct | §3.16.6 | M4/M6 | | |
-| ct-props-correct | §3.4.6 | M6 | | |
-| ct-props-correct.3 (no circular defs) | §3.4.6 | M6 | | |
-| e-props-correct | §3.3.6 | M6 | | |
-| a-props-correct | §3.2.6 | M6 | | |
-| au-props-correct | §3.5.6 | M6 | | |
+| st-props-correct | §3.16.6 | M4/M6 | done (2 = cycles; 3 = final exclusion for list/union) | |
+| ct-props-correct | §3.4.6 | M6 | done (4 = duplicate attr uses; 5 = ≤1 ID attr) | |
+| ct-props-correct.3 (no circular defs) | §3.4.6 | M6 | done (post-pass; cycle broken to keep the model walkable) | |
+| e-props-correct | §3.3.6 | M6 | done (2 = value constraint; 4 = subst final exclusion; 5 = no ID default) | |
+| a-props-correct | §3.2.6 | M6 | done (2 = simple type + value constraint; 3 = no ID default) | |
+| au-props-correct | §3.5.6 | M6 | done (2 = fixed consistency) | |
+| mg-props-correct | §3.8.6 | M6 | done (2 = circular model groups) | |
+| c-props-correct | §3.11.6 | M6 | done (keyref category + field arity; ref cycles) | |
 
 ### Derivation validity (`cos-*`, `derivation-ok-*`)
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-ct-extends | §3.4.6 | M6 | | |
-| cos-ct-restricts | §3.4.6 | M6 | | |
-| derivation-ok-restriction | §3.4.6 | M6 | | |
-| cos-equiv-class (substitution groups) | §3.3.6 | M6 | | |
+| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts done; particle/mixed consistency deferred) | |
+| cos-ct-restricts | §3.4.6 | M6/M9 | deferred (cos-particle-restrict; expectations ratchet tolerates) | |
+| derivation-ok-restriction | §3.4.6 | M6/M9 | deferred | |
+| cos-equiv-class (substitution groups) | §3.3.6 | M6 | wip (final exclusion via e-props-correct.4; unreachable chains → derivation-ok) | |
+| cos-valid-default | §3.3.6 | M6 | done (mixed-emptiable clause deferred) | |
+| enumeration-required-notation | Part 2 §3.3.19 | M6 | done | |
 
 ---
 
@@ -104,15 +108,28 @@ constant name in code.
 | minLength-less-than-equal-to-maxLength | §4.3.2.5 | M3 | | |
 | minInclusive-less-than-equal-to-maxInclusive | §4.3.10.5 | M3 | | |
 | minExclusive-less-than-equal-to-maxExclusive | §4.3.9.5 | M3 | | |
-| fractionDigits-less-than-equal-to-totalDigits | §4.3.12.5 | M3 | | |
-| enumeration-valid-restriction | §4.3.5.5 | M3 | | |
+| fractionDigits-less-than-equal-to-totalDigits | §4.3.12.5 | M3 | done | |
+| enumeration-valid-restriction | §4.3.5.5 | M3/M6 | done (enums parsed with the base type at construction) | |
+| src-single-facet-value | §4.3 | M6 | done | |
+| fixed-facet-value | §4.3 | M3/M6 | done | |
+| regex-valid (pattern is a valid regex) | App. G | M3/M6 | done | |
+| length-valid-restriction | §4.3.1.5 | M3/M6 | done | |
+| minLength-valid-restriction | §4.3.2.5 | M3/M6 | done | |
+| maxLength-valid-restriction | §4.3.3.5 | M3/M6 | done | |
+| whiteSpace-valid-restriction | §4.3.6.5 | M3/M6 | done | |
+| minInclusive-valid-restriction | §4.3.10.5 | M3/M6 | done (incl. base-membership of the lexical) | |
+| maxInclusive-valid-restriction | §4.3.7.5 | M3/M6 | done (incl. base-membership of the lexical) | |
+| minExclusive-valid-restriction | §4.3.9.5 | M3/M6 | done (incl. base-membership of the lexical) | |
+| maxExclusive-valid-restriction | §4.3.8.5 | M3/M6 | done (incl. base-membership of the lexical) | |
+| totalDigits-valid-restriction | §4.3.11.5 | M3/M6 | done | |
+| fractionDigits-valid-restriction | §4.3.12.5 | M3/M6 | done | |
 
 ### Restriction / narrowing (`cos-st-restricts`, `rcase-*`)
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-st-restricts | §4.1.6 | M3/M6 | | |
-| cos-applicable-facets | §4.1.6 | M3 | | |
+| cos-st-restricts | §4.1.6 | M3/M6 | wip (special bases, list item / union member variety rules done) | |
+| cos-applicable-facets | §4.1.6 | M3/M6 | done (per-primitive applicability table in buildFacets) | |
 | rcase-LengthAndLength | §4.3 | M3 | | |
 | rcase-MinLength | §4.3 | M3 | | |
 | rcase-MaxLength | §4.3 | M3 | | |

@@ -31,6 +31,9 @@ func (b *builder) buildComplexType(n *xmltree.Node, doc *schemaDoc, name xsd.QNa
 	// into this type (legal) resolve to the same component instead of
 	// looking like cycles.
 	b.types[n] = ct
+	// Attribute uses are merged with the base's in finishComplexTypes; the
+	// content builders below fill in the declared material.
+	b.pendingAttrs[ct] = &pendingAttrs{pos: n.Pos, node: n, doc: doc}
 
 	switch {
 	case firstChild(n, doc, "simpleContent") != nil:
@@ -43,8 +46,6 @@ func (b *builder) buildComplexType(n *xmltree.Node, doc *schemaDoc, name xsd.QNa
 		b.buildElementOnlyContent(ct, n, n, doc, builtin.AnyType, xsd.DeriveRestriction, boolAttr(n, "mixed", false))
 	}
 
-	b.applyDefaultAttributes(ct, n, doc)
-	b.checkAttrUses(ct)
 	return ct
 }
 
@@ -114,15 +115,13 @@ func (b *builder) buildSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc 
 		ct.Content = &xsd.SimpleContent{Type: st}
 	}
 
-	// Attribute uses: own plus the base's (restriction overrides by name).
-	own, wc, prohibited := b.buildAttrUses(r, doc)
-	ct.AttributeUses = b.mergeBaseAttrUses(own, baseAttrUses(base), prohibited, !isExtension, r.Pos)
-	ct.AttributeWildcard = wc
-	if wc == nil {
-		if bct, ok := base.(*xsd.ComplexType); ok {
-			ct.AttributeWildcard = bct.AttributeWildcard
-		}
-	}
+	// Attribute uses: own plus the base's (restriction overrides by name),
+	// merged in finishComplexTypes.
+	p := b.pendingAttrs[ct]
+	p.own, p.wc, p.prohibited = b.buildAttrUses(r, doc)
+	p.override = !isExtension
+	p.wcFallback = true
+	p.pos = r.Pos
 	ct.Assertions = b.buildAsserts(r, doc)
 }
 
@@ -182,7 +181,7 @@ func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltr
 				// Extending a simple-content type without adding element
 				// content keeps the simple content.
 				ct.Content = &xsd.SimpleContent{Type: sc.Type}
-				b.extendAttrUses(ct, content, doc, bct, n.Pos)
+				b.deferAttrs(ct, content, doc, false, n.Pos)
 				ct.Assertions = b.buildAsserts(content, doc)
 				return
 			}
@@ -190,22 +189,9 @@ func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltr
 			// simple-content type cannot add element content.
 			b.errf(xsd.SpecCosCTExtends, content.Pos, "cannot extend %s with element content: its content is simple", bct.Name)
 		}
-		// Effective particle: base particle followed by the extension's.
-		if bec, ok := bct.Content.(*xsd.ElementContent); ok && bec.Particle != nil {
-			if particle == nil {
-				particle = bec.Particle
-			} else {
-				particle = &xsd.Particle{
-					MinOccurs: 1, MaxOccurs: 1,
-					Term: &xsd.ModelGroup{
-						Compositor: xsd.CompositorSequence,
-						Particles:  []*xsd.Particle{bec.Particle, particle},
-						Pos:        particle.Pos,
-					},
-					Pos: particle.Pos,
-				}
-			}
-		}
+		// The effective particle (base particle followed by the extension's)
+		// is combined by finishExtensions: the base may still be mid-build
+		// here when its own content reaches back into this type.
 	}
 
 	ec := &xsd.ElementContent{Mixed: mixed, Particle: particle}
@@ -218,42 +204,20 @@ func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltr
 	}
 	ct.Content = ec
 
-	if method == xsd.DeriveExtension {
-		b.extendAttrUses(ct, content, doc, bct, n.Pos)
-	} else {
-		own, wc, prohibited := b.buildAttrUses(content, doc)
-		var baseUses []*xsd.AttributeUse
-		if bct != nil {
-			baseUses = bct.AttributeUses
-		}
-		ct.AttributeUses = b.mergeBaseAttrUses(own, baseUses, prohibited, true, content.Pos)
-		ct.AttributeWildcard = wc
-	}
+	b.deferAttrs(ct, content, doc, method != xsd.DeriveExtension, content.Pos)
 	ct.Assertions = b.buildAsserts(content, doc)
 }
 
-// extendAttrUses merges attribute uses for an extension: the union of the
-// declared uses and every base use.
-func (b *builder) extendAttrUses(ct *xsd.ComplexType, content *xmltree.Node, doc *schemaDoc, bct *xsd.ComplexType, p xsd.Pos) {
-	own, wc, _ := b.buildAttrUses(content, doc)
-	var baseUses []*xsd.AttributeUse
-	if bct != nil {
-		baseUses = bct.AttributeUses
-	}
-	ct.AttributeUses = b.mergeBaseAttrUses(own, baseUses, nil, false, p)
-	ct.AttributeWildcard = wc
-	if wc == nil && bct != nil {
-		// Wildcard union (cos-aw-union) is deferred; the base's wildcard
-		// stands in when the extension declares none.
-		ct.AttributeWildcard = bct.AttributeWildcard
-	}
-}
-
-func baseAttrUses(base xsd.Type) []*xsd.AttributeUse {
-	if bct, ok := base.(*xsd.ComplexType); ok {
-		return bct.AttributeUses
-	}
-	return nil
+// deferAttrs records the attribute material declared on content for the
+// finishComplexTypes merge. Extensions unite with the base's uses and fall
+// back to its wildcard (full wildcard union, cos-aw-union, is deferred);
+// restrictions override by name and keep only their own wildcard.
+func (b *builder) deferAttrs(ct *xsd.ComplexType, content *xmltree.Node, doc *schemaDoc, override bool, pos xsd.Pos) {
+	p := b.pendingAttrs[ct]
+	p.own, p.wc, p.prohibited = b.buildAttrUses(content, doc)
+	p.override = override
+	p.wcFallback = !override
+	p.pos = pos
 }
 
 // mergeBaseAttrUses combines declared uses with inherited ones. For

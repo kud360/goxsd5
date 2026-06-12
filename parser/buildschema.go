@@ -84,7 +84,100 @@ func buildSchema(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) *xsd.Schema
 		}
 	}
 	b.checkTypeCycles(s)
+	b.finishComplexTypes()
 	return s
+}
+
+// finishComplexTypes merges every complex type's base-dependent properties:
+// the effective particle of extensions (base particle followed by the
+// type's own) and the attribute uses inherited from the base. It runs as a
+// post-pass because a base can still be mid-build when a derived type is
+// constructed (the base's content may legally reach back into the derived
+// type), so the base's particle and attribute uses are only known once
+// everything is assembled. Bases are finished before the types derived from
+// them; derivation chains are acyclic here (checkTypeCycles broke any cycle).
+func (b *builder) finishComplexTypes() {
+	done := map[*xsd.ComplexType]bool{}
+	var finish func(ct *xsd.ComplexType)
+	finish = func(ct *xsd.ComplexType) {
+		if done[ct] {
+			return
+		}
+		done[ct] = true
+		bct, _ := ct.BaseType.(*xsd.ComplexType)
+		if bct != nil {
+			finish(bct)
+		}
+		if bct != nil && ct.DerivationMethod == xsd.DeriveExtension {
+			b.finishExtensionParticle(ct, bct)
+		}
+		p := b.pendingAttrs[ct]
+		if p == nil {
+			return // builtin (xs:anyType) or already-complete component
+		}
+		var baseUses []*xsd.AttributeUse
+		var baseWC *xsd.Wildcard
+		if bct != nil {
+			baseUses = bct.AttributeUses
+			baseWC = bct.AttributeWildcard
+		}
+		prohibited := p.prohibited
+		if !p.override {
+			prohibited = nil
+		}
+		ct.AttributeUses = b.mergeBaseAttrUses(p.own, baseUses, prohibited, p.override, p.pos)
+		ct.AttributeWildcard = p.wc
+		if p.wc == nil && p.wcFallback {
+			// Wildcard union (cos-aw-union) is deferred; the base's wildcard
+			// stands in when the type declares none.
+			ct.AttributeWildcard = baseWC
+		}
+		b.applyDefaultAttributes(ct, p.node, p.doc)
+		b.checkAttrUses(ct)
+	}
+	for _, t := range b.types {
+		if ct, ok := t.(*xsd.ComplexType); ok {
+			finish(ct)
+		}
+	}
+}
+
+// finishExtensionParticle combines an extension's effective particle: the
+// base type's particle followed by the extension's own.
+func (b *builder) finishExtensionParticle(ct, bct *xsd.ComplexType) {
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok {
+		return
+	}
+	switch bc := bct.Content.(type) {
+	case *xsd.SimpleContent:
+		// Only reachable when the base was mid-build during construction
+		// (buildElementOnlyContent handles completed simple-content bases).
+		if ec.Particle == nil && !ec.Mixed {
+			ct.Content = &xsd.SimpleContent{Type: bc.Type}
+		} else {
+			// spec: cos-ct-extends.1.4.2 — a complex extension of a
+			// simple-content type cannot add element content.
+			b.errf(xsd.SpecCosCTExtends, ct.Pos, "cannot extend %s with element content: its content is simple", bct.Name)
+		}
+	case *xsd.ElementContent:
+		if bc.Particle == nil {
+			return
+		}
+		if ec.Particle == nil {
+			ec.Particle = bc.Particle
+		} else {
+			ec.Particle = &xsd.Particle{
+				MinOccurs: 1, MaxOccurs: 1,
+				Term: &xsd.ModelGroup{
+					Compositor: xsd.CompositorSequence,
+					Particles:  []*xsd.Particle{bc.Particle, ec.Particle},
+					Pos:        ec.Particle.Pos,
+				},
+				Pos: ec.Particle.Pos,
+			}
+		}
+	}
 }
 
 // checkTypeCycles detects cyclic complex-type derivation chains. Cycles are

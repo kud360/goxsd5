@@ -503,9 +503,9 @@ func TestContentMatcher(t *testing.T) {
 	}
 }
 
-// TestBuildSmoke is a provisional M6 smoke test: pass 2 over the kitchen
-// sink must produce a linked schema without errors. The full builder test
-// suite is the M6 completion work (see NOTES.md).
+// TestBuildSmoke runs pass 2 over the kitchen sink: it must produce a
+// linked schema without errors. Focused builder coverage lives in
+// build_test.go.
 func TestBuildSmoke(t *testing.T) {
 	doc, reg, errs := load(t, kitchenSink)
 	s := buildSchema(reg, doc, errs)

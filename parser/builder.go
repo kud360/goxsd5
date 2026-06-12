@@ -35,29 +35,46 @@ type builder struct {
 
 	// building marks nodes whose construction is on the stack.
 	building map[*xmltree.Node]bool
+
+	// pendingAttrs holds each complex type's own attribute material until
+	// finishComplexTypes merges it with the base's (the base may still be
+	// mid-build when the type is constructed).
+	pendingAttrs map[*xsd.ComplexType]*pendingAttrs
+}
+
+// pendingAttrs is the attribute material declared directly on one complex
+// type, recorded during construction and merged with the (by then complete)
+// base type in the finishComplexTypes post-pass.
+type pendingAttrs struct {
+	own        []*xsd.AttributeUse
+	wc         *xsd.Wildcard
+	prohibited map[xsd.QName]bool
+	override   bool // restriction semantics: own uses shadow base uses
+	wcFallback bool // inherit the base wildcard when none is declared
+	pos        xsd.Pos
+	node       *xmltree.Node // the complexType element (defaultAttributesApply)
+	doc        *schemaDoc
 }
 
 func newBuilder(reg *registry, errs *xsd.ErrorList) *builder {
 	return &builder{
-		reg:        reg,
-		errs:       errs,
-		types:      map[*xmltree.Node]xsd.Type{},
-		elements:   map[*xmltree.Node]*xsd.ElementDecl{},
-		attributes: map[*xmltree.Node]*xsd.AttributeDecl{},
-		groups:     map[*xmltree.Node]*xsd.Group{},
-		attrGroups: map[*xmltree.Node]*xsd.AttributeGroup{},
-		notations:  map[*xmltree.Node]*xsd.Notation{},
-		ics:        map[*xmltree.Node]*xsd.IdentityConstraint{},
-		building:   map[*xmltree.Node]bool{},
+		reg:          reg,
+		errs:         errs,
+		types:        map[*xmltree.Node]xsd.Type{},
+		elements:     map[*xmltree.Node]*xsd.ElementDecl{},
+		attributes:   map[*xmltree.Node]*xsd.AttributeDecl{},
+		groups:       map[*xmltree.Node]*xsd.Group{},
+		attrGroups:   map[*xmltree.Node]*xsd.AttributeGroup{},
+		notations:    map[*xmltree.Node]*xsd.Notation{},
+		ics:          map[*xmltree.Node]*xsd.IdentityConstraint{},
+		building:     map[*xmltree.Node]bool{},
+		pendingAttrs: map[*xsd.ComplexType]*pendingAttrs{},
 	}
 }
 
 func (b *builder) errf(ref xsd.SpecRef, pos xsd.Pos, format string, args ...any) {
 	b.errs.Addf(ref, pos, format, args...)
 }
-
-// pos returns n's position.
-func pos(n *xmltree.Node) xsd.Pos { return n.Pos }
 
 // registryFor returns the registry visible from inside doc: its scoped one
 // when present (it chains to the global), else the global registry.
