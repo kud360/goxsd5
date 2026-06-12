@@ -20,7 +20,13 @@ func CompileRegex(pattern string) (*regexp.Regexp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return regexp.Compile(s)
+	re, err := regexp.Compile(s)
+	if err != nil {
+		// Translation is supposed to emit only valid RE2; surface the XSD
+		// source alongside the translated form if it ever does not.
+		return nil, fmt.Errorf("XSD regex %q: translated form %q does not compile: %w", pattern, s, err)
+	}
+	return re, nil
 }
 
 // TranslateRegex translates an XSD pattern into Go regexp syntax, wrapped
@@ -635,7 +641,10 @@ func categorySet(name string) (rangeSet, error) {
 		}
 		if name == "C" {
 			// Go's C tables omit Cn (unassigned); XSD's C includes it.
-			cn, _ := categorySet("Cn")
+			cn, err := categorySet("Cn")
+			if err != nil {
+				return nil, err
+			}
 			s = union(s, cn)
 		}
 	} else if name == "Cn" {

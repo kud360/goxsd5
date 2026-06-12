@@ -244,10 +244,10 @@ func parseDatePart(s string) (y, m, d int, err error) {
 		return
 	}
 	if m, err = atoi2(s[j+1 : i]); err != nil {
-		return
+		return 0, 0, 0, fmt.Errorf("invalid month in date %q: %w", s, err)
 	}
 	if d, err = atoi2(s[i+1:]); err != nil {
-		return
+		return 0, 0, 0, fmt.Errorf("invalid day in date %q: %w", s, err)
 	}
 	if m < 1 || m > 12 || d < 1 || d > daysInMonth(y, m) {
 		return 0, 0, 0, fmt.Errorf("no such date %q", s)
@@ -262,10 +262,10 @@ func parseTimePart(s string) (h, mi int, sec *big.Rat, addDay bool, err error) {
 		return 0, 0, nil, false, fmt.Errorf("invalid time %q", s)
 	}
 	if h, err = atoi2(s[:2]); err != nil {
-		return
+		return 0, 0, nil, false, fmt.Errorf("invalid hours in time %q: %w", s, err)
 	}
 	if mi, err = atoi2(s[3:5]); err != nil {
-		return
+		return 0, 0, nil, false, fmt.Errorf("invalid minutes in time %q: %w", s, err)
 	}
 	if sec, err = parseSecond(s[6:]); err != nil {
 		return
@@ -373,7 +373,7 @@ func ParseDateTime(kind DateTimeKind, s string) (*DateTime, error) {
 			return nil, fmt.Errorf("invalid gMonthDay %q", s)
 		}
 	default:
-		return nil, fmt.Errorf("unknown date/time kind")
+		return nil, fmt.Errorf("unknown date/time kind %d parsing %q", kind, s)
 	}
 	return dt, nil
 }

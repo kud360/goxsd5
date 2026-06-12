@@ -57,7 +57,14 @@ func ParseDuration(s string) (*Duration, error) {
 		} else if ok {
 			rest = r
 			any = true
-			months += v.Num().Int64() * f.months
+			if f.months != 0 {
+				// Mirror parseYear's 2^31 cap so the months total cannot
+				// overflow int64.
+				if n := v.Num(); !n.IsInt64() || n.Int64() > 1<<31 {
+					return nil, fmt.Errorf("invalid duration %q: %c field out of range", orig, f.designator)
+				}
+				months += v.Num().Int64() * f.months
+			}
 			if f.seconds != 0 {
 				seconds.Add(seconds, new(big.Rat).Mul(v, new(big.Rat).SetInt64(f.seconds)))
 			}
@@ -143,7 +150,12 @@ func (d *Duration) Compare(o *Duration) (Order, bool) {
 	for i, ref := range durationRefs {
 		a := ref.AddDuration(d)
 		b := ref.AddDuration(o)
-		ord, _ := a.Compare(b)
+		ord, ok := a.Compare(b)
+		if !ok {
+			// Cannot happen (both operands are timezoned dateTimes of the
+			// same kind), but incomparable is the safe answer if it did.
+			return 0, false
+		}
 		if i == 0 {
 			first = ord
 		} else if ord != first {

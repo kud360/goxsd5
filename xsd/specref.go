@@ -17,7 +17,12 @@ func (r SpecRef) IsZero() bool { return r.ID == "" }
 // conformance test walks this table and cross-checks CONFORMANCE.md.
 var Refs = map[string]SpecRef{}
 
+// ref panics on a duplicate ID: it runs only at package init on the var
+// block below, so a duplicate can only be a bad edit to this file.
 func ref(part int, id, section, anchor string) SpecRef {
+	if _, dup := Refs[id]; dup {
+		panic("xsd: duplicate SpecRef ID " + id)
+	}
 	r := SpecRef{ID: id, Part: part, Section: section, Anchor: anchor}
 	Refs[id] = r
 	return r

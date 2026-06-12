@@ -141,7 +141,7 @@ func isNameChar(r rune) bool {
 func Parse(r io.Reader, uri string) (*Node, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", uri, err)
 	}
 	// Transcode to UTF-8 up front so byte offsets used for line/column
 	// mapping refer to the same bytes the decoder consumes.

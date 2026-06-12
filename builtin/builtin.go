@@ -117,6 +117,9 @@ func list(local string, item *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.Simp
 	return t
 }
 
+// pattern panics on a bad source: it runs only at package init on the
+// compile-time literals of the built-in type table, where an error cannot
+// be returned and can only mean the literal itself is wrong.
 func pattern(f *xsd.Facets, sources ...string) {
 	var group xsd.PatternGroup
 	for _, src := range sources {
@@ -129,10 +132,12 @@ func pattern(f *xsd.Facets, sources ...string) {
 	f.PatternGroups = append(f.PatternGroups, group)
 }
 
+// mustDecimal panics on a bad literal for the same reason as pattern:
+// package-init only, compile-time constant inputs.
 func mustDecimal(s string) xsd.Value {
 	d, err := xsd.ParseDecimal(s)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("builtin decimal bound %q: %v", s, err))
 	}
 	return d
 }
@@ -179,7 +184,7 @@ func parseFloating(s string) (float64, error) {
 		if ne, ok := err.(*strconv.NumError); ok && ne.Err == strconv.ErrRange {
 			return v, nil
 		}
-		return 0, fmt.Errorf("invalid float/double %q", s)
+		return 0, fmt.Errorf("invalid float/double %q: %w", s, err)
 	}
 	return v, nil
 }
@@ -216,7 +221,7 @@ func parseHexBinary(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	}
 	b, err := hex.DecodeString(s)
 	if err != nil {
-		return nil, fmt.Errorf("invalid hexBinary %q", s)
+		return nil, fmt.Errorf("invalid hexBinary %q: %w", s, err)
 	}
 	return xsd.Bytes(b), nil
 }
@@ -231,7 +236,7 @@ func parseBase64Binary(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	}
 	b, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(s, " ", ""))
 	if err != nil {
-		return nil, fmt.Errorf("invalid base64Binary %q", s)
+		return nil, fmt.Errorf("invalid base64Binary %q: %w", s, err)
 	}
 	return xsd.Bytes(b), nil
 }
@@ -255,7 +260,7 @@ func parseQName(s string, ctx xsd.ValueContext) (xsd.Value, error) {
 		return nil, fmt.Errorf("invalid QName %q", s)
 	}
 	if ctx == nil {
-		return nil, xsd.ErrNeedContext
+		return nil, fmt.Errorf("cannot resolve QName %q: %w", s, xsd.ErrNeedContext)
 	}
 	name, ok := ctx.ResolveQName(prefix, local)
 	if !ok {
