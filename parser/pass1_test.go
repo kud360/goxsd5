@@ -95,7 +95,7 @@ var kitchenSink = `<?xml version="1.0"?>
   </xs:complexType>
 
   <xs:complexType name="derived">
-    <xs:complexContent mixed="false">
+    <xs:complexContent mixed="true">
       <xs:extension base="tns:base">
         <xs:sequence><xs:element name="extra" type="tns:size" form="unqualified"/></xs:sequence>
         <xs:attribute name="version" type="xs:decimal" default="1.0" use="optional"/>

@@ -358,6 +358,25 @@ func (b *builder) finishExtensionParticle(ct, bct *xsd.ComplexType) {
 			b.errf(xsd.SpecCosCTExtends, ct.Pos, "cannot extend %s with element content: its content is simple", bct.Name)
 		}
 	case *xsd.ElementContent:
+		// spec: §3.4.2.3.3 (mapping rules) — when the extension contributes no
+		// "effective content" (no own particle and not mixed) the derived
+		// {content type} is copied wholesale from the base, including its
+		// mixed/element-only variety; no consistency check applies.
+		if ec.Particle == nil && !ec.Mixed {
+			ec.Mixed = bc.Mixed
+			ec.Particle = bc.Particle
+			return
+		}
+		// The extension contributes content. When the base {content type} is
+		// non-empty, the two must share the same mixed/element-only variety.
+		// spec: cos-ct-extends.1.4.3.2.2.1 — XSD 1.1 Part 1 §3.4.6.2
+		if (bc.Particle != nil || bc.Mixed) && ec.Mixed != bc.Mixed {
+			want := "element-only"
+			if bc.Mixed {
+				want = "mixed"
+			}
+			b.errf(xsd.SpecCosCTExtends, ct.Pos, "extension of %s must have %s content to match the base", describeCT(bct), want)
+		}
 		if bc.Particle == nil {
 			return
 		}

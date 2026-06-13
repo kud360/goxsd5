@@ -73,7 +73,7 @@ constant name in code.
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts done; particle/mixed consistency deferred) | parser/buildcomplex.go:188 |
+| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts + 1.4.3.2.2.1 mixed consistency done; particle subsumption deferred) | parser/buildcomplex.go:188 |
 | cos-ct-restricts | §3.4.6 | M6/M9 | deferred (cos-particle-restrict; expectations ratchet tolerates) | |
 | derivation-ok-restriction | §3.4.6 | M6/M9 | deferred | |
 | cos-equiv-class (substitution groups) | §3.3.6 | M6 | deferred (the enforced part — substitution-group final exclusion — is reported under e-props-correct.4; full equivalence-class membership not yet checked under this ID) | |

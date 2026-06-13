@@ -80,6 +80,10 @@ func TestBuilderNegatives(t *testing.T) {
 		{"notQName names a namespace outside an enumeration",
 			`<xs:complexType name="c"><xs:sequence><xs:any namespace="urn:ok" notQName="tns:foo"/></xs:sequence></xs:complexType>`,
 			[]string{"w-props-correct"}},
+		{"mixed extension adds content to an element-only base",
+			`<xs:complexType name="b"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="t" mixed="true"><xs:complexContent><xs:extension base="tns:b"><xs:sequence><xs:element name="y" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-ct-extends"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
@@ -451,8 +455,8 @@ func TestBuildComplexContentAssembly(t *testing.T) {
 
 	derived := s.Types[qn("derived")].(*xsd.ComplexType)
 	dec := derived.Content.(*xsd.ElementContent)
-	if dec.Mixed {
-		t.Error("derived must not be mixed (complexContent mixed=\"false\")")
+	if !dec.Mixed {
+		t.Error("derived must be mixed (complexContent mixed=\"true\", matching the mixed base per cos-ct-extends.1.4.3.2.2.1)")
 	}
 	// Extension particle = sequence(base particle, own particle), sharing the
 	// base's particle component.
