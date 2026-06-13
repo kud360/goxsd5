@@ -200,6 +200,7 @@ ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii09 pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii10 pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii11 pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4si01 pass
+ibmMeta/defaultAttributesApply.testSet#s3_4_2_4si02 pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4si03 pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4v01 pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4v02 pass

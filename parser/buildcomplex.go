@@ -301,7 +301,10 @@ func (b *builder) applyDefaultAttributes(ct *xsd.ComplexType, n *xmltree.Node, d
 	if g == nil {
 		return
 	}
-	ct.AttributeUses = b.mergeBaseAttrUses(ct.AttributeUses, g.Uses, nil, true, n.Pos)
+	// The default attribute group is added like an extra <attributeGroup ref>;
+	// a name collision with an existing use is a duplicate (ct-props-correct.4),
+	// not a silent override, so append and let checkAttrUses flag it.
+	ct.AttributeUses = append(ct.AttributeUses, g.Uses...)
 	if ct.AttributeWildcard == nil {
 		ct.AttributeWildcard = g.Wildcard
 	}

@@ -540,6 +540,13 @@ func TestBuildDefaultAttributesGroup(t *testing.T) {
 </xs:schema>`)
 		wantIDs(t, errs, "src-resolve")
 	})
+	t.Run("collision with an explicit attribute is a duplicate", func(t *testing.T) {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t" defaultAttributes="tns:g">
+  <xs:attributeGroup name="g"><xs:attribute name="ver" type="xs:int"/></xs:attributeGroup>
+  <xs:complexType name="c"><xs:sequence/><xs:attribute name="ver" type="xs:string"/></xs:complexType>
+</xs:schema>`)
+		wantIDs(t, errs, "ct-props-correct")
+	})
 }
 
 func TestBuildMaxOccursZeroParticle(t *testing.T) {
