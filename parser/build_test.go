@@ -43,6 +43,9 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="a"><xs:complexContent><xs:extension base="tns:b"><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>
 			 <xs:complexType name="b"><xs:complexContent><xs:extension base="tns:a"><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
 			[]string{"ct-props-correct"}},
+		{"complexType restricts itself",
+			`<xs:complexType name="a"><xs:complexContent><xs:restriction base="tns:a"><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"ct-props-correct"}},
 
 		// Reference resolution (src-resolve).
 		{"element type undeclared", `<xs:element name="e" type="tns:nope"/>`, []string{"src-resolve"}},

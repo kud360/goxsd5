@@ -7,7 +7,19 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5661 (+10). Remainder below <<<
+## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5662 (+11). Remainder below <<<
+SESSION 2026-06-13 phase 5d (5661 → 5662, +1): SELF-RESTRICTION cycle (over014).
+"Override a complex type by self-restriction": the <override> replacement does
+NOT get the redefine-style self→original scoped mapping (only redefine does, in
+registerReplacement), so its base="structuredDate" resolves through the global
+registry to the REPLACEMENT itself ⇒ BaseType == self. checkTypeCycles silently
+broke out of its walk on `next == cur` (to tolerate xs:anyType's self-loop —
+though anyType's base is actually nil, not self), so a genuine one-step
+self-derivation escaped. Fix: in that branch, if cur is a *xsd.ComplexType whose
+BaseType == itself, report ct-props-correct and sever to anyType. Also catches a
+plain direct `<restriction base="self">`. Unit test TestBuilderNegatives
+"complexType restricts itself".
+
 SESSION 2026-06-13 phase 5c (5656 → 5661, +5): EXTENSION OPEN CONTENT
 (cos-ct-extends §3.4.6.2 clause 1.4.3.2.2.3) — the cluster NOTES flagged as
 needing the real {open content} mapping. checkExtensionOpenContent (restrict.go),

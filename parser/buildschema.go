@@ -727,6 +727,16 @@ func (b *builder) checkTypeCycles(s *xsd.Schema) {
 			seen[cur] = true
 			next := cur.Base()
 			if next == cur {
+				if ct, ok := cur.(*xsd.ComplexType); ok && ct.BaseType == ct {
+					// A complex type that names itself as its own base is a
+					// one-step derivation cycle. xs:anyType's base is left
+					// implicit (nil), so it never reaches here; only a genuine
+					// self-reference does — e.g. an <override> whose replacement
+					// restricts the very name it replaces (over014).
+					// spec: ct-props-correct.3 — XSD 1.1 Part 1 §3.4.6
+					b.errf(xsd.SpecCTPropsCorrect, ct.TypePos(), "complex type %s is part of a cyclic definition", ct.TypeName())
+					ct.BaseType = builtin.AnyType
+				}
 				break
 			}
 			cur = next
