@@ -4700,6 +4700,10 @@ saxonMeta/Open.testSet#open013 pass
 saxonMeta/Open.testSet#open014 pass
 saxonMeta/Open.testSet#open015 pass
 saxonMeta/Open.testSet#open016 pass
+saxonMeta/Open.testSet#open016.bad pass
+saxonMeta/Open.testSet#open017 pass
+saxonMeta/Open.testSet#open018 pass
+saxonMeta/Open.testSet#open019 pass
 saxonMeta/Open.testSet#open020 pass
 saxonMeta/Open.testSet#open021 pass
 saxonMeta/Open.testSet#open022 pass

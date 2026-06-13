@@ -177,6 +177,149 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 	}
 }
 
+// checkOpenContentRestrict reports derivation-ok-restriction violations for the
+// {open content} of a complexContent restriction (cos-ct-restricts /
+// Derivation Valid (Restriction, Complex), §3.4.6.4 clause 9). A restriction
+// that closes the content (no open content, or mode none) is always valid, so
+// only a restriction that keeps open content is checked: its mode may be no
+// more open than the base's (interleave is more open than suffix), its wildcard
+// must be a namespace subset of the base's, and its processContents must be
+// identical to or stronger than the base's. Each is a necessary condition for
+// L(R) ⊆ L(B), so a violation is always a real error.
+func (b *builder) checkOpenContentRestrict(ct *xsd.ComplexType) {
+	if ct.DerivationMethod != xsd.DeriveRestriction {
+		return
+	}
+	bct, ok := ct.BaseType.(*xsd.ComplexType)
+	if !ok || bct.BaseType == nil {
+		return // base is xs:anyType: this is the implicit restriction, not a
+		// user complexContent restriction, and open content may be added freely.
+	}
+	rec, rok := ct.Content.(*xsd.ElementContent)
+	if !rok {
+		return
+	}
+	roc := effectiveOpenContent(rec)
+	if roc == nil {
+		return // closing the content is always a valid restriction
+	}
+	bec, _ := bct.Content.(*xsd.ElementContent)
+	boc := effectiveOpenContent(bec)
+	if boc == nil {
+		// spec: derivation-ok-restriction — §3.4.6.4 clause 9.1: the base has no
+		// open content, so the restriction may not introduce any. Skip when the
+		// base's own content model contains a wildcard, which can absorb the
+		// open-content elements directly so that the restriction is still valid
+		// (open022); deciding that exactly needs the full language inclusion, so
+		// give up rather than risk a false positive.
+		var bp *xsd.Particle
+		if bec != nil {
+			bp = bec.Particle
+		}
+		if !particleHasWildcard(bp) {
+			b.errf(xsd.SpecDerivationOKRestriction, roc.Pos, "the restriction of %s introduces open content the base type does not allow", describeCT(ct))
+		}
+		return
+	}
+	if openContentOpenness(roc.Mode) > openContentOpenness(boc.Mode) && particleMatchesNonEmpty(rec.Particle) {
+		// spec: derivation-ok-restriction — §3.4.6.4 clause 9.2: the restriction's
+		// open content mode may be no more permissive than the base's (interleave
+		// is more open than suffix). The mode only matters when the restriction's
+		// own content model can produce an element to interleave around; with an
+		// empty content model interleave and suffix coincide (open020).
+		b.errf(xsd.SpecDerivationOKRestriction, roc.Pos, "the open content of the restriction of %s is more permissive (interleave) than the base's (suffix)", describeCT(ct))
+	}
+	if roc.Wildcard != nil && boc.Wildcard != nil {
+		if !namespaceConstraintSubset(roc.Wildcard, boc.Wildcard) {
+			// spec: derivation-ok-restriction — §3.4.6.4 clause 9.3 / Wildcard
+			// Subset: the restriction's open content wildcard must be a subset of
+			// the base's.
+			b.errf(xsd.SpecDerivationOKRestriction, roc.Pos, "the open content of the restriction of %s allows elements the base's open content does not", describeCT(ct))
+		}
+		if !processContentsAtLeastAsStrict(roc.Wildcard, boc.Wildcard) {
+			// spec: derivation-ok-restriction — §3.4.6.4 clause 9.3: the open
+			// content wildcard's processContents must be identical to or stronger
+			// than the base's (strict > lax > skip).
+			b.errf(xsd.SpecDerivationOKRestriction, roc.Pos, "the open content of the restriction of %s has weaker processContents than the base's", describeCT(ct))
+		}
+	}
+}
+
+// effectiveOpenContent returns ec's open content, treating an absent one or one
+// with {mode} none as no open content.
+func effectiveOpenContent(ec *xsd.ElementContent) *xsd.OpenContent {
+	if ec == nil || ec.OpenContent == nil || ec.OpenContent.Mode == xsd.OpenContentNone {
+		return nil
+	}
+	return ec.OpenContent
+}
+
+// particleMatchesNonEmpty reports whether p can match at least one element
+// information item: it has a positive maximum occurrence and contains an
+// element or wildcard term (directly or nested) that can itself occur. A nil
+// particle, or a model group all of whose particles are unreachable, matches
+// only the empty sequence.
+func particleMatchesNonEmpty(p *xsd.Particle) bool {
+	if p == nil || p.MaxOccurs == 0 {
+		return false
+	}
+	switch term := p.Term.(type) {
+	case *xsd.ElementDecl, *xsd.Wildcard:
+		return true
+	case *xsd.ModelGroup:
+		for _, c := range term.Particles {
+			if particleMatchesNonEmpty(c) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// particleHasWildcard reports whether p contains a wildcard term anywhere in
+// its model-group tree.
+func particleHasWildcard(p *xsd.Particle) bool {
+	if p == nil {
+		return false
+	}
+	switch term := p.Term.(type) {
+	case *xsd.Wildcard:
+		return true
+	case *xsd.ModelGroup:
+		for _, c := range term.Particles {
+			if particleHasWildcard(c) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// openContentOpenness ranks open-content modes by permissiveness: interleave
+// (matches anywhere) is more open than suffix (only after the content), which
+// is more open than none.
+func openContentOpenness(m xsd.OpenContentMode) int {
+	switch m {
+	case xsd.OpenContentInterleave:
+		return 2
+	case xsd.OpenContentSuffix:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// processContentsAtLeastAsStrict reports whether wildcard sub's processContents
+// is identical to or stronger than super's (strict > lax > skip), per the
+// Particle Derivation OK process-contents condition. When super is skip there is
+// no constraint.
+func processContentsAtLeastAsStrict(sub, super *xsd.Wildcard) bool {
+	if super.ProcessContents == xsd.ProcessSkip {
+		return true
+	}
+	return sub.ProcessContents <= super.ProcessContents
+}
+
 // slotName names a base slot for diagnostics: the element name, or "a wildcard"
 // for the wildcard slot.
 func slotName(decl *xsd.ElementDecl) string {

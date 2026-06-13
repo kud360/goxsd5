@@ -198,6 +198,24 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:sequence/></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute namespace="##any"/></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"derivation-ok-restriction"}},
+		// Open content restriction subset (derivation-ok-restriction §3.4.6.4
+		// clause 9): R's open content may not out-reach the base's (open016-019).
+		{"restriction adds open content the base lacks",
+			`<xs:complexType name="b"><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction open content widens the base wildcard namespace",
+			`<xs:complexType name="b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o urn:p"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction open content weakens processContents",
+			`<xs:complexType name="b"><xs:openContent mode="suffix"><xs:any namespace="urn:o" processContents="strict"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o" processContents="lax"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction open content is more open (interleave) than the base (suffix)",
+			`<xs:complexType name="b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
@@ -717,6 +735,17 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		// Base wildcard replaced by a concrete element it admits (NSCompat).
 		`<xs:complexType name="b"><xs:sequence><xs:any namespace="##any" maxOccurs="3"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="e" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Open content narrowed: suffix mode kept, wildcard namespace reduced.
+		`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o urn:p"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// More-open mode (interleave over suffix) is harmless when the restriction
+		// content model is empty: interleave and suffix coincide (open020).
+		`<xs:complexType name="b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Base has no open content but its content model is a wildcard that absorbs
+		// the restriction's open-content elements, so it stays valid (open022).
+		`<xs:complexType name="b"><xs:sequence><xs:any namespace="urn:o" processContents="lax" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

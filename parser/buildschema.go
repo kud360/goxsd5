@@ -247,6 +247,7 @@ func (b *builder) finishComplexTypes() {
 			b.checkAllUPA(ct, accepted)
 			b.checkSeqChoiceUPA(ct, accepted)
 			b.checkParticleRestrict(ct, accepted)
+			b.checkOpenContentRestrict(ct)
 		}
 	}
 	b.checkSubstitutionCycles()
