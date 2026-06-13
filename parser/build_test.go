@@ -249,6 +249,12 @@ func TestBuilderNegatives(t *testing.T) {
 		// Extension open content (cos-ct-extends §3.4.6.2 clause 1.4.3.2.2.3):
 		// an extension may not narrow the base's interleaved open content to
 		// suffix (open030/033/046).
+		// Particle restriction subsumes clause 4.6: a restriction element's type
+		// table must match the base element's (cta0043).
+		{"restriction changes a matched element's type table",
+			`<xs:complexType name="b"><xs:sequence><xs:element name="s"><xs:alternative test="@k='1'" type="xs:token"/></xs:element></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="s"><xs:alternative test="@k='1'" type="xs:string"/></xs:element></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
 		{"extension narrows interleave open content to suffix (explicit)",
 			`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
@@ -888,6 +894,10 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		// Sequence-to-sequence: narrows the child type by restriction.
 		`<xs:complexType name="b"><xs:sequence><xs:element name="n" type="xs:integer"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="n" type="xs:positiveInteger"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Restriction reproduces the base element's type table unchanged
+		// (subsumes clause 4.6 is satisfied by an equivalent type table).
+		`<xs:complexType name="b"><xs:sequence><xs:element name="s" type="xs:string"><xs:alternative test="@k='1'" type="xs:token"/></xs:element></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="s" type="xs:string"><xs:alternative test="@k='1'" type="xs:token"/></xs:element></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 		// Substitution-group split whose summed occurrences stay within range.
 		`<xs:element name="a" type="xs:int"/>
 		 <xs:element name="A1" type="xs:int" substitutionGroup="tns:a"/>

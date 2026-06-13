@@ -172,6 +172,15 @@ func (b *builder) checkRestrictRun(ct *xsd.ComplexType, slots []*baseSlot, baseW
 				if !slots[slot].decl.Nillable && term.Nillable {
 					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s may not be nillable when the base element is not", term.Name, describeCT(ct))
 				}
+				if !typeTablesEqual(term, slots[slot].decl) {
+					// spec: cos-particle-restrict — §3.4.6.4 / "subsumes" clause 4.6:
+					// a restriction element's {type table} must be equivalent to the
+					// base element's (you cannot change conditional type assignment
+					// when restricting). Equality is conservative — anonymous
+					// alternative types compare by zero name — so this only ever
+					// misses a violation, never invents one.
+					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s has a type table that differs from the base element's", term.Name, describeCT(ct))
+				}
 				continue
 			}
 			// No base element matches: the element must be accepted by the base

@@ -7,7 +7,20 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5662 (+11). Remainder below <<<
+## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5663 (+12). Remainder below <<<
+SESSION 2026-06-13 phase 5e (5662 → 5663, +1): PARTICLE-RESTRICTION type-table
+equivalence (cta0043). derivation-ok-restriction §3.4.6.3 clause 3 "subsumes"
+clause 4.6: when a restriction element maps to a base element of the same name,
+their {type table}s must be equivalent (you can't change conditional type
+assignment when restricting). Added a typeTablesEqual(term, base.decl) check at
+the named-element match in checkRestrictRun (restrict.go), right beside the
+existing type-derivation + nillability checks. typeTablesEqual (reused from EDC)
+is conservative — anonymous alternative types compare by zero name — so it only
+ever MISSES a violation, never invents one. +1 (cta0043: appendixType restricts
+chapType, redeclaring <stamp> with a dateTime alternative where the base had
+dateTimeStamp). Unit tests: TestBuilderNegatives "restriction changes a matched
+element's type table" + valid-models "restriction reproduces the type table".
+
 SESSION 2026-06-13 phase 5d (5661 → 5662, +1): SELF-RESTRICTION cycle (over014).
 "Override a complex type by self-restriction": the <override> replacement does
 NOT get the redefine-style self→original scoped mapping (only redefine does, in
