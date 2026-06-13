@@ -39,12 +39,27 @@ the original NOTES checklist that had M9 first.
   the unrecorded gaps for triage.
 - BASELINE: 5709 determinate 1.1 schema cases. Initial M9 baseline was 5537
   pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
-  to 5572 pass (see "Post-M9 conformance fixes" below).
+  to 5613 pass (see "Post-M9 conformance fixes" below).
 
-## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5597 pass)
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5613 pass)
 Worked the false positives + small/medium well-defined checks. Each landed
 with unit tests and a re-baseline; NO regressions. Commits:
-- SESSION 2026-06-13 (5572 → 5597, +25): explicitTimezone-valid-restriction
+- SESSION 2026-06-13 part 2 (5597 → 5613, +16): UNIQUE PARTICLE ATTRIBUTION
+  (cos-nonambig) done in full. (a) <all> groups: pairwise competition test
+  (checkAllUPA in buildschema.go) — two element particles whose accepted-name
+  sets, incl. transitive substitution-group closure, overlap; two wildcard
+  particles with overlapping namespace constraints; element-vs-wildcard never
+  compete. (b) sequence/choice: Glushkov position automaton (parser/upa.go) —
+  first/follow sets; any first/follow set with two competing positions is a
+  violation; <all> groups make it bail (handled by checkAllUPA). +7 cases
+  (all240-243, subsgroup902/903, sg-abstract-upa). Then ALL-GROUP EXTENSION
+  semantics (§3.4.2.3.3): clause 4.2.3.2 merges all+all into one <all> (was a
+  sequence) so re-added elements trip UPA; clause 4.2.3.3 + cos-all-limited.1
+  reject all-vs-sequence extension; cos-particle-extend.3.1 requires the
+  extension <all>'s minOccurs == base's. +9 cases (all302/303/305/309-313, ibm
+  openContent s3_4_1si04). all308 (mixed-empty, spec bug 6202) left tolerated.
+  Helpers: wildcardsOverlap/namespacesIntersect/namesOverlap/allGroupTerm.
+- SESSION 2026-06-13 part 1 (5572 → 5597, +25): explicitTimezone-valid-restriction
   (§4.3.16.5, required/prohibited can't widen); circular substitution groups
   (e-props-correct.6); substitution-group type-derivation (e-props-correct.4 —
   member type must be validly derived from head, not only un-excluded);
@@ -71,20 +86,17 @@ with unit tests and a re-baseline; NO regressions. Commits:
   walker now carries an ancestor stack (w.path).
 - Element Declarations Consistent (cos-element-consistent) in
   finishComplexTypes, incl. substitution-group "implicitly contains".
-REMAINING gaps (~92 after the 2026-06-13 session), all the genuinely hard /
-large features — NONE done:
-- UPA / cos-nonambig (all240-243, subsgroup902/903, sg-abstract-upa*): needs
-  a particle automaton. ~8 cases.
+REMAINING gaps (~60 after the 2026-06-13 session), all the genuinely hard /
+large features — NONE done. UPA is now DONE (see part 2 above):
 - Particle restriction "subsumption" / cos-particle-restrict (saxon All
-  all2xx ~21, wild020-022/048/051/057, open016-019/033, ibm allGroup si02/03,
+  all2xx ~18, wild020-022/048/051/057, open016-019/033, ibm allGroup si02/03,
   restrictionOfComplexTypes si02): the hardest XSD algorithm.
-- xs:all extension rules cos-ct-extends overlap (all302-313, ~9): needs
-  particle-overlap detection (UPA-adjacent).
+- all308 (xs:all extension of mixed empty content — spec bug 6202, borderline;
+  leave tolerated).
 - Wildcards cos-aw-* intersection/union/subset (Wild restriction subset, EDC
-  type-table cases wild069/078/079/081); wild039 (:stylesheet malformed
-  QName — a pass-1 QName-syntax refinement) + wild041 (xsi: in notQName).
+  type-table cases wild069/078/079/081) + wild041 (xsi: in notQName).
 - Open content extension/restriction subset (open030/046 extension,
-  remaining ibm openContent si04/05/06 extension).
+  remaining ibm openContent si05/06 extension).
 - CTA / assertions XPath (saxon CTA 6, ibm typeAlternatives 5): needs an XPath
   engine — effectively out of scope; candidates for skip: lines.
 - 2 override false positives (over009 double-override dup; over030 false
