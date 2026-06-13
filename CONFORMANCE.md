@@ -181,7 +181,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | cos-aw-union | §3.10.6 | M9+ | deferred (wildcard union; first-wildcard-wins approximation) | |
 | cos-aw-intersect | §3.10.6 | M9+ | deferred (wildcard intersection) | |
 | cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset) | |
-| cos-all-limited | §3.8.6 | M9+ | deferred (all-group occurrence limits) | |
+| cos-all-limited | §3.8.6 | post-M9 | done (clause 2 + 1.3: nested model groups in <all> must be <all> and occur exactly once; top-level placement 1.1/1.2 deferred) | parser/buildterms.go:480 |
 | cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
 | ag-props-correct | §3.6.6 | M9+ | deferred (attribute group definition properties) | |
 | w-props-correct | §3.10.6 | post-M9 | done (rule 4: notQName namespaces must be allowed; intersection/union rules deferred) | parser/buildterms.go:567 |

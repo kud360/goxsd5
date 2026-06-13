@@ -474,7 +474,40 @@ func (b *builder) buildModelGroup(n *xmltree.Node, doc *schemaDoc) *xsd.ModelGro
 			}
 		}
 	}
+	if mg.Compositor == xsd.CompositorAll {
+		b.checkAllLimited(mg)
+	}
 	return mg
+}
+
+// checkAllLimited enforces the parts of cos-all-limited (§3.8.6.2) that concern
+// model groups nested directly inside an <all>: clause 2 (a nested model group
+// must itself be <all>) and clause 1.3 (such a nested <all> may appear only as
+// the term of a particle that occurs exactly once).
+func (b *builder) checkAllLimited(all *xsd.ModelGroup) {
+	for _, p := range all.Particles {
+		var inner *xsd.ModelGroup
+		switch t := p.Term.(type) {
+		case *xsd.ModelGroup:
+			inner = t
+		case *xsd.GroupRef:
+			if t.Ref != nil {
+				inner = t.Ref.Group
+			}
+		}
+		if inner == nil {
+			continue
+		}
+		// spec: cos-all-limited.2 — XSD 1.1 Part 1 §3.8.6.2 (xmlschema11-1.md#cos-all-limited)
+		if inner.Compositor != xsd.CompositorAll {
+			b.errf(xsd.SpecCosAllLimited, p.Pos, "a model group nested in <all> must itself be an <all> group")
+			continue
+		}
+		// spec: cos-all-limited.1.3 — a nested <all> must occur exactly once.
+		if p.MinOccurs != 1 || p.MaxOccurs != 1 {
+			b.errf(xsd.SpecCosAllLimited, p.Pos, "a nested <all> group must have minOccurs = maxOccurs = 1")
+		}
+	}
 }
 
 func (b *builder) buildGroup(d *decl) *xsd.Group {

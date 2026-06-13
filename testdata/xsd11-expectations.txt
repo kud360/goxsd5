@@ -4516,6 +4516,10 @@ saxonMeta/All.testSet#all004 pass
 saxonMeta/All.testSet#all005 pass
 saxonMeta/All.testSet#all006 pass
 saxonMeta/All.testSet#all007 pass
+saxonMeta/All.testSet#all008 pass
+saxonMeta/All.testSet#all009 pass
+saxonMeta/All.testSet#all010 pass
+saxonMeta/All.testSet#all011 pass
 saxonMeta/All.testSet#all201 pass
 saxonMeta/All.testSet#all206 pass
 saxonMeta/All.testSet#all211 pass

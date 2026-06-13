@@ -84,6 +84,14 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>
 			 <xs:complexType name="t" mixed="true"><xs:complexContent><xs:extension base="tns:b"><xs:sequence><xs:element name="y" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`,
 			[]string{"cos-ct-extends"}},
+		{"non-all model group nested in all",
+			`<xs:group name="g"><xs:sequence><xs:element name="b" type="xs:int"/></xs:sequence></xs:group>
+			 <xs:complexType name="c"><xs:all><xs:element name="a" type="xs:int"/><xs:group ref="tns:g"/></xs:all></xs:complexType>`,
+			[]string{"cos-all-limited"}},
+		{"nested all group with maxOccurs greater than one",
+			`<xs:group name="g"><xs:all><xs:element name="b" type="xs:int"/></xs:all></xs:group>
+			 <xs:complexType name="c"><xs:all><xs:element name="a" type="xs:int"/><xs:group ref="tns:g" maxOccurs="3"/></xs:all></xs:complexType>`,
+			[]string{"cos-all-limited"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
