@@ -222,6 +222,7 @@ ibmMeta/explicitTimezone.testSet#d4_3_16ii06 pass
 ibmMeta/explicitTimezone.testSet#d4_3_16ii07 pass
 ibmMeta/explicitTimezone.testSet#d4_3_16si01 pass
 ibmMeta/explicitTimezone.testSet#d4_3_16si02 pass
+ibmMeta/explicitTimezone.testSet#d4_3_16si03 pass
 ibmMeta/explicitTimezone.testSet#d4_3_16si04 pass
 ibmMeta/explicitTimezone.testSet#d4_3_16v01 pass
 ibmMeta/explicitTimezone.testSet#d4_3_16v02 pass
@@ -4500,6 +4501,8 @@ oracleMeta/Zone.testSet#zone404 pass
 oracleMeta/Zone.testSet#zone405 pass
 oracleMeta/Zone.testSet#zone406 pass
 oracleMeta/Zone.testSet#zone407 pass
+oracleMeta/Zone.testSet#zone408 pass
+oracleMeta/Zone.testSet#zone409 pass
 saxonMeta/All.testSet#all001 pass
 saxonMeta/All.testSet#all002 pass
 saxonMeta/All.testSet#all003 pass
@@ -4902,6 +4905,8 @@ saxonMeta/XmlVersions.testSet#xv100noti pass
 saxonMeta/Zone.testSet#zone001 pass
 saxonMeta/Zone.testSet#zone002 pass
 saxonMeta/Zone.testSet#zone003 pass
+saxonMeta/Zone.testSet#zone004 pass
+saxonMeta/Zone.testSet#zone005 pass
 saxonMeta/Zone.testSet#zone006 pass
 saxonMeta/Zone.testSet#zone007 pass
 saxonMeta/Zone.testSet#zone008 pass

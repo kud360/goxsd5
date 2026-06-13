@@ -112,6 +112,14 @@ func TestBuilderNegatives(t *testing.T) {
 		{"invalid pattern regex",
 			`<xs:simpleType name="t"><xs:restriction base="xs:string"><xs:pattern value="["/></xs:restriction></xs:simpleType>`,
 			[]string{"regex-valid"}},
+		{"explicitTimezone widened from required to optional",
+			`<xs:simpleType name="b"><xs:restriction base="xs:time"><xs:explicitTimezone value="required"/></xs:restriction></xs:simpleType>
+			 <xs:simpleType name="t"><xs:restriction base="tns:b"><xs:explicitTimezone value="optional"/></xs:restriction></xs:simpleType>`,
+			[]string{"explicitTimezone-valid-restriction"}},
+		{"explicitTimezone changed from prohibited to required",
+			`<xs:simpleType name="b"><xs:restriction base="xs:time"><xs:explicitTimezone value="prohibited"/></xs:restriction></xs:simpleType>
+			 <xs:simpleType name="t"><xs:restriction base="tns:b"><xs:explicitTimezone value="required"/></xs:restriction></xs:simpleType>`,
+			[]string{"explicitTimezone-valid-restriction"}},
 
 		// Restriction of special / wrong-variety bases.
 		{"restriction of anySimpleType",

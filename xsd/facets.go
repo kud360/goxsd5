@@ -91,6 +91,19 @@ const (
 	ETZProhibited
 )
 
+func (e ExplicitTimezone) String() string {
+	switch e {
+	case ETZOptional:
+		return "optional"
+	case ETZRequired:
+		return "required"
+	case ETZProhibited:
+		return "prohibited"
+	default:
+		return "unset"
+	}
+}
+
 // Facets is the ordered facet set of a simple type. The struct shape (not a
 // slice) fixes evaluation order by construction; see SimpleType.ParseValue
 // for the pipeline.

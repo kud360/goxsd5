@@ -206,5 +206,15 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 		errs.Addf(SpecFixedFacetValue, declared.ExplicitTimezonePos, "facet explicitTimezone is fixed in the base type")
 	}
 
+	// spec: explicitTimezone-valid-restriction — XSD 1.1 Part 2 §4.3.16.5 (xmlschema11-2.md#explicitTimezone-valid-restriction)
+	// A restriction may not widen the base: from required only required is
+	// allowed; from prohibited only prohibited; from optional anything.
+	if declared.ExplicitTimezone != ETZUnset && base.ExplicitTimezone != ETZUnset &&
+		base.ExplicitTimezone != ETZOptional && declared.ExplicitTimezone != base.ExplicitTimezone {
+		errs.Addf(SpecETZValidRestriction, declared.ExplicitTimezonePos,
+			"explicitTimezone %q cannot restrict base explicitTimezone %q",
+			declared.ExplicitTimezone, base.ExplicitTimezone)
+	}
+
 	return errs.Err()
 }

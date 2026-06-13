@@ -131,6 +131,7 @@ var (
 	SpecFractionDigitsValidRestriction = ref(2, "fractionDigits-valid-restriction", "4.3.12.5", "fractionDigits-valid-restriction")
 	SpecEnumerationValidRestriction    = ref(2, "enumeration-valid-restriction", "4.3.5.5", "enumeration-valid-restriction")
 	SpecFixedFacetValue                = ref(2, "fixed-facet-value", "4.3", "fixed-facet-value")
+	SpecETZValidRestriction            = ref(2, "explicitTimezone-valid-restriction", "4.3.16.5", "explicitTimezone-valid-restriction")
 )
 
 // Part 2 — Datatypes: derivation and special types.

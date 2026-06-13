@@ -124,6 +124,7 @@ constant name in code.
 | maxExclusive-valid-restriction | §4.3.8.5 | M3/M6 | done (incl. base-membership of the lexical) | xsd/facets_check.go:184 |
 | totalDigits-valid-restriction | §4.3.11.5 | M3/M6 | done | xsd/facets_check.go:187 |
 | fractionDigits-valid-restriction | §4.3.12.5 | M3/M6 | done | xsd/facets_check.go:192 |
+| explicitTimezone-valid-restriction | §4.3.16.5 | post-M9 | done (required/prohibited base cannot widen) | xsd/facets_check.go:209 |
 
 ### Restriction / narrowing (`cos-st-restricts`, `rcase-*`)
 
