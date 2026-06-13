@@ -37,10 +37,42 @@ the original NOTES checklist that had M9 first.
   hand-curated skip: lines. Root-doc load failures (XML 1.1/DTD/non-wf) are
   excluded from gating (not a schema verdict). GOXSD5_CONFORMANCE_GAPS=1 logs
   the unrecorded gaps for triage.
-- BASELINE: 5709 determinate 1.1 schema cases → 5537 pass, 26 skip
-  (25 precisionDecimal + 1 introspection/xlink meta-schema), ~146 tolerated
-  unlisted gaps (deferred features: UPA/EDC/particle-restrict/wildcard
-  intersection/open-content/CTA/assertions — all in "Still-deferred" below).
+- BASELINE: 5709 determinate 1.1 schema cases. Initial M9 baseline was 5537
+  pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
+  to 5572 pass (see "Post-M9 conformance fixes" below).
+
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5572 pass)
+Worked the false positives + small/medium well-defined checks. Each landed
+with unit tests and a re-baseline; NO regressions. Commits:
+- facet-restriction equality (ParseFacetValue skips base range bounds);
+  regex hyphen handling per Part 2 §G.1 ([a-z-+] valid, [!--]/[--z] invalid);
+  base {final} blocks complex/simpleContent/simpleType derivation
+  (checkFinalAllows). NB: simpleType/@final="extension" stays legal.
+- NOTATION must carry an enumeration when used as element/attribute/list-item/
+  union-member type, and its enum values must name declared notations;
+  anySimpleType/anyAtomicType barred as list item / union member.
+- FULL vc:* conditional inclusion (§4.2.2): typeAvailable/Unavailable +
+  facetAvailable/Unavailable evaluation + value validity (new SpecCIP);
+  a CI-ignored <schema> is emptied (drops its <include>s). validate.go.
+- targetNamespace on local element/attr (src-element.4.3 / src-attribute.6.3);
+  walker now carries an ancestor stack (w.path).
+- Element Declarations Consistent (cos-element-consistent) in
+  finishComplexTypes, incl. substitution-group "implicitly contains".
+REMAINING gaps (~117), all the genuinely hard / large features — NONE done:
+- UPA / cos-nonambig (all240-243, subsgroup902/903, sg-abstract-upa*): needs
+  a particle automaton. ~8 cases.
+- Particle restriction "subsumption" / cos-particle-restrict (saxon All
+  all2xx, ~21 cases): the hardest XSD algorithm.
+- xs:all extension rules cos-ct-extends (all302-313, ~9); nested group-ref in
+  all (all008-011).
+- Wildcards cos-aw-* intersection/union/subset (Wild ~17).
+- Open content (Open ~8, openContent ~4).
+- CTA / assertions XPath (saxon CTA 6, ibm typeAlternatives 5): needs an XPath
+  engine — effectively out of scope; candidates for skip: lines.
+- 2 override false positives (over009 double-override dup; over030 false
+  mg-props-correct cycle — override-internals bugs) + iri-001 (custom DTD
+  entities &URI; — encoding/xml limitation, skip candidate).
+Triage tip: GOXSD5_CONFORMANCE_GAPS=1 go test ./parser -run TestConformanceSuite -v
 - TRIAGE FIXES (landed before baselining; were false positives in the M7 scan):
   - Dropped the three 1.0 ID rules XSD 1.1 relaxed: a-props-correct.3,
     e-props-correct.5, ct-props-correct.5 (value-constraint VALIDITY checks
