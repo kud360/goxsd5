@@ -41,9 +41,21 @@ the original NOTES checklist that had M9 first.
   pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
   to 5572 pass (see "Post-M9 conformance fixes" below).
 
-## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5572 pass)
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5596 pass)
 Worked the false positives + small/medium well-defined checks. Each landed
 with unit tests and a re-baseline; NO regressions. Commits:
+- SESSION 2026-06-13 (5572 → 5596, +24): explicitTimezone-valid-restriction
+  (§4.3.16.5, required/prohibited can't widen); circular substitution groups
+  (e-props-correct.6); substitution-group type-derivation (e-props-correct.4 —
+  member type must be validly derived from head, not only un-excluded);
+  Wildcard Properties Correct rule 4 (w-props-correct §3.10.6 — notQName names
+  must lie in a namespace the constraint allows); defaultAttributes name
+  collision is a duplicate (ct-props-correct.4, was silently deduped);
+  extension mixed-consistency (cos-ct-extends.1.4.3.2.2.1) + empty-extension
+  copies base content type incl. mixed per §3.4.2.3.3 (fixed a latent
+  kitchenSink fixture that extended a mixed base with element-only content);
+  cos-all-limited clauses 2 + 1.3 (nested model groups in <all> must be <all>
+  and occur exactly once).
 - facet-restriction equality (ParseFacetValue skips base range bounds);
   regex hyphen handling per Part 2 §G.1 ([a-z-+] valid, [!--]/[--z] invalid);
   base {final} blocks complex/simpleContent/simpleType derivation
@@ -58,20 +70,27 @@ with unit tests and a re-baseline; NO regressions. Commits:
   walker now carries an ancestor stack (w.path).
 - Element Declarations Consistent (cos-element-consistent) in
   finishComplexTypes, incl. substitution-group "implicitly contains".
-REMAINING gaps (~117), all the genuinely hard / large features — NONE done:
+REMAINING gaps (~93 after the 2026-06-13 session), all the genuinely hard /
+large features — NONE done:
 - UPA / cos-nonambig (all240-243, subsgroup902/903, sg-abstract-upa*): needs
   a particle automaton. ~8 cases.
 - Particle restriction "subsumption" / cos-particle-restrict (saxon All
-  all2xx, ~21 cases): the hardest XSD algorithm.
-- xs:all extension rules cos-ct-extends (all302-313, ~9); nested group-ref in
-  all (all008-011).
-- Wildcards cos-aw-* intersection/union/subset (Wild ~17).
-- Open content (Open ~8, openContent ~4).
+  all2xx ~21, wild020-022/048/051/057, open016-019/033, ibm allGroup si02/03,
+  restrictionOfComplexTypes si02): the hardest XSD algorithm.
+- xs:all extension rules cos-ct-extends overlap (all302-313, ~9): needs
+  particle-overlap detection (UPA-adjacent).
+- Wildcards cos-aw-* intersection/union/subset (Wild restriction subset, EDC
+  type-table cases wild069/078/079/081); wild039 (:stylesheet malformed
+  QName — a pass-1 QName-syntax refinement) + wild041 (xsi: in notQName).
+- Open content extension/restriction subset (open030/046 extension,
+  remaining ibm openContent si04/05/06 extension).
 - CTA / assertions XPath (saxon CTA 6, ibm typeAlternatives 5): needs an XPath
   engine — effectively out of scope; candidates for skip: lines.
 - 2 override false positives (over009 double-override dup; over030 false
-  mg-props-correct cycle — override-internals bugs) + iri-001 (custom DTD
-  entities &URI; — encoding/xml limitation, skip candidate).
+  mg-props-correct cycle — override-internals bugs) + over014 + iri-001
+  (custom DTD entities &URI; — encoding/xml limitation, skip candidate).
+- simple011/014/015 (union derived-by-restriction substitutability —
+  particle/type-derivation), complex018 (open content restriction subset).
 Triage tip: GOXSD5_CONFORMANCE_GAPS=1 go test ./parser -run TestConformanceSuite -v
 - TRIAGE FIXES (landed before baselining; were false positives in the M7 scan):
   - Dropped the three 1.0 ID rules XSD 1.1 relaxed: a-props-correct.3,
