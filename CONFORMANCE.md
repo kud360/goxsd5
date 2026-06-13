@@ -27,57 +27,57 @@ constant name in code.
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| src-qname | §3.15.3 | M1 | done | |
-| src-element | §3.3.3 | M5 | wip (4.3 → M6) | |
-| src-attribute | §3.2.3 | M5 | wip (6.3 → M6) | |
-| src-ct | §3.4.3 | M5/M6 | done (mixed-emptiable clause of 2.2 deferred) | |
+| src-qname | §3.15.3 | M1 | done | parser/attrcheck.go:47 |
+| src-element | §3.3.3 | M5 | wip (4.3 → M6) | parser/elemtable.go:698 |
+| src-attribute | §3.2.3 | M5 | wip (6.3 → M6) | parser/elemtable.go:726 |
+| src-ct | §3.4.3 | M5/M6 | done (mixed-emptiable clause of 2.2 deferred) | parser/buildcomplex.go:134 |
 | src-simple-type | §3.16.3 | M5 | done | |
-| src-restriction-base-or-simpleType | §3.16.3 | M5 | done | |
-| src-list-itemType-or-simpleType | §3.16.3 | M5 | done | |
-| src-union-memberTypes-or-simpleTypes | §3.16.3 | M5 | done | |
-| src-attribute_group | §3.6.3 | M5/M6 | done (3 = circularity in M6) | |
+| src-restriction-base-or-simpleType | §3.16.3 | M5 | done | parser/elemtable.go:207 |
+| src-list-itemType-or-simpleType | §3.16.3 | M5 | done | parser/elemtable.go:224 |
+| src-union-memberTypes-or-simpleTypes | §3.16.3 | M5 | done | parser/elemtable.go:240 |
+| src-attribute_group | §3.6.3 | M5/M6 | done (3 = circularity in M6) | parser/buildterms.go:378 |
 | src-model_group_defn | §3.7.3 | M5 | done | |
-| src-identity-constraint | §3.11.3 | M5/M6 | done (5 = ref category match in M6) | |
-| src-ta | §3.12.3 | M5 | done | |
-| src-schema | §3.17.3 | M5 | done | |
+| src-identity-constraint | §3.11.3 | M5/M6 | done (5 = ref category match in M6) | parser/elemtable.go:663 |
+| src-ta | §3.12.3 | M5 | done | parser/elemtable.go:413 |
+| src-schema | §3.17.3 | M5 | done | parser/elemtable.go:113 |
 | src-annotation | §3.15.3 | M5 | done | |
-| src-wildcard | §3.10.3 | M5 | done | |
-| src-id | §3.17.3 | M5 | done | |
-| no-xmlns | §3.2.6.3 | M5 | done | |
-| no-xsi | §3.2.6.4 | M5 | wip (ref'd uses → M6) | |
+| src-wildcard | §3.10.3 | M5 | done | parser/elemtable.go:761 |
+| src-id | §3.17.3 | M5 | done | parser/validate.go:139 |
+| no-xmlns | §3.2.6.3 | M5 | done | parser/elemtable.go:750 |
+| no-xsi | §3.2.6.4 | M5 | wip (ref'd uses → M6) | parser/elemtable.go:754 |
 | sch-props-correct.2 (unique globals) | §3.17.6 | M5 | done | |
 | p-props-correct.2.1 (min ≤ max) | §3.9.6 | M5 | done | |
 | n-props-correct (public/system) | §3.14.6 | M5 | done | |
-| src-import | §4.2.6.2 | M5/M7 | done (1.1/1.2 same-ns + no-ns, 3 imported-doc ns match; unresolvable location tolerated) | |
-| src-include | §4.2.3 | M5/M7 | done (2.1 ns match, unresolvable location errors) | |
+| src-import | §4.2.6.2 | M5/M7 | done (1.1/1.2 same-ns + no-ns, 3 imported-doc ns match; unresolvable location tolerated) | parser/elemtable.go:136 |
+| src-include | §4.2.3 | M5/M7 | done (2.1 ns match, unresolvable location errors) | parser/loader.go:213 |
 | src-include.2 (chameleon) | §4.2.3 | M7 | done (absorbed ns + unqualified-reference remapping) | |
-| src-redefine | §4.2.5 | M5/M7 | wip (pervasive replacement, existence check, type self-derivation; group/attrGroup occurrence checks deferred) | |
+| src-redefine | §4.2.5 | M5/M7 | wip (pervasive replacement, existence check, type self-derivation; group/attrGroup occurrence checks deferred) | parser/loader.go:337 |
 | src-override | §4.2.4 | M5/M7 | done (pervasive transitive replacement, unmatched children ignored) | |
-| src-resolve | §3.15.3 | M6/M7 | done (cross-document via global registry; 4.2 namespace-not-imported check) | |
+| src-resolve | §3.15.3 | M6/M7 | done (cross-document via global registry; 4.2 namespace-not-imported check) | parser/builder.go:101 |
 
 ### Schema Component Constraints — props-correct (`*-props-correct`)
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| st-props-correct | §3.16.6 | M4/M6 | done (2 = cycles; 3 = final exclusion for list/union) | |
-| ct-props-correct | §3.4.6 | M6 | done (4 = duplicate attr uses; 5 = ≤1 ID attr) | |
+| st-props-correct | §3.16.6 | M4/M6 | done (2 = cycles; 3 = final exclusion for list/union) | parser/builder.go:147 |
+| ct-props-correct | §3.4.6 | M6 | done (4 = duplicate attr uses; 5 = ≤1 ID attr) | parser/buildschema.go:261 |
 | ct-props-correct.3 (no circular defs) | §3.4.6 | M6 | done (post-pass; cycle broken to keep the model walkable) | |
-| e-props-correct | §3.3.6 | M6 | done (2 = value constraint; 4 = subst final exclusion; 5 = no ID default) | |
-| a-props-correct | §3.2.6 | M6 | done (2 = simple type + value constraint; 3 = no ID default) | |
-| au-props-correct | §3.5.6 | M6 | done (2 = fixed consistency) | |
-| mg-props-correct | §3.8.6 | M6 | done (2 = circular model groups) | |
-| c-props-correct | §3.11.6 | M6 | done (keyref category + field arity; ref cycles) | |
+| e-props-correct | §3.3.6 | M6 | done (2 = value constraint; 4 = subst final exclusion; 5 = no ID default) | parser/buildterms.go:98 |
+| a-props-correct | §3.2.6 | M6 | done (2 = simple type + value constraint; 3 = no ID default) | parser/buildterms.go:259 |
+| au-props-correct | §3.5.6 | M6 | done (2 = fixed consistency) | parser/buildterms.go:357 |
+| mg-props-correct | §3.8.6 | M6 | done (2 = circular model groups) | parser/buildterms.go:484 |
+| c-props-correct | §3.11.6 | M6 | done (keyref category + field arity; ref cycles) | parser/buildterms.go:578 |
 
 ### Derivation validity (`cos-*`, `derivation-ok-*`)
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts done; particle/mixed consistency deferred) | |
+| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts done; particle/mixed consistency deferred) | parser/buildcomplex.go:188 |
 | cos-ct-restricts | §3.4.6 | M6/M9 | deferred (cos-particle-restrict; expectations ratchet tolerates) | |
 | derivation-ok-restriction | §3.4.6 | M6/M9 | deferred | |
-| cos-equiv-class (substitution groups) | §3.3.6 | M6 | wip (final exclusion via e-props-correct.4; unreachable chains → derivation-ok) | |
-| cos-valid-default | §3.3.6 | M6 | done (mixed-emptiable clause deferred) | |
-| enumeration-required-notation | Part 2 §3.3.19 | M6 | done | |
+| cos-equiv-class (substitution groups) | §3.3.6 | M6 | deferred (the enforced part — substitution-group final exclusion — is reported under e-props-correct.4; full equivalence-class membership not yet checked under this ID) | |
+| cos-valid-default | §3.3.6 | M6 | done (mixed-emptiable clause deferred) | parser/buildterms.go:110 |
+| enumeration-required-notation | Part 2 §3.3.19 | M6 | done | parser/buildterms.go:226 |
 
 ---
 
@@ -88,48 +88,48 @@ constant name in code.
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
 | cvc-whiteSpace | §4.3.6 | M3 | | |
-| cvc-pattern-valid | §4.3.4.4 | M3 | | |
-| cvc-enumeration-valid | §4.3.5.4 | M3 | | |
-| cvc-length-valid | §4.3.1.4 | M3 | | |
-| cvc-minLength-valid | §4.3.2.4 | M3 | | |
-| cvc-maxLength-valid | §4.3.3.4 | M3 | | |
-| cvc-minInclusive-valid | §4.3.10.4 | M3 | | |
-| cvc-maxInclusive-valid | §4.3.7.4 | M3 | | |
-| cvc-minExclusive-valid | §4.3.9.4 | M3 | | |
-| cvc-maxExclusive-valid | §4.3.8.4 | M3 | | |
-| cvc-totalDigits-valid | §4.3.11.4 | M3 | | |
-| cvc-fractionDigits-valid | §4.3.12.4 | M3 | | |
+| cvc-pattern-valid | §4.3.4.4 | M3 |  | xsd/facets.go:240 |
+| cvc-enumeration-valid | §4.3.5.4 | M3 |  | xsd/facets.go:320 |
+| cvc-length-valid | §4.3.1.4 | M3 |  | xsd/facets.go:254 |
+| cvc-minLength-valid | §4.3.2.4 | M3 |  | xsd/facets.go:258 |
+| cvc-maxLength-valid | §4.3.3.4 | M3 |  | xsd/facets.go:262 |
+| cvc-minInclusive-valid | §4.3.10.4 | M3 |  | xsd/facets.go:281 |
+| cvc-maxInclusive-valid | §4.3.7.4 | M3 |  | xsd/facets.go:285 |
+| cvc-minExclusive-valid | §4.3.9.4 | M3 |  | xsd/facets.go:289 |
+| cvc-maxExclusive-valid | §4.3.8.4 | M3 |  | xsd/facets.go:293 |
+| cvc-totalDigits-valid | §4.3.11.4 | M3 |  | xsd/facets.go:299 |
+| cvc-fractionDigits-valid | §4.3.12.4 | M3 |  | xsd/facets.go:303 |
 
 ### Intra-facet consistency (facet "Constraints on … Schema Components")
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| length-minLength-maxLength | §4.3.1.5 | M3 | | |
-| minLength-less-than-equal-to-maxLength | §4.3.2.5 | M3 | | |
-| minInclusive-less-than-equal-to-maxInclusive | §4.3.10.5 | M3 | | |
-| minExclusive-less-than-equal-to-maxExclusive | §4.3.9.5 | M3 | | |
-| fractionDigits-less-than-equal-to-totalDigits | §4.3.12.5 | M3 | done | |
-| enumeration-valid-restriction | §4.3.5.5 | M3/M6 | done (enums parsed with the base type at construction) | |
-| src-single-facet-value | §4.3 | M6 | done | |
-| fixed-facet-value | §4.3 | M3/M6 | done | |
+| length-minLength-maxLength | §4.3.1.5 | M3 |  | xsd/facets_check.go:12 |
+| minLength-less-than-equal-to-maxLength | §4.3.2.5 | M3 |  | xsd/facets_check.go:19 |
+| minInclusive-less-than-equal-to-maxInclusive | §4.3.10.5 | M3 |  | xsd/facets_check.go:39 |
+| minExclusive-less-than-equal-to-maxExclusive | §4.3.9.5 | M3 |  | xsd/facets_check.go:43 |
+| fractionDigits-less-than-equal-to-totalDigits | §4.3.12.5 | M3 | done | xsd/facets_check.go:56 |
+| enumeration-valid-restriction | §4.3.5.5 | M3/M6 | done (enums parsed with the base type at construction) | parser/buildsimple.go:338 |
+| src-single-facet-value | §4.3 | M6 | done | parser/buildsimple.go:275 |
+| fixed-facet-value | §4.3 | M3/M6 | done | xsd/facets_check.go:84 |
 | regex-valid (pattern is a valid regex) | App. G | M3/M6 | done | |
-| length-valid-restriction | §4.3.1.5 | M3/M6 | done | |
-| minLength-valid-restriction | §4.3.2.5 | M3/M6 | done | |
-| maxLength-valid-restriction | §4.3.3.5 | M3/M6 | done | |
-| whiteSpace-valid-restriction | §4.3.6.5 | M3/M6 | done | |
-| minInclusive-valid-restriction | §4.3.10.5 | M3/M6 | done (incl. base-membership of the lexical) | |
-| maxInclusive-valid-restriction | §4.3.7.5 | M3/M6 | done (incl. base-membership of the lexical) | |
-| minExclusive-valid-restriction | §4.3.9.5 | M3/M6 | done (incl. base-membership of the lexical) | |
-| maxExclusive-valid-restriction | §4.3.8.5 | M3/M6 | done (incl. base-membership of the lexical) | |
-| totalDigits-valid-restriction | §4.3.11.5 | M3/M6 | done | |
-| fractionDigits-valid-restriction | §4.3.12.5 | M3/M6 | done | |
+| length-valid-restriction | §4.3.1.5 | M3/M6 | done | xsd/facets_check.go:89 |
+| minLength-valid-restriction | §4.3.2.5 | M3/M6 | done | xsd/facets_check.go:101 |
+| maxLength-valid-restriction | §4.3.3.5 | M3/M6 | done | xsd/facets_check.go:114 |
+| whiteSpace-valid-restriction | §4.3.6.5 | M3/M6 | done | xsd/facets_check.go:131 |
+| minInclusive-valid-restriction | §4.3.10.5 | M3/M6 | done (incl. base-membership of the lexical) | xsd/facets_check.go:178 |
+| maxInclusive-valid-restriction | §4.3.7.5 | M3/M6 | done (incl. base-membership of the lexical) | xsd/facets_check.go:180 |
+| minExclusive-valid-restriction | §4.3.9.5 | M3/M6 | done (incl. base-membership of the lexical) | xsd/facets_check.go:182 |
+| maxExclusive-valid-restriction | §4.3.8.5 | M3/M6 | done (incl. base-membership of the lexical) | xsd/facets_check.go:184 |
+| totalDigits-valid-restriction | §4.3.11.5 | M3/M6 | done | xsd/facets_check.go:187 |
+| fractionDigits-valid-restriction | §4.3.12.5 | M3/M6 | done | xsd/facets_check.go:192 |
 
 ### Restriction / narrowing (`cos-st-restricts`, `rcase-*`)
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-st-restricts | §4.1.6 | M3/M6 | wip (special bases, list item / union member variety rules done) | |
-| cos-applicable-facets | §4.1.6 | M3/M6 | done (per-primitive applicability table in buildFacets) | |
+| cos-st-restricts | §4.1.6 | M3/M6 | wip (special bases, list item / union member variety rules done) | parser/buildsimple.go:45 |
+| cos-applicable-facets | §4.1.6 | M3/M6 | done (per-primitive applicability table in buildFacets) | parser/buildsimple.go:269 |
 | rcase-LengthAndLength | §4.3 | M3 | | |
 | rcase-MinLength | §4.3 | M3 | | |
 | rcase-MaxLength | §4.3 | M3 | | |
@@ -144,3 +144,45 @@ constant name in code.
 | fundamental-facets (ordered/bounded/cardinality/numeric) | §F | M4 | | |
 | qname-special (no context-free lexical→value) | §3.4.18 | M3 | | |
 | notation-special | §3.4.19 | M3 | | |
+
+---
+
+## Constraints reconciled in M8
+
+These named constraints had no row above when the `xsd.Refs` registry was
+cross-checked against this file (Milestone 8). The conformance test
+(`xsd/conformance_test.go`) keeps the registry and this matrix in sync from
+now on: every `SpecRef` must appear here, every `done`/`wip` row must name
+an enforcing file that carries the matching `// spec:` annotation, and every
+`// spec:` annotation must map to a declared `SpecRef`.
+
+### Enforced (were untracked)
+
+| Constraint ID | Section | Milestone | Status | Impl (file:line) |
+|---------------|---------|-----------|--------|------------------|
+| cvc-datatype-valid | §3.1.4 | M3 | done (lexical→value mapping in the facet pipeline) | xsd/facets.go |
+| cvc-explicitTimezone-valid | §3.2.7 | M3 | done | xsd/facets.go |
+| minInclusive-minExclusive | §4.3.9.5 | M3 | done | xsd/facets_check.go |
+| maxInclusive-maxExclusive | §4.3.7.5 | M3 | done | xsd/facets_check.go |
+| minInclusive-less-than-maxExclusive | §4.3.10.5 | M3 | done | xsd/facets_check.go |
+| minExclusive-less-than-maxInclusive | §4.3.9.5 | M3 | done | xsd/facets_check.go |
+
+### Deferred (recognized, not yet enforced)
+
+| Constraint ID | Section | Milestone | Status | Impl (file:line) |
+|---------------|---------|-----------|--------|------------------|
+| cos-nonambig (UPA) | §3.8.6 | M9+ | deferred (unique particle attribution) | |
+| cos-particle-restrict | §3.9.6 | M9+ | deferred (particle restriction recursion) | |
+| cos-element-consistent (EDC) | §3.8.6 | M9+ | deferred (element declarations consistent) | |
+| cos-ct-derived-ok | §3.4.6 | M9+ | deferred (complex-type derivation OK) | |
+| cos-st-derived-ok | §3.16.6 | M9+ | deferred (simple-type derivation OK) | |
+| cos-aw-union | §3.10.6 | M9+ | deferred (wildcard union; first-wildcard-wins approximation) | |
+| cos-aw-intersect | §3.10.6 | M9+ | deferred (wildcard intersection) | |
+| cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset) | |
+| cos-all-limited | §3.8.6 | M9+ | deferred (all-group occurrence limits) | |
+| cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
+| ag-props-correct | §3.6.6 | M9+ | deferred (attribute group definition properties) | |
+| w-props-correct | §3.10.6 | M9+ | deferred (wildcard properties) | |
+| mgd-props-correct | §3.7.6 | M9+ | deferred (model group definition properties) | |
+| st-restrict-facets | §4.1.6 | M9+ | deferred (companion to cos-st-restricts facet recursion) | |
+| src-expredef | §4.2.5 | M9+ | deferred (redefine/override is a legal redefinition) | |

@@ -307,9 +307,9 @@ func (l *loader) registerReplacement(reg *registry, rep *replacement) {
 		switch rep.kind {
 		case "override":
 			if orig == nil {
-				// spec: override transformation — XSD 1.1 Part 1 §4.2.5:
-				// children that match nothing in the overridden document do
-				// not become components.
+				// spec: src-override — XSD 1.1 Part 1 §4.2.5: in the override
+				// transformation, children that match nothing in the
+				// overridden document do not become components.
 				continue
 			}
 		case "redefine":

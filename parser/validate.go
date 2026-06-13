@@ -52,7 +52,8 @@ func (w *walker) validate(n *xmltree.Node, variant string) {
 
 	// Conditional inclusion first: pruned children are invisible to both
 	// the content model and recursion.
-	// spec: src-cip — XSD 1.1 Part 1 §4.2.2 (conditional inclusion)
+	// XSD 1.1 Part 1 §4.2.2 (conditional inclusion, src-cip); no error is
+	// raised — matching nodes are pruned, not rejected.
 	var kept []*xmltree.Node
 	for _, c := range n.Children {
 		if w.prunedByVersion(c) {

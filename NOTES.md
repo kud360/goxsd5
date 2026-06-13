@@ -7,7 +7,10 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — M7 DONE (2026-06-12). Next: M9.
+## Status — M8 DONE (2026-06-12). Next: M9.
+NOTE ON ORDERING: user chose to do M8 before M9 (numeric order), overriding
+the original NOTES checklist that had M9 first. M9 is the only milestone
+left on the parser critical path.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
 - [x] M1 parser/xmltree (NS-scoped tree, line/col, src-qname, foreign content)
 - [x] M2 xsd model skeleton (model.go — full Part 1 §3 component shapes)
@@ -18,9 +21,59 @@ baseline `testdata/xsd11-expectations.txt`.
 - [x] M7 composition (import/include/redefine/override, SchemaResolver,
   public Parse) — see "M7 shape" below; GOXSD5_SCAN now runs the FULL
   pipeline per suite group: 5231 valid groups → 99 with errors (triage below)
+- [x] M8 mutation API (xsd/mutate.go), CONFORMANCE.md fill-in + guard test,
+  cmd/goxsd5 — see "M8 shape" below
 - [ ] M9 W3C harness + expectations baseline — RESUME HERE (also fix the
   pre-M7 bugs found by the full scan, see "M7 scan triage")
-- [ ] M8 mutation API, CONFORMANCE.md fill-in, cmd/goxsd5
+
+## M8 shape (as built)
+- xsd/mutate.go — safe mutation API, all copy-on-write (validate a candidate,
+  commit only on success; a rejected mutation leaves the receiver untouched):
+  - (*SimpleType).RestrictWith(declared *Facets) (*SimpleType, error) —
+    derives a new anonymous restriction subtype, mirroring the parser's
+    applyRestriction exactly (CheckFacetRestriction + MergeFacets +
+    ValidateFacetSet + fundamental-facet recompute). The single trustworthy
+    primitive; the others build on the same checks.
+  - (*SimpleType).AddEnumeration(...lexicals) error — in place; values
+    accumulate onto THIS step's enumeration (repeated calls grow one set, not
+    a chain), each parsed against t.BaseType (enumeration-valid-restriction).
+    Refuses to mutate IsBuiltin types (they're shared) — derive with
+    RestrictWith first.
+  - (*SimpleType).AddPattern(p) error — appends a new single-pattern group
+    (AND across groups); compiles via CompileRegex. Builtin-guarded.
+  - (*SimpleType).EffectiveFacets() *Facets — read-only view of t.Facets.
+  - (*ComplexType).AddElement(elem, min, max) error — element/mixed content
+    only; wraps existing content + new element in a sequence. Rejects simple
+    content and bad occurrence ranges. (Light: UPA/particle checks are
+    deferred parser-wide anyway.)
+  - DEVIATION from PLAN: AddEnumeration takes ...lexicals and is in-place
+    (PLAN wrote `AddEnumeration(lexical string) error`); RestrictWith returns
+    a new type (PLAN signature kept). In-place accumulation is the correct
+    XSD semantics — a chain of single-value enum restrictions would make each
+    prior value invalid.
+  - Tests in xsd/mutate_test.go are package xsd_test so they can use real
+    builtins as bases (builtin imports xsd → internal test would cycle).
+- CONFORMANCE.md — Impl column filled (file:line of the first // spec:
+  annotation) for 60 enforced rows; 21 previously-untracked SpecRefs added in
+  a "Constraints reconciled in M8" section (6 enforced, 15 deferred/N-A).
+- xsd/conformance_test.go — the matrix guard (PLAN's "machine-checkable, not
+  just comments"). Four tests over the source tree (walks .., skips _test.go
+  and testdata):
+  - every xsd.Refs ID has a matrix row (base-ID match, so a row labelled
+    p-props-correct.2.1 covers Ref p-props-correct);
+  - done/wip rows name a real SpecRef + any Impl file exists (rot-free: file
+    presence, NOT line — line numbers in Impl are documentation, not gated);
+  - every SpecRef constant is referenced in code UNLESS its matrix row is
+    deferred/N-A (declared-but-unreferenced guard, the PLAN's core check);
+  - every // spec: <id> annotation maps to a declared SpecRef.
+  Caught two real annotation-text bugs (parser/loader.go said "override"
+  not "src-override"; parser/validate.go's src-cip note isn't an enforced
+  constraint → de-annotated) and one mislabelled row (cos-equiv-class was
+  "wip" but enforcement is reported under e-props-correct.4 → marked
+  deferred).
+- cmd/goxsd5/main.go — CLI: parser.Parse(path, nil) → per-namespace component
+  summary on stdout (suppress with -q), errors as
+  uri:line:col: [id] message on stderr, exit 1 on any error.
 
 ## M7 scan triage (full-pipeline scan over 1.1-valid-expected groups)
 85/5231 groups report errors; NONE are composition bugs:
