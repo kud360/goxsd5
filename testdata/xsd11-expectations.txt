@@ -404,6 +404,7 @@ ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6v05 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6v08 pass
 ibmMeta/rf_whiteSpace.testSet#d4_3_6ii01 pass
 ibmMeta/rf_whiteSpace.testSet#d4_3_6v01 pass
+ibmMeta/substitutionGroup.testSet#s2_2_2si01 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2v01 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2v02 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2v03 pass
@@ -5584,6 +5585,8 @@ sunMeta/suntest.testSet#xsd005 pass
 sunMeta/suntest.testSet#xsd006 pass
 sunMeta/suntest.testSet#xsd007.e pass
 sunMeta/suntest.testSet#xsd008 pass
+sunMeta/suntest.testSet#xsd009.e pass
+sunMeta/suntest.testSet#xsd010.e pass
 sunMeta/suntest.testSet#xsd011 pass
 sunMeta/suntest.testSet#xsd012 pass
 sunMeta/suntest.testSet#xsd013.e pass

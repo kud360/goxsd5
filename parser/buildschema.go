@@ -221,6 +221,42 @@ func (b *builder) finishComplexTypes() {
 			b.checkElementConsistent(ct, subMembers)
 		}
 	}
+	b.checkSubstitutionCycles()
+}
+
+// checkSubstitutionCycles enforces e-props-correct.6: it must not be possible
+// to return to an element declaration by repeatedly following its
+// {substitution group affiliation}. Each element on a cycle is reported once.
+func (b *builder) checkSubstitutionCycles() {
+	reported := map[*xsd.ElementDecl]bool{}
+	for _, e := range b.elements {
+		if len(e.SubstitutionGroups) == 0 || reported[e] {
+			continue
+		}
+		// Walk the affiliation graph from e; if e is reachable from itself
+		// (a path of length ≥ 1), e sits on a cycle.
+		seen := map[*xsd.ElementDecl]bool{}
+		var reaches func(cur *xsd.ElementDecl) bool
+		reaches = func(cur *xsd.ElementDecl) bool {
+			for _, head := range cur.SubstitutionGroups {
+				if head == e {
+					return true
+				}
+				if !seen[head] {
+					seen[head] = true
+					if reaches(head) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		if reaches(e) {
+			// spec: e-props-correct.6 — XSD 1.1 Part 1 §3.3.6 (xmlschema11-1.md#e-props-correct)
+			b.errf(xsd.SpecEPropsCorrect, e.Pos, "element %s is part of a circular substitution group", e.Name)
+			reported[e] = true
+		}
+	}
 }
 
 // checkElementConsistent enforces Element Declarations Consistent

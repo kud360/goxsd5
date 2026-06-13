@@ -61,6 +61,15 @@ func TestBuilderNegatives(t *testing.T) {
 		{"substitutionGroup head undeclared",
 			`<xs:element name="e" type="xs:int" substitutionGroup="tns:nope"/>`,
 			[]string{"src-resolve"}},
+		{"two-element circular substitution group",
+			`<xs:element name="foo" type="xs:string" substitutionGroup="tns:bar"/>
+			 <xs:element name="bar" type="xs:string" substitutionGroup="tns:foo"/>`,
+			[]string{"e-props-correct"}},
+		{"three-hop circular substitution group",
+			`<xs:element name="foo" type="xs:string" substitutionGroup="tns:bar"/>
+			 <xs:element name="bar" type="xs:string" substitutionGroup="tns:zot"/>
+			 <xs:element name="zot" type="xs:string" substitutionGroup="tns:foo"/>`,
+			[]string{"e-props-correct"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
