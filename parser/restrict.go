@@ -75,8 +75,23 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		return // base is not a flat all/sequence: give up safely
 	}
 
-	// Build a slot per base particle. With two or more base wildcards a
-	// restriction particle could map to either, so give up rather than guess.
+	// With two or more base wildcards a single per-base-particle slot cannot say
+	// which one a restriction particle maps to (a restriction wildcard may even
+	// straddle several base wildcards), so the bag check below cannot decide it.
+	// Hand those off to the multi-wildcard solver, which reasons about the whole
+	// packing instead of a one-to-one slot mapping.
+	nWC := 0
+	for _, bp := range bParts {
+		if _, ok := bp.Term.(*xsd.Wildcard); ok {
+			nWC++
+		}
+	}
+	if nWC >= 2 {
+		b.checkMultiWildcardRestrict(ct, bParts, bTop, rec, accepted)
+		return
+	}
+
+	// Build a slot per base particle (zero or one base wildcard).
 	slots := make([]*baseSlot, 0, len(bParts))
 	baseWC := -1
 	for _, bp := range bParts {
@@ -86,9 +101,6 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 			s.decl = term
 			s.names = accepted(term)
 		case *xsd.Wildcard:
-			if baseWC >= 0 {
-				return // more than one base wildcard: give up
-			}
 			s.wc = term
 			baseWC = len(slots)
 		}
@@ -201,6 +213,290 @@ func (b *builder) checkRestrictRun(ct *xsd.ComplexType, slots []*baseSlot, baseW
 			b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), slotName(s.decl))
 		}
 	}
+}
+
+// baseRegion is one base content-model particle viewed as a region of the
+// element-name universe: a predicate that recognises exactly the names that
+// particle accepts (an element's own name plus its substitution-group members,
+// or a wildcard's namespace constraint), plus the occurrence range that
+// particle contributes. In a UPA-valid base group the regions are pairwise
+// disjoint, so every element matches at most one base particle and a region's
+// count is exactly the number of instance elements that fall in it.
+type baseRegion struct {
+	accepts  func(xsd.QName) bool
+	min, max int
+	decl     *xsd.ElementDecl // named region (for type/nillability + diagnostics)
+	name     string           // diagnostic label
+}
+
+// checkMultiWildcardRestrict reports cos-particle-restrict violations for a
+// complexContent restriction whose base content model is a flat all/sequence
+// holding two or more wildcards. The one-to-one slot mapping used for the
+// single-wildcard case breaks down here (a restriction particle may be coverable
+// by several base wildcards, or straddle them), so this reasons about the whole
+// packing: it builds the base particles as disjoint name regions and, for each
+// flat restriction run, checks (1) the restriction never admits an element no
+// base region accepts, and (2) for every base region the restriction-allowed
+// count stays within that region's occurrence range. Both are exact witnesses —
+// a violation always yields a concrete instance valid against R but not B — so
+// no valid restriction is ever rejected.
+func (b *builder) checkMultiWildcardRestrict(ct *xsd.ComplexType, bParts []*xsd.Particle, bTop *xsd.Particle, rec *xsd.ElementContent, accepted func(*xsd.ElementDecl) map[xsd.QName]bool) {
+	// wildcardAllowsName ignores the dynamic ##defined/##definedSibling
+	// sentinels, so a wildcard carrying one would be treated as accepting more
+	// names than it really does and a witness built on it could be unsound. Give
+	// up if any base wildcard uses them (the restriction side is guarded per run).
+	for _, bp := range bParts {
+		if w, ok := bp.Term.(*xsd.Wildcard); ok && wildcardHasSentinel(w) {
+			return
+		}
+	}
+
+	regions := make([]baseRegion, 0, len(bParts))
+	for _, bp := range bParts {
+		r := baseRegion{min: mulOcc(bTop.MinOccurs, bp.MinOccurs), max: mulOcc(bTop.MaxOccurs, bp.MaxOccurs)}
+		switch term := bp.Term.(type) {
+		case *xsd.ElementDecl:
+			names := accepted(term)
+			r.decl = term
+			r.name = "element " + term.Name.String()
+			r.accepts = func(q xsd.QName) bool { return names[q] }
+		case *xsd.Wildcard:
+			w := term
+			r.name = "a wildcard"
+			r.accepts = func(q xsd.QName) bool { return wildcardAllowsName(w, q) }
+		}
+		regions = append(regions, r)
+	}
+
+	if rParts, rTop, rOK := flatGroup(rec.Particle); rOK {
+		b.checkMultiWildcardRun(ct, regions, bParts, rParts, rTop)
+		return
+	}
+	branches, rOK := choiceBranches(rec.Particle)
+	if !rOK {
+		return
+	}
+	unitTop := &xsd.Particle{MinOccurs: 1, MaxOccurs: 1, Pos: rec.Particle.Pos}
+	for _, br := range branches {
+		b.checkMultiWildcardRun(ct, regions, bParts, br, unitTop)
+	}
+}
+
+// restrictPart is one restriction-run particle reduced to what the packing
+// analysis needs: a membership predicate, its effective occurrence range, and
+// (for a named element) its declaration for the type/nillability check.
+type restrictPart struct {
+	accepts    func(xsd.QName) bool
+	rmin, rmax int
+	pos        xsd.Pos
+	decl       *xsd.ElementDecl
+}
+
+// checkMultiWildcardRun checks one flat run of restriction particles against the
+// base regions. bParts is the raw base run, used only to gather representative
+// names. See checkMultiWildcardRestrict for the soundness argument.
+func (b *builder) checkMultiWildcardRun(ct *xsd.ComplexType, regions []baseRegion, bParts, rParts []*xsd.Particle, rTop *xsd.Particle) {
+	rps := make([]restrictPart, 0, len(rParts))
+	for _, rp := range rParts {
+		e := restrictPart{
+			rmin: mulOcc(rTop.MinOccurs, rp.MinOccurs),
+			rmax: mulOcc(rTop.MaxOccurs, rp.MaxOccurs),
+			pos:  rp.Pos,
+		}
+		switch term := rp.Term.(type) {
+		case *xsd.ElementDecl:
+			qn := term.Name
+			e.decl = term
+			e.accepts = func(q xsd.QName) bool { return q == qn }
+		case *xsd.Wildcard:
+			if wildcardHasSentinel(term) {
+				return // a restriction sentinel would make our witnesses unsound
+			}
+			w := term
+			e.accepts = func(q xsd.QName) bool { return wildcardAllowsName(w, q) }
+		}
+		rps = append(rps, e)
+	}
+
+	reps := collectReps(bParts, rParts)
+
+	// (1) Every name a restriction particle can produce must be accepted by some
+	// base region; otherwise the restriction admits an element the base forbids.
+	// This holds however the base regions overlap, so it always runs.
+	for _, e := range rps {
+		if e.rmax == 0 {
+			continue
+		}
+		for _, n := range reps {
+			if e.accepts(n) && !anyRegionAccepts(regions, n) {
+				// spec: cos-particle-restrict — §3.4.6.4 clause 1: the restriction
+				// may not admit an element no base particle accepts.
+				b.errf(xsd.SpecCosParticleRestrict, e.pos, "the restriction of %s allows an element (%s) that the base content model does not", describeCT(ct), n)
+				break
+			}
+		}
+	}
+
+	// The per-region count and type checks below are only sound when the base
+	// regions are pairwise disjoint: then every instance element matches exactly
+	// one base particle, so base validity reduces to each region count lying in
+	// range. When a base wildcard overlaps the base element it sits beside (legal
+	// in an <all>, where element and wildcard particles do not compete) an element
+	// can be absorbed by either, and the real test is a flow problem we give up on
+	// rather than risk a false positive (wild047/wild049 are valid that way).
+	if !regionsDisjoint(regions, reps) {
+		return
+	}
+
+	// (2) Per region, the restriction-allowed count must stay within the base
+	// region's range. The minimum count is the sum of rmin over restriction
+	// particles trapped wholly inside the region (they cannot escape it); the
+	// maximum is the sum of rmax over particles that can reach it. Both bounds
+	// are achievable simultaneously by an independent per-particle placement, so
+	// they are exact.
+	for i := range regions {
+		reg := &regions[i]
+		minB, maxB := 0, 0
+		for _, e := range rps {
+			acceptsAny, allInRegion, intersects := false, true, false
+			for _, n := range reps {
+				if !e.accepts(n) {
+					continue
+				}
+				acceptsAny = true
+				if reg.accepts(n) {
+					intersects = true
+				} else {
+					allInRegion = false
+				}
+			}
+			if acceptsAny && allInRegion {
+				minB = addOcc(minB, e.rmin)
+			}
+			if intersects {
+				maxB = addOcc(maxB, e.rmax)
+			}
+		}
+		if minB < reg.min {
+			// spec: cos-particle-restrict — §3.4.6.4 clause 1: required base content
+			// must stay required; the restriction can yield fewer than the base needs.
+			b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s may match %s fewer times than the base requires", describeCT(ct), reg.name)
+		}
+		if !occLE(maxB, reg.max) {
+			b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), reg.name)
+		}
+	}
+
+	// (3) A restriction named element landing in a base named region must derive
+	// from it by restriction and may not widen nillability (NameAndTypeOK).
+	for _, e := range rps {
+		if e.decl == nil {
+			continue
+		}
+		for i := range regions {
+			reg := &regions[i]
+			if reg.decl == nil || reg.decl.Name != e.decl.Name {
+				continue
+			}
+			if !validlyDerivedByRestriction(e.decl.Type, reg.decl.Type) {
+				b.errf(xsd.SpecCosParticleRestrict, e.pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", e.decl.Name, describeCT(ct))
+			}
+			if !reg.decl.Nillable && e.decl.Nillable {
+				b.errf(xsd.SpecCosParticleRestrict, e.pos, "element %s in the restriction of %s may not be nillable when the base element is not", e.decl.Name, describeCT(ct))
+			}
+		}
+	}
+}
+
+// regionsDisjoint reports whether the base regions are pairwise disjoint over
+// the representative names: no representative name is accepted by two regions.
+// reps are exhaustive of the predicates' behaviour, so this decides true
+// disjointness.
+func regionsDisjoint(regions []baseRegion, reps []xsd.QName) bool {
+	for _, n := range reps {
+		hits := 0
+		for i := range regions {
+			if regions[i].accepts(n) {
+				hits++
+				if hits > 1 {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// anyRegionAccepts reports whether some base region accepts the name q.
+func anyRegionAccepts(regions []baseRegion, q xsd.QName) bool {
+	for i := range regions {
+		if regions[i].accepts(q) {
+			return true
+		}
+	}
+	return false
+}
+
+// wildcardHasSentinel reports whether w's {disallowed names} include a dynamic
+// ##defined/##definedSibling keyword.
+func wildcardHasSentinel(w *xsd.Wildcard) bool {
+	for _, d := range w.NotQName {
+		if d.Local == definedKeyword || d.Local == siblingKeyword {
+			return true
+		}
+	}
+	return false
+}
+
+// collectReps returns a finite set of expanded names that is exhaustive for the
+// wildcard/element predicates appearing in bParts and rParts: a wildcard accepts
+// a name by its namespace (a finite mentioned set, plus "everything else") minus
+// a finite set of disallowed QNames, so one generic name per mentioned namespace
+// (a local guaranteed distinct from every mentioned QName), one generic name in
+// a never-mentioned namespace, and every explicitly mentioned QName together
+// distinguish all behaviours these predicates can have.
+func collectReps(bParts, rParts []*xsd.Particle) []xsd.QName {
+	qset := map[xsd.QName]bool{}
+	nsset := map[string]bool{"": true}
+	visit := func(parts []*xsd.Particle) {
+		for _, p := range parts {
+			switch t := p.Term.(type) {
+			case *xsd.ElementDecl:
+				qset[t.Name] = true
+				nsset[t.Name.Namespace] = true
+			case *xsd.Wildcard:
+				for _, ns := range t.Namespaces {
+					nsset[ns] = true
+				}
+				for _, d := range t.NotQName {
+					if d.Local == definedKeyword || d.Local == siblingKeyword {
+						continue
+					}
+					qset[d] = true
+					nsset[d.Namespace] = true
+				}
+			}
+		}
+	}
+	visit(bParts)
+	visit(rParts)
+
+	// A local containing NUL cannot be a real XML name, so it never collides with
+	// any mentioned QName in the same namespace.
+	const genericLocal = "\x00generic"
+	reps := make([]xsd.QName, 0, len(qset)+len(nsset)+1)
+	for q := range qset {
+		reps = append(reps, q)
+	}
+	for ns := range nsset {
+		reps = append(reps, xsd.QName{Namespace: ns, Local: genericLocal})
+	}
+	freshNS := "\x00fresh"
+	for nsset[freshNS] {
+		freshNS += "x"
+	}
+	reps = append(reps, xsd.QName{Namespace: freshNS, Local: genericLocal})
+	return reps
 }
 
 // choiceBranches returns the branches of a restriction content model that is a

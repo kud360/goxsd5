@@ -176,6 +176,25 @@ func TestBuilderNegatives(t *testing.T) {
 			 <xs:complexType name="b"><xs:all><xs:element ref="tns:a" minOccurs="10" maxOccurs="20"/></xs:all></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element ref="tns:A1" minOccurs="6" maxOccurs="15"/><xs:element ref="tns:A2" minOccurs="6" maxOccurs="15"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"cos-particle-restrict"}},
+		// Multi-base-wildcard restriction (cos-particle-restrict): two or more
+		// base wildcards, so the per-name slot mapping gives way to the packing
+		// solver. With disjoint base regions the region count check is exact.
+		{"two base wildcards: restriction underflows a base wildcard minimum",
+			`<xs:complexType name="b"><xs:all><xs:any namespace="urn:one urn:two" minOccurs="5" maxOccurs="unbounded"/><xs:any namespace="urn:three" minOccurs="0" maxOccurs="2"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:one" minOccurs="3" maxOccurs="unbounded"/><xs:any namespace="urn:two urn:three" minOccurs="2" maxOccurs="2"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"two base wildcards: restriction overshoots a base wildcard maximum",
+			`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x" minOccurs="0" maxOccurs="2"/><xs:any namespace="urn:y" minOccurs="0" maxOccurs="2"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x" minOccurs="0" maxOccurs="3"/><xs:any namespace="urn:y" minOccurs="0" maxOccurs="2"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"two base wildcards: restriction wildcard escapes every base wildcard",
+			`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x" minOccurs="0" maxOccurs="2"/><xs:any namespace="urn:y" minOccurs="0" maxOccurs="2"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x urn:z" minOccurs="0" maxOccurs="2"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"two base wildcards with an overlapping element: restriction admits a notQName-excluded name",
+			`<xs:complexType name="b"><xs:all><xs:element name="nm" type="xs:string"/><xs:any namespace="##local" notQName="a b c" minOccurs="0" maxOccurs="2" processContents="skip"/><xs:any notNamespace="##local" minOccurs="0" maxOccurs="2" processContents="skip"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="nm" type="xs:string"/><xs:any namespace="##any" notQName="a b" minOccurs="1" maxOccurs="1" processContents="skip"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
 		// Attribute wildcard restriction subset (derivation-ok-restriction /
 		// Wildcard Subset, §3.4.6.3 / §3.10.6.2): R's wildcard ⊆ B's.
 		{"restriction attribute wildcard widens an enumeration past a notNamespace base",
@@ -815,6 +834,16 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		// the restriction's open-content elements, so it stays valid (open022).
 		`<xs:complexType name="b"><xs:sequence><xs:any namespace="urn:o" processContents="lax" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Two disjoint base wildcards; a restriction wildcard straddles them yet
+		// the summed counts stay within both regions (multi-wildcard packing).
+		`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x urn:y" minOccurs="0" maxOccurs="4"/><xs:any namespace="urn:z" minOccurs="0" maxOccurs="4"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x" minOccurs="0" maxOccurs="2"/><xs:any namespace="urn:y urn:z" minOccurs="0" maxOccurs="2"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+		// A base wildcard overlaps the base element beside it (legal in an <all>),
+		// so the regions are not disjoint and only the always-sound outside-name
+		// check runs; the restriction wildcard excludes more than the base's, so
+		// it admits nothing new (wild047 shape).
+		`<xs:complexType name="b"><xs:all><xs:element name="nm" type="xs:string"/><xs:any namespace="##local" notQName="a b c" minOccurs="0" maxOccurs="2" processContents="skip"/><xs:any namespace="urn:x" minOccurs="0" maxOccurs="2" processContents="skip"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="nm" type="xs:string"/><xs:any namespace="##local" notQName="a b c d e" minOccurs="1" maxOccurs="1" processContents="skip"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

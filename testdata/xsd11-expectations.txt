@@ -4555,10 +4555,12 @@ saxonMeta/All.testSet#all234 pass
 saxonMeta/All.testSet#all235 pass
 saxonMeta/All.testSet#all236 pass
 saxonMeta/All.testSet#all237 pass
+saxonMeta/All.testSet#all238 pass
 saxonMeta/All.testSet#all240 pass
 saxonMeta/All.testSet#all241 pass
 saxonMeta/All.testSet#all242 pass
 saxonMeta/All.testSet#all243 pass
+saxonMeta/All.testSet#all244 pass
 saxonMeta/All.testSet#all301 pass
 saxonMeta/All.testSet#all302 pass
 saxonMeta/All.testSet#all303 pass
@@ -4927,6 +4929,7 @@ saxonMeta/Wild.testSet#wild044 pass
 saxonMeta/Wild.testSet#wild045 pass
 saxonMeta/Wild.testSet#wild046 pass
 saxonMeta/Wild.testSet#wild047 pass
+saxonMeta/Wild.testSet#wild048 pass
 saxonMeta/Wild.testSet#wild049 pass
 saxonMeta/Wild.testSet#wild050 pass
 saxonMeta/Wild.testSet#wild051 pass

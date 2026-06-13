@@ -7,7 +7,50 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-4 conformance pushed 5640 → 5648 (+8). Remainder below <<<
+## >>> NEXT SESSION — phase-4 conformance pushed 5640 → 5651 (+11). Remainder below <<<
+SESSION 2026-06-13 phase 4e (5648 → 5651, +3): MULTI-BASE-WILDCARD particle
+restriction solver (all238, all244, wild048 — NOTES remainder item 2). When the
+base content model is a flat all/sequence holding ≥2 wildcards, the old code
+gave up ("more than one base wildcard"): a single per-base-particle slot can't
+say which wildcard a restriction particle maps to, and a restriction wildcard may
+straddle several. New checkMultiWildcardRestrict / checkMultiWildcardRun in
+restrict.go model each base particle as a baseRegion (a name-membership predicate
++ occurrence range) and reason about the whole packing via a finite set of
+REPRESENTATIVE names (collectReps: one generic name per mentioned namespace + one
+in a never-mentioned namespace + every explicitly mentioned QName — exhaustive of
+all wildcard/element predicate behaviours). Three checks, each backed by a
+concrete witness (restriction-valid but base-invalid), so NEVER a false positive:
+ (1) OUTSIDE-NAME: a restriction particle that can produce a name no base region
+     accepts ⇒ base can't match it. ALWAYS sound (overlap-independent) — this is
+     what catches wild048 (R's ##any notQName="a b c..." admits absent "c", which
+     base W1=##local notQName="a b c" excludes and W2=notNamespace ##local can't
+     take). Runs unconditionally.
+ (2) PER-REGION COUNT: minB_i = Σ rmin over restriction particles TRAPPED wholly
+     in region i (can't escape it); maxB_i = Σ rmax over particles that can reach
+     it. Both achievable simultaneously ⇒ EXACT min/max region count over
+     restriction-valid instances. minB_i<base min or maxB_i>base max ⇒ violation.
+     Catches all238/all244 (r forces only 3 into base W1's [5,∞] "one/two" region).
+ (3) NameAndTypeOK type/nillability for a restriction named element landing in a
+     base named region.
+CRITICAL SOUNDNESS GATE learned via regressions (wild047/wild049 broke on the
+first cut): checks (2)+(3) require the base regions be PAIRWISE DISJOINT. In an
+<all> an element particle and a wildcard particle do NOT compete (UPA allows it),
+so a base <element name="nm"> can overlap a sibling ##local wildcard — then an
+element can be absorbed by EITHER and base validity is a flow problem, not a
+per-region count. regionsDisjoint(regions,reps) gates (2)+(3); when false only the
+always-sound check (1) runs. wild047/049 are valid exactly because of that
+element/wildcard overlap (R's wildcard ⊆ the base wildcard, admits nothing new) —
+disjointness gate keeps them valid. Bails entirely on ##defined/##definedSibling
+sentinels (wildcardAllowsName ignores them ⇒ would over-accept ⇒ unsound witness).
+Routing: checkParticleRestrict counts base wildcards; ≥2 ⇒ checkMultiWildcardRestrict
+(handles flat run OR choice branches like the single-WC path), else the existing
+slot logic. Unit tests: TestBuilderNegatives +4 (underflow/overflow/escape/notQName
+outside), TestBuildParticleRestrictValidModels +2 (disjoint straddle within range;
+wild047-shape overlap). Item 1 (processContents ordering) NOT needed after all —
+all238's invalidity is also a cardinality underflow, so the solver catches it
+without the processContents check. REMAINING multi-WC gap: none of the saxon/ibm
+suite cases left for this; wild048 done. (over030 etc. below unchanged.)
+
 SESSION 2026-06-13 phase 4d (5647 → 5648, +1): over030 — FALSE mg-props-correct
 cycle fixed. buildGroup conflated group-build recursion with element/type
 recursion: building group G → its element ref → that element's type → a group
@@ -93,25 +136,13 @@ DONE this phase (commits after 7686f2f):
   restriction). +1 (all233).
 
 REMAINING (roughly cheapest/safest first):
-1. processContents ordering at the restrict.go wildcard-mapping site (cheap,
-   isolated, but fixes NO case alone — prerequisite for item 2). NSSubset in
-   particle restriction also requires the restricting wildcard's processContents
-   be identical-or-STRICTER than the base's. Helper already exists:
-   processContentsAtLeastAsStrict(sub, super) in restrict.go. Add it where a
-   restriction wildcard maps to slots[baseWC].wc (NSSubset site). NOT inside
-   namespaceConstraintSubset (pure namespace relation reused by attributes).
-2. MULTI-base-wildcard cardinality (all238, all244, wild048). ≥2 base wildcards
-   with overlapping namespace constraints, so checkParticleRestrict bails
-   ("more than one base wildcard: give up", baseWC tracks at most one). Need a
-   real solver: each restriction particle may be coverable by SEVERAL base
-   wildcards; the question is whether the summed restriction cardinalities pack
-   into the base wildcards' ranges so every restriction-allowed multiset is
-   base-allowed. all244's comment ("invalid because r allows (one,one,one,
-   three,three) whereas b does not") is the canonical case — a small flow/
-   packing problem. all238 ALSO needs item 1 (its invalidity is the
-   processContents mismatch: R2 lax overlaps W1 strict on namespace "two").
-   HARD; may be left tolerated (spec §3.9.6 permits provisional acceptance of
-   <all>-group derivations a processor can't decide).
+1. [MOOT] processContents ordering at the restrict.go wildcard-mapping site.
+   Was billed as a prerequisite for item 2 (all238). Item 2 is now done and
+   catches all238 via the cardinality underflow, so this fixes no remaining
+   case. Helper processContentsAtLeastAsStrict still exists if a future case
+   needs it at the single-WC NSSubset site.
+2. [DONE phase 4e] MULTI-base-wildcard cardinality (all238, all244, wild048).
+   Solver in restrict.go (checkMultiWildcardRestrict). See phase-4e block above.
 3. EXTENSION open content (open030/033/046, complex018 stays tolerated as a
    spec bug — bug 16786). DELIBERATELY LEFT this session: the extension cases
    need the open-content COMBINATION/inheritance semantics our builder does NOT
