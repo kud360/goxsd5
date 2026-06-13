@@ -41,10 +41,10 @@ the original NOTES checklist that had M9 first.
   pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
   to 5572 pass (see "Post-M9 conformance fixes" below).
 
-## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5596 pass)
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5597 pass)
 Worked the false positives + small/medium well-defined checks. Each landed
 with unit tests and a re-baseline; NO regressions. Commits:
-- SESSION 2026-06-13 (5572 → 5596, +24): explicitTimezone-valid-restriction
+- SESSION 2026-06-13 (5572 → 5597, +25): explicitTimezone-valid-restriction
   (§4.3.16.5, required/prohibited can't widen); circular substitution groups
   (e-props-correct.6); substitution-group type-derivation (e-props-correct.4 —
   member type must be validly derived from head, not only un-excluded);
@@ -55,7 +55,8 @@ with unit tests and a re-baseline; NO regressions. Commits:
   copies base content type incl. mixed per §3.4.2.3.3 (fixed a latent
   kitchenSink fixture that extended a mixed base with element-only content);
   cos-all-limited clauses 2 + 1.3 (nested model groups in <all> must be <all>
-  and occur exactly once).
+  and occur exactly once); reject malformed QNames with empty prefix/local in
+  src-qname (wild039).
 - facet-restriction equality (ParseFacetValue skips base range bounds);
   regex hyphen handling per Part 2 §G.1 ([a-z-+] valid, [!--]/[--z] invalid);
   base {final} blocks complex/simpleContent/simpleType derivation
@@ -70,7 +71,7 @@ with unit tests and a re-baseline; NO regressions. Commits:
   walker now carries an ancestor stack (w.path).
 - Element Declarations Consistent (cos-element-consistent) in
   finishComplexTypes, incl. substitution-group "implicitly contains".
-REMAINING gaps (~93 after the 2026-06-13 session), all the genuinely hard /
+REMAINING gaps (~92 after the 2026-06-13 session), all the genuinely hard /
 large features — NONE done:
 - UPA / cos-nonambig (all240-243, subsgroup902/903, sg-abstract-upa*): needs
   a particle automaton. ~8 cases.
