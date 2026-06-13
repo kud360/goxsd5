@@ -243,6 +243,18 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"derivation-ok-restriction"}},
+		// Extension open content (cos-ct-extends §3.4.6.2 clause 1.4.3.2.2.3):
+		// an extension may not narrow the base's interleaved open content to
+		// suffix (open030/033/046).
+		{"extension narrows interleave open content to suffix (explicit)",
+			`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-ct-extends"}},
+		{"extension narrows interleave to suffix via defaultOpenContent on an empty extension",
+			`<xs:defaultOpenContent mode="suffix"><xs:any namespace="urn:o"/></xs:defaultOpenContent>
+			 <xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-ct-extends"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
@@ -683,9 +695,11 @@ func TestBuildComplexContentAssembly(t *testing.T) {
 		t.Fatalf("derived particle does not prepend the base particle: %+v", dec.Particle.Term)
 	}
 	// No explicit openContent on derived: the schema's defaultOpenContent
-	// (mode=suffix) applies.
-	if dec.OpenContent == nil || dec.OpenContent.Mode != xsd.OpenContentSuffix {
-		t.Errorf("derived openContent = %+v, want the suffix defaultOpenContent", dec.OpenContent)
+	// (mode=interleave) applies. (The default is interleave, not suffix,
+	// because base's open content is interleave and an extension may not
+	// narrow it to suffix — cos-ct-extends §3.4.6.2 clause 1.4.3.2.2.3.)
+	if dec.OpenContent == nil || dec.OpenContent.Mode != xsd.OpenContentInterleave {
+		t.Errorf("derived openContent = %+v, want the interleave defaultOpenContent", dec.OpenContent)
 	}
 	// Extension attribute uses = own (version) + inherited (id, lang, globalAttr).
 	if len(derived.AttributeUses) != 4 {
@@ -846,6 +860,15 @@ func TestBuildTypeAlternativeAndAttrRestrictValid(t *testing.T) {
 		// Restriction redeclares an attribute keeping the same inheritability.
 		`<xs:complexType name="b"><xs:sequence/><xs:attribute name="a" type="xs:string" inheritable="true"/></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:attribute name="a" type="xs:token" inheritable="true"/></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Extension keeps the base's interleave open content as interleave
+		// (widening the wildcard namespace is fine — cos-ct-extends 1.4.3.2.2.4
+		// is met by the wildcard union).
+		`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:p"/></xs:openContent><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
+		// Extension may widen suffix to interleave (the reverse narrowing is
+		// the only thing barred); base suffix + extension interleave is valid.
+		`<xs:complexType name="b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

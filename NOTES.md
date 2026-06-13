@@ -7,7 +7,32 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5656 (+5). Remainder below <<<
+## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5661 (+10). Remainder below <<<
+SESSION 2026-06-13 phase 5c (5656 → 5661, +5): EXTENSION OPEN CONTENT
+(cos-ct-extends §3.4.6.2 clause 1.4.3.2.2.3) — the cluster NOTES flagged as
+needing the real {open content} mapping. checkExtensionOpenContent (restrict.go),
+wired in finishComplexTypes extension branch. The full clause reduces elegantly:
+clause 1.4.3.2.2.4 (BOT.wc ⊆ EOT.wc) is AUTOMATICALLY satisfied — the {content
+type} mapping §3.4.2.2 clause 6.2 makes EOT's wildcard the UNION of the
+extension's own and the base's, so the base's is always a subset — leaving only
+clause 1.4.3.2.2.3: an extension may not narrow the base's INTERLEAVE open
+content to SUFFIX. EOT mode per mapping clauses 5-6: explicit <openContent>
+child wins; else <defaultOpenContent> applies when the EXPLICIT (post-merge)
+content type is not empty (contentEmpty checks the merged particle, so a
+non-empty base makes an empty-particle extension non-empty — THIS is W3C bug
+13459 / open046); else inherit base (no narrowing). Violation iff BOT.mode==
+interleave && EOT.mode==suffix. Necessary condition ⇒ no false positive. New
+fields: pendingAttrs.contentNode (the <extension> node, for finding <openContent>
+in the finish pass); helpers openContentModeAttr, contentEmpty. +5 (open030
+default-suffix-over-base-interleave, open033 explicit suffix, open046 empty
+extension + appliesToEmpty=false default-applies-post-merge, ibm openContent
+s3_4_1si05/si06). KITCHEN-SINK FIXTURE was itself spec-invalid under this rule
+(base interleave + defaultOpenContent suffix on the `derived` extension = the
+open030 pattern) — changed pass1_test.go defaultOpenContent to mode=interleave
+and updated the TestBuildComplexContentAssembly assertion. Unit tests:
+TestBuilderNegatives +2 (explicit + default-via-empty-extension), valid-models
++2 (interleave kept; suffix→interleave widening allowed).
+
 SESSION 2026-06-13 phase 5b (5655 → 5656, +1): no-xsi for GLOBAL attributes
 (§3.2.6.4, wild041). The pass-1 walker already caught a LOCAL attribute with an
 explicit targetNamespace="…XMLSchema-instance", but a top-level attribute

@@ -46,14 +46,15 @@ type builder struct {
 // type, recorded during construction and merged with the (by then complete)
 // base type in the finishComplexTypes post-pass.
 type pendingAttrs struct {
-	own        []*xsd.AttributeUse
-	wc         *xsd.Wildcard
-	prohibited map[xsd.QName]bool
-	override   bool // restriction semantics: own uses shadow base uses
-	wcFallback bool // inherit the base wildcard when none is declared
-	pos        xsd.Pos
-	node       *xmltree.Node // the complexType element (defaultAttributesApply)
-	doc        *schemaDoc
+	own         []*xsd.AttributeUse
+	wc          *xsd.Wildcard
+	prohibited  map[xsd.QName]bool
+	override    bool // restriction semantics: own uses shadow base uses
+	wcFallback  bool // inherit the base wildcard when none is declared
+	pos         xsd.Pos
+	node        *xmltree.Node // the complexType element (defaultAttributesApply)
+	contentNode *xmltree.Node // the <restriction>/<extension> element, if any
+	doc         *schemaDoc
 }
 
 func newBuilder(reg *registry, errs *xsd.ErrorList) *builder {

@@ -205,6 +205,9 @@ func (b *builder) finishComplexTypes() {
 			}
 			b.checkAttrRestriction(p.own, baseUses)
 		}
+		if ct.DerivationMethod == xsd.DeriveExtension && bct != nil {
+			b.checkExtensionOpenContent(ct, bct, p)
+		}
 		b.applyDefaultAttributes(ct, p.node, p.doc)
 		b.checkAttrUses(ct)
 	}

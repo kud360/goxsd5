@@ -36,6 +36,7 @@ package parser
 
 import (
 	"github.com/kud360/goxsd5/builtin"
+	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 )
 
@@ -598,6 +599,75 @@ func (b *builder) checkOpenContentRestrict(ct *xsd.ComplexType) {
 			b.errf(xsd.SpecDerivationOKRestriction, roc.Pos, "the open content of the restriction of %s has weaker processContents than the base's", describeCT(ct))
 		}
 	}
+}
+
+// checkExtensionOpenContent enforces the open-content clause of Derivation
+// Valid (Extension) (cos-ct-extends §3.4.6.2 clause 1.4.3.2.2.3): when a
+// complex type extends a base whose {open content} has {mode} interleave, the
+// extension's own {open content} may not narrow it to suffix. (Clause
+// 1.4.3.2.2.4's namespace-subset requirement is automatically met: by the
+// {content type} mapping §3.4.2.2 clause 6.2 the extension's open-content
+// wildcard is the union of its own and the base's, so the base's is always a
+// subset.)
+//
+// The extension's effective {open content} mode (EOT) is determined per the
+// {open content} mapping clauses 5-6: an explicit <openContent> child wins;
+// otherwise the schema's <defaultOpenContent> applies when the EXPLICIT content
+// type is not empty — and for an extension the explicit content type is the
+// post-merge content, so a non-empty base makes it non-empty even when the
+// extension's own particle is empty (W3C bug 13459, open046); otherwise the
+// extension inherits the base's open content unchanged (no narrowing).
+func (b *builder) checkExtensionOpenContent(ct, bct *xsd.ComplexType, p *pendingAttrs) {
+	bec, _ := bct.Content.(*xsd.ElementContent)
+	bot := effectiveOpenContent(bec)
+	if bot == nil || bot.Mode != xsd.OpenContentInterleave {
+		// Base has no open content, or it is already suffix: clause 1.4.3.2.2.3.1
+		// holds, or there is nothing more open to narrow.
+		return
+	}
+	eotMode := bot.Mode // inherited when no wildcard element governs the extension
+	if ocn := firstChild(p.contentNode, p.doc, "openContent"); ocn != nil {
+		if m := openContentModeAttr(ocn); m != xsd.OpenContentNone {
+			eotMode = m // mode=none ⇒ inherit the base (mapping clause 6.1)
+		}
+	} else if p.doc.defaultOpenContent != nil {
+		if !contentEmpty(ct) || boolAttr(p.doc.defaultOpenContent, "appliesToEmpty", false) {
+			if m := openContentModeAttr(p.doc.defaultOpenContent); m != xsd.OpenContentNone {
+				eotMode = m
+			}
+		}
+	}
+	if eotMode == xsd.OpenContentSuffix {
+		// spec: cos-ct-extends — XSD 1.1 Part 1 §3.4.6.2 clause 1.4.3.2.2.3
+		b.errf(xsd.SpecCosCTExtends, ct.Pos, "the extension %s narrows the base type's interleaved open content to suffix", describeCT(ct))
+	}
+}
+
+// openContentModeAttr reads the {mode} of an <openContent>/<defaultOpenContent>
+// element, defaulting to interleave (mirrors buildOpenContent).
+func openContentModeAttr(n *xmltree.Node) xsd.OpenContentMode {
+	if v, ok := n.Attr("mode"); ok {
+		switch v {
+		case "suffix":
+			return xsd.OpenContentSuffix
+		case "none":
+			return xsd.OpenContentNone
+		}
+	}
+	return xsd.OpenContentInterleave
+}
+
+// contentEmpty reports whether ct's content type has {variety} empty: no
+// character content (not mixed) and no particle that can match an element.
+func contentEmpty(ct *xsd.ComplexType) bool {
+	if ct.Mixed {
+		return false
+	}
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok {
+		return true // EmptyContent (SimpleContent never carries open content)
+	}
+	return !ec.Mixed && !particleMatchesNonEmpty(ec.Particle)
 }
 
 // effectiveOpenContent returns ec's open content, treating an absent one or one

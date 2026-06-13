@@ -248,6 +248,7 @@ func (b *builder) deferAttrs(ct *xsd.ComplexType, content *xmltree.Node, doc *sc
 	p.override = override
 	p.wcFallback = !override
 	p.pos = pos
+	p.contentNode = content
 }
 
 // mergeBaseAttrUses combines declared uses with inherited ones. For

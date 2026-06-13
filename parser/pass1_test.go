@@ -59,7 +59,7 @@ var kitchenSink = `<?xml version="1.0"?>
   <xs:import namespace="urn:other" schemaLocation="other.xsd"/>
   <xs:include schemaLocation="more.xsd"/>
 
-  <xs:defaultOpenContent mode="suffix"><xs:any namespace="##other" processContents="lax"/></xs:defaultOpenContent>
+  <xs:defaultOpenContent mode="interleave"><xs:any namespace="##other" processContents="lax"/></xs:defaultOpenContent>
 
   <xs:simpleType name="size">
     <xs:restriction base="xs:token">
