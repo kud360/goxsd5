@@ -7,6 +7,65 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> NEXT SESSION — cos-particle-restrict phase 3 (the hard remainder) <<<
+Parts 3-5 (this past session) did flat all/sequence element models +
+single-base-wildcard element/wildcard models + attribute wildcard subset
+(parser/restrict.go + parser/wildcard.go), 5613 → 5635, no regressions. The
+remaining cos-particle-restrict gaps are the genuinely hard ones; tackle in
+roughly this order (cheapest/safest first). CORE SAFETY RULE that has held all
+session: when a construct isn't fully analyzable, GIVE UP (return, report
+NOTHING) — the checks are necessary conditions for L(R) ⊆ L(B), so a violation
+is always a real error, and giving up never costs a false positive. The ratchet
+(GOXSD5_CONFORMANCE_GAPS=1 go test ./parser -run TestConformanceSuite -v) lists
+every remaining gap and flags any regression. Keep the unit-test + re-baseline +
+checkpoint-commit rhythm.
+
+1. processContents ordering in NSSubset (cheap, isolated). namespaceConstraint
+   Subset (parser/wildcard.go) currently ignores {process contents}. NSSubset
+   in particle restriction (and arguably the attribute case) also requires the
+   restricting wildcard's processContents be identical-or-STRICTER than the
+   base's (strict > lax > skip). Add a processContents check at the
+   restrict.go wildcard-mapping site (NOT inside namespaceConstraintSubset,
+   which is the pure namespace relation reused by attributes). Likely helps
+   part of all238 but all238 also needs item 2.
+2. MULTI-base-wildcard cardinality (all238, all244, wild048). These have ≥2
+   base wildcards with overlapping namespace constraints, so restrict.go bails
+   ("more than one base wildcard: give up"). Need a real solver: each
+   restriction particle (element via NSCompat, or wildcard via NSSubset) may be
+   coverable by SEVERAL base wildcards, and the question is whether the summed
+   restriction cardinalities can be packed into the base wildcards' ranges such
+   that every restriction-allowed multiset is base-allowed. all244's comment
+   ("invalid because r allows (one,one,one,three,three) whereas b does not") is
+   the canonical pathological case — this is a small flow/packing problem. HARD;
+   may be left tolerated (spec §3.9.6 explicitly allows provisional acceptance
+   of <all>-group derivations a processor can't decide).
+3. all→choice subsumption (all233). flatGroup gives up on choice compositors.
+   Base is <all>, restriction is a <choice> of <sequence>s. Each choice branch
+   must independently be a valid restriction of the base (RecurseLax-ish), AND
+   per-branch the element occurrence ranges must fit the base all. all233 is
+   invalid because one branch's `a` maxOccurs (8) exceeds base `a` max (5).
+   Approach: when restriction term is a choice, check every branch as its own
+   flat group against the base (reuse the bag check per branch); a branch that
+   over/under-shoots or introduces a name is the violation. Watch false
+   positives: the per-name range within a single branch is exact, but across
+   branches counts DON'T sum (it's an OR), so analyze each branch in isolation.
+4. Open content subset (open016-019/030/033/046/048, complex018). restrict.go
+   currently returns when either side has OpenContent (rec/bec.OpenContent !=
+   nil). Spec §3.4.6.4 / §3.4.6.2 (cos-ct-extends 1.4.3.2.2.4): the base open
+   content's wildcard {namespace constraint} must be a subset of the
+   restriction's (note direction!) and the modes (interleave/suffix/none) must
+   be compatible. Some of these are EXTENSION not restriction (open030/046).
+   Reuse namespaceConstraintSubset. Check the exact subset direction in the
+   spec — open content widens going down a restriction, unlike element content.
+5. EDC type-table / wildcard cases wild069/078/079/081 + wild041 (xsi: in
+   notQName). These are Element Declarations Consistent with type tables and a
+   notQName edge (xsi:* names). Separate from particle restriction; lower
+   priority — read each schema before deciding.
+SKIP/leave tolerated: all308 (xs:all extension of mixed empty content, spec bug
+6202). Triage each gap by reading its schema in testdata/xsdtests/saxonData (or
+ibmData) BEFORE coding; the comment at the top of each .xsd states why it is
+invalid.
+
 ## Status — M9 DONE (2026-06-12). All milestones M0–M9 complete. Post-M9 at 5635 pass.
 NOTE ON ORDERING: user chose to do M8 before M9 (numeric order), overriding
 the original NOTES checklist that had M9 first.
