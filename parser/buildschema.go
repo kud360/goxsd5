@@ -41,6 +41,7 @@ func buildSchemas(reg *registry, l *loader, errs *xsd.ErrorList) []*xsd.Schema {
 	}
 	for _, s := range schemas {
 		b.checkTypeCycles(s)
+		b.checkGroupCycles(s)
 	}
 	b.finishComplexTypes()
 	return schemas
@@ -58,6 +59,7 @@ func buildSchema(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) *xsd.Schema
 	}
 	b.addDocComponents(s, doc)
 	b.checkTypeCycles(s)
+	b.checkGroupCycles(s)
 	b.finishComplexTypes()
 	return s
 }
@@ -697,5 +699,56 @@ func (b *builder) checkTypeCycles(s *xsd.Schema) {
 			}
 			cur = next
 		}
+	}
+}
+
+// checkGroupCycles detects circular model group definitions (mg-props-correct.2):
+// a named model group must not contain itself through a chain of group
+// references and directly nested model groups. Recursion that passes through an
+// element declaration's type does NOT count — the element breaks the chain — so
+// this follows only group-structural edges, unlike the general build recursion.
+// A back-edge is reported once and severed (the GroupRef is detached) so the
+// content model stays a finite tree for the downstream walks.
+func (b *builder) checkGroupCycles(s *xsd.Schema) {
+	const (
+		onStack = 1
+		done    = 2
+	)
+	state := map[*xsd.Group]int{}
+	var visit func(g *xsd.Group)
+	var walk func(mg *xsd.ModelGroup)
+	walk = func(mg *xsd.ModelGroup) {
+		if mg == nil {
+			return
+		}
+		for _, p := range mg.Particles {
+			switch t := p.Term.(type) {
+			case *xsd.ModelGroup:
+				walk(t)
+			case *xsd.GroupRef:
+				h := t.Ref
+				if h == nil {
+					continue
+				}
+				if state[h] == onStack {
+					// spec: mg-props-correct.2 — circular model groups are disallowed.
+					b.errf(xsd.SpecMGPropsCorrect, h.Pos, "model group %s is part of a cycle", h.Name)
+					t.Ref = nil // sever the back-edge so later walks terminate
+					continue
+				}
+				visit(h)
+			}
+		}
+	}
+	visit = func(g *xsd.Group) {
+		if g == nil || state[g] != 0 {
+			return
+		}
+		state[g] = onStack
+		walk(g.Group)
+		state[g] = done
+	}
+	for _, g := range s.Groups {
+		visit(g)
 	}
 }

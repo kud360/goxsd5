@@ -428,6 +428,9 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:group name="g1"><xs:sequence><xs:group ref="tns:g2"/></xs:sequence></xs:group>
 			 <xs:group name="g2"><xs:sequence><xs:group ref="tns:g1"/></xs:sequence></xs:group>`,
 			[]string{"mg-props-correct"}},
+		{"model group cycle through a nested model group",
+			`<xs:group name="g1"><xs:choice><xs:sequence><xs:group ref="tns:g1"/></xs:sequence></xs:choice></xs:group>`,
+			[]string{"mg-props-correct"}},
 		{"attribute group cycle",
 			`<xs:attributeGroup name="ag1"><xs:attributeGroup ref="tns:ag2"/></xs:attributeGroup>
 			 <xs:attributeGroup name="ag2"><xs:attributeGroup ref="tns:ag1"/></xs:attributeGroup>`,
@@ -725,6 +728,18 @@ func TestBuildUPAValidModels(t *testing.T) {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
 		wantClean(t, errs)
 	}
+}
+
+func TestBuildGroupRecursionThroughElement(t *testing.T) {
+	// A model group whose content reaches back to itself ONLY through an
+	// element declaration's type is NOT a circular group: the element breaks
+	// the chain (over030). It must build and must not trip mg-props-correct.
+	_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
+	  <xs:group name="g"><xs:sequence><xs:element ref="tns:e"/></xs:sequence></xs:group>
+	  <xs:element name="e" type="tns:t"/>
+	  <xs:complexType name="t"><xs:sequence><xs:group ref="tns:g" minOccurs="0"/></xs:sequence></xs:complexType>`+
+		`</xs:schema>`)
+	wantClean(t, errs)
 }
 
 func TestBuildElementConsistentValidModels(t *testing.T) {

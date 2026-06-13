@@ -7,7 +7,22 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — EDC type-tables + open048 + over009 DONE (5640 → 5647) <<<
+## >>> NEXT SESSION — phase-4 conformance pushed 5640 → 5648 (+8). Remainder below <<<
+SESSION 2026-06-13 phase 4d (5647 → 5648, +1): over030 — FALSE mg-props-correct
+cycle fixed. buildGroup conflated group-build recursion with element/type
+recursion: building group G → its element ref → that element's type → a group
+ref back to G tripped the building-mark while G was still on the stack, even
+though recursion THROUGH an element declaration is not a model-group cycle.
+Fix: buildGroup now memoizes its SHELL before building the model group (mirrors
+the complex-type pattern), so re-entry returns the shell and the recursion is
+finite with the structure intact; the building-mark + inline error are gone. A
+new dedicated pass checkGroupCycles (buildschema.go, run per schema right after
+checkTypeCycles) detects REAL cycles by following only group→nested-group and
+group→GroupRef edges (NOT elements), reports mg-props-correct once, and severs
+the back-edge (t.Ref=nil; upa.go/EDC already guard nil Ref) so downstream walks
+terminate. Unit tests: TestBuildGroupRecursionThroughElement (valid), plus a
+nested-model-group cycle negative.
+
 SESSION 2026-06-13 phase 4c (5646 → 5647, +1): over009 — two-level override
 chain double-registration FALSE POSITIVE fixed. When top overrides mid and mid
 overrides deep, all replacing the same name, both top's and mid's replacement

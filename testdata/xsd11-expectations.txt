@@ -4763,6 +4763,7 @@ saxonMeta/Override.testSet#over026 pass
 saxonMeta/Override.testSet#over027 pass
 saxonMeta/Override.testSet#over028 pass
 saxonMeta/Override.testSet#over029 pass
+saxonMeta/Override.testSet#over030 pass
 saxonMeta/Override.testSet#over031 pass
 saxonMeta/PDecimal.testSet#pdecimal001 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
 saxonMeta/PDecimal.testSet#pdecimal002 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented

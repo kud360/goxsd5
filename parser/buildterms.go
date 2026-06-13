@@ -514,24 +514,22 @@ func (b *builder) buildGroup(d *decl) *xsd.Group {
 	if g, ok := b.groups[d.node]; ok {
 		return g
 	}
-	if b.building[d.node] {
-		// spec: mg-props-correct.2 — circular model groups are disallowed.
-		b.errf(xsd.SpecMGPropsCorrect, d.pos, "model group %s is part of a cycle", d.name)
-		return nil
-	}
-	b.building[d.node] = true
-	defer delete(b.building, d.node)
-
+	// Memoize the shell before building the model group, mirroring complex
+	// types: a group's content can legally recurse back to itself through an
+	// element declaration's type (the element breaks the chain, so this is no
+	// model-group cycle). Returning the shell on re-entry keeps that recursion
+	// finite and leaves the structure intact; genuine group-structural cycles
+	// are reported separately by checkGroupCycles.
 	g := &xsd.Group{
 		Name:       d.name,
 		Pos:        d.pos,
 		Annotation: annotationOf(d.node, d.doc),
 		Extensions: extensionsOf(d.node),
 	}
+	b.groups[d.node] = g
 	if mg := firstChild(d.node, d.doc, "all", "choice", "sequence"); mg != nil {
 		g.Group = b.buildModelGroup(mg, d.doc)
 	}
-	b.groups[d.node] = g
 	return g
 }
 
