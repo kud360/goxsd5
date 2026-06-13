@@ -22,6 +22,7 @@ ibmMeta/anyAttribute.testSet#s3_10_6ii02 pass
 ibmMeta/anyAttribute.testSet#s3_10_6ii03 pass
 ibmMeta/anyAttribute.testSet#s3_10_6ii04 pass
 ibmMeta/anyAttribute.testSet#s3_10_6si01 pass
+ibmMeta/anyAttribute.testSet#s3_10_6si02 pass
 ibmMeta/anyAttribute.testSet#s3_10_6v01 pass
 ibmMeta/anyAttribute.testSet#s3_10_6v02 pass
 ibmMeta/anyAttribute.testSet#s3_10_6v03 pass
@@ -486,6 +487,7 @@ ibmMeta/wildcard.testSet#s3_10_1ii07 pass
 ibmMeta/wildcard.testSet#s3_10_1ii08 pass
 ibmMeta/wildcard.testSet#s3_10_1ii09 pass
 ibmMeta/wildcard.testSet#s3_10_1si01 pass
+ibmMeta/wildcard.testSet#s3_10_1si02 pass
 ibmMeta/wildcard.testSet#s3_10_1v01 pass
 ibmMeta/wildcard.testSet#s3_10_1v02 pass
 ibmMeta/wildcard.testSet#s3_10_1v03 pass
@@ -4856,6 +4858,11 @@ saxonMeta/Wild.testSet#wild027 pass
 saxonMeta/Wild.testSet#wild028 pass
 saxonMeta/Wild.testSet#wild029 pass
 saxonMeta/Wild.testSet#wild030 pass
+saxonMeta/Wild.testSet#wild031 pass
+saxonMeta/Wild.testSet#wild032 pass
+saxonMeta/Wild.testSet#wild033 pass
+saxonMeta/Wild.testSet#wild034 pass
+saxonMeta/Wild.testSet#wild035 pass
 saxonMeta/Wild.testSet#wild036 pass
 saxonMeta/Wild.testSet#wild037 pass
 saxonMeta/Wild.testSet#wild038 pass

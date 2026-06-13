@@ -184,7 +184,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | cos-all-limited | §3.8.6 | M9+ | deferred (all-group occurrence limits) | |
 | cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
 | ag-props-correct | §3.6.6 | M9+ | deferred (attribute group definition properties) | |
-| w-props-correct | §3.10.6 | M9+ | deferred (wildcard properties) | |
+| w-props-correct | §3.10.6 | post-M9 | done (rule 4: notQName namespaces must be allowed; intersection/union rules deferred) | parser/buildterms.go:567 |
 | mgd-props-correct | §3.7.6 | M9+ | deferred (model group definition properties) | |
 | st-restrict-facets | §4.1.6 | M9+ | deferred (companion to cos-st-restricts facet recursion) | |
 | src-expredef | §4.2.5 | M9+ | deferred (redefine/override is a legal redefinition) | |

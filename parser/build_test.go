@@ -74,6 +74,12 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:element name="head" type="xs:integer"/>
 			 <xs:element name="mem" type="xs:string" substitutionGroup="tns:head"/>`,
 			[]string{"e-props-correct"}},
+		{"notQName names a namespace excluded by notNamespace",
+			`<xs:complexType name="c"><xs:sequence/><xs:anyAttribute notNamespace="http://www.w3.org/XML/1998/namespace" notQName="xml:space"/></xs:complexType>`,
+			[]string{"w-props-correct"}},
+		{"notQName names a namespace outside an enumeration",
+			`<xs:complexType name="c"><xs:sequence><xs:any namespace="urn:ok" notQName="tns:foo"/></xs:sequence></xs:complexType>`,
+			[]string{"w-props-correct"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},

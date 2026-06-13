@@ -4,6 +4,7 @@ package parser
 // wildcards, identity constraints, notations.
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/kud360/goxsd5/builtin"
@@ -561,11 +562,33 @@ func (b *builder) buildWildcard(n *xmltree.Node, doc *schemaDoc) *xsd.Wildcard {
 				continue
 			}
 			if q, err := n.ResolveQName(tok); err == nil {
-				w.NotQName = append(w.NotQName, chameleonQName(q, doc))
+				q = chameleonQName(q, doc)
+				w.NotQName = append(w.NotQName, q)
+				// spec: w-props-correct — XSD 1.1 Part 1 §3.10.6 (xmlschema11-1.md#w-props-correct)
+				// Rule 4: a name disallowed via notQName must lie in a namespace
+				// the namespace constraint already permits; otherwise it is
+				// redundant/contradictory.
+				if !namespaceAllowed(w, q.Namespace) {
+					b.errf(xsd.SpecWPropsCorrect, n.Pos, "notQName %q names a namespace not allowed by the wildcard's namespace constraint", tok)
+				}
 			}
 		}
 	}
 	return w
+}
+
+// namespaceAllowed reports whether ns is permitted by the wildcard's
+// {namespace constraint} (ignoring {disallowed names}).
+func namespaceAllowed(w *xsd.Wildcard, ns string) bool {
+	switch w.Mode {
+	case xsd.NSConstraintAny:
+		return true
+	case xsd.NSConstraintEnumeration:
+		return slices.Contains(w.Namespaces, ns)
+	case xsd.NSConstraintNot:
+		return !slices.Contains(w.Namespaces, ns)
+	}
+	return true
 }
 
 // --- identity constraints ---------------------------------------------
