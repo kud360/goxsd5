@@ -57,6 +57,12 @@ func TestQNameResolutionInAttrValue(t *testing.T) {
 	if _, err := f.ResolveQName("a:b:c"); err == nil {
 		t.Error("a:b:c should not be a valid QName")
 	}
+	if _, err := f.ResolveQName(":Bar"); err == nil {
+		t.Error(":Bar should not be a valid QName (empty prefix)")
+	}
+	if _, err := f.ResolveQName("tns:"); err == nil {
+		t.Error("tns: should not be a valid QName (empty local part)")
+	}
 }
 
 func TestNamespaceScoping(t *testing.T) {

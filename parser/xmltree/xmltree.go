@@ -83,10 +83,13 @@ func (c *NSContext) Lookup(prefix string) (string, bool) {
 func (n *Node) ResolveQName(s string) (xsd.QName, error) {
 	// spec: src-qname — XSD 1.1 Part 1 §3.15.3 (xmlschema11-1.md#src-qname)
 	prefix, local := "", s
+	hasColon := false
 	if i := strings.IndexByte(s, ':'); i >= 0 {
-		prefix, local = s[:i], s[i+1:]
+		prefix, local, hasColon = s[:i], s[i+1:], true
 	}
-	if !IsNCName(local) || (prefix != "" && !IsNCName(prefix)) {
+	// A QName with a colon must carry a non-empty NCName prefix; ":local" and
+	// "prefix:" are both malformed.
+	if !IsNCName(local) || (hasColon && !IsNCName(prefix)) {
 		return xsd.QName{}, fmt.Errorf("%q is not a valid QName", s)
 	}
 	if prefix == "" {
