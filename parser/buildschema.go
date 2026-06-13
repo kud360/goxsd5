@@ -216,27 +216,6 @@ func (b *builder) finishComplexTypes() {
 			subMembers[head] = append(subMembers[head], e)
 		}
 	}
-	for _, t := range b.types {
-		if ct, ok := t.(*xsd.ComplexType); ok {
-			b.checkElementConsistent(ct, subMembers)
-			b.checkAllUPA(ct, subMembers)
-		}
-	}
-	b.checkSubstitutionCycles()
-}
-
-// checkAllUPA enforces Unique Particle Attribution (cos-nonambig) within
-// <all> model groups. Because every particle of an all group matches an
-// independent run of children regardless of order, UPA there reduces to a
-// pairwise test: no two element particles may accept a common element (by
-// name or substitution group), and no two wildcard particles may have
-// overlapping namespace constraints. (Sequence/choice UPA, which needs a
-// particle automaton, is still deferred.)
-func (b *builder) checkAllUPA(ct *xsd.ComplexType, subMembers map[*xsd.ElementDecl][]*xsd.ElementDecl) {
-	ec, ok := ct.Content.(*xsd.ElementContent)
-	if !ok || ec.Particle == nil {
-		return
-	}
 	// accepted returns the set of expanded names an element particle for e can
 	// match: e itself plus every declaration transitively substitutable for it.
 	acceptedCache := map[*xsd.ElementDecl]map[xsd.QName]bool{}
@@ -259,7 +238,28 @@ func (b *builder) checkAllUPA(ct *xsd.ComplexType, subMembers map[*xsd.ElementDe
 		acceptedCache[e] = s
 		return s
 	}
+	for _, t := range b.types {
+		if ct, ok := t.(*xsd.ComplexType); ok {
+			b.checkElementConsistent(ct, subMembers)
+			b.checkAllUPA(ct, accepted)
+			b.checkSeqChoiceUPA(ct, accepted)
+		}
+	}
+	b.checkSubstitutionCycles()
+}
 
+// checkAllUPA enforces Unique Particle Attribution (cos-nonambig) within
+// <all> model groups. Because every particle of an all group matches an
+// independent run of children regardless of order, UPA there reduces to a
+// pairwise test: no two element particles may accept a common element (by
+// name or substitution group), and no two wildcard particles may have
+// overlapping namespace constraints. Sequence/choice UPA is handled by
+// checkSeqChoiceUPA (a position automaton).
+func (b *builder) checkAllUPA(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool) {
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok || ec.Particle == nil {
+		return
+	}
 	seen := map[*xsd.ModelGroup]bool{}
 	var walk func(mg *xsd.ModelGroup)
 	walk = func(mg *xsd.ModelGroup) {

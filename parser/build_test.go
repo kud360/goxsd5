@@ -104,6 +104,17 @@ func TestBuilderNegatives(t *testing.T) {
 		{"overlapping wildcards in an all group",
 			`<xs:complexType name="c"><xs:all><xs:any namespace="urn:a urn:b"/><xs:any namespace="urn:b urn:c"/></xs:all></xs:complexType>`,
 			[]string{"cos-nonambig"}},
+		{"repeated optional element then required same element (a*,a)",
+			`<xs:complexType name="c"><xs:sequence><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="unbounded"/><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>`,
+			[]string{"cos-nonambig"}},
+		{"choice of element and substitutable element",
+			`<xs:element name="head" type="xs:int"/>
+			 <xs:element name="mem" type="xs:int" substitutionGroup="tns:head"/>
+			 <xs:complexType name="c"><xs:choice><xs:element ref="tns:head"/><xs:element ref="tns:mem"/></xs:choice></xs:complexType>`,
+			[]string{"cos-nonambig"}},
+		{"choice of overlapping wildcards",
+			`<xs:complexType name="c"><xs:choice><xs:any namespace="urn:a urn:b"/><xs:any namespace="urn:b"/></xs:choice></xs:complexType>`,
+			[]string{"cos-nonambig"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
@@ -571,6 +582,24 @@ func TestBuildDefaultAttributesGroup(t *testing.T) {
 </xs:schema>`)
 		wantIDs(t, errs, "ct-props-correct")
 	})
+}
+
+func TestBuildUPAValidModels(t *testing.T) {
+	// Content models that are deterministic and must NOT trip cos-nonambig.
+	cases := []string{
+		// Same element twice in sequence (distinct positions, no shared follow).
+		`<xs:complexType name="c"><xs:sequence><xs:element name="a" type="xs:int"/><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>`,
+		// Optional then a different element.
+		`<xs:complexType name="c"><xs:sequence><xs:element name="a" type="xs:int" minOccurs="0"/><xs:element name="b" type="xs:int"/></xs:sequence></xs:complexType>`,
+		// Element competes with a wildcard: the element wins, no violation.
+		`<xs:complexType name="c"><xs:choice><xs:element name="a" type="xs:int"/><xs:any namespace="##any"/></xs:choice></xs:complexType>`,
+		// Disjoint wildcards in a choice.
+		`<xs:complexType name="c"><xs:choice><xs:any namespace="urn:a"/><xs:any namespace="urn:b"/></xs:choice></xs:complexType>`,
+	}
+	for _, body := range cases {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
+		wantClean(t, errs)
+	}
 }
 
 func TestBuildMaxOccursZeroParticle(t *testing.T) {

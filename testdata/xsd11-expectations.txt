@@ -4815,6 +4815,7 @@ saxonMeta/Subsgroup.testSet#subsgroup001 pass
 saxonMeta/Subsgroup.testSet#subsgroup002 pass
 saxonMeta/Subsgroup.testSet#subsgroup003 pass
 saxonMeta/Subsgroup.testSet#subsgroup901 pass
+saxonMeta/Subsgroup.testSet#subsgroup902 pass
 saxonMeta/Subsgroup.testSet#subsgroup903 pass
 saxonMeta/TargetNS.testSet#target001 pass
 saxonMeta/TargetNS.testSet#target002 pass
@@ -5627,6 +5628,7 @@ sunMeta/suntest.testSet#xsd022 pass
 sunMeta/suntest.testSet#xsd023.e pass
 sunMeta/suntest.testSet#xsd024 pass
 wgMeta/substitution-groups.testSet#sg-abstract-edc pass
+wgMeta/substitution-groups.testSet#sg-abstract-upa pass
 wgMeta/substitution-groups.testSet#sg-abstract-upa2 pass
 wgMeta/substitution-groups.testSet#sg-and-defined-Sibling-1 pass
 wgMeta/substitution-groups.testSet#sg-and-defined-Sibling-2 pass

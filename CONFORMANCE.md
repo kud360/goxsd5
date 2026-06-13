@@ -173,7 +173,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-nonambig (UPA) | §3.8.6 | post-M9 | wip (<all>-group pairwise competition done; sequence/choice automaton deferred) | parser/buildschema.go:233 |
+| cos-nonambig (UPA) | §3.8.6 | post-M9 | done (<all>-group pairwise competition + sequence/choice Glushkov position automaton) | parser/upa.go |
 | cos-particle-restrict | §3.9.6 | M9+ | deferred (particle restriction recursion) | |
 | cos-element-consistent (EDC) | §3.8.6 | M9+ | deferred (element declarations consistent) | |
 | cos-ct-derived-ok | §3.4.6 | M9+ | deferred (complex-type derivation OK) | |
