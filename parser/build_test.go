@@ -92,6 +92,18 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:group name="g"><xs:all><xs:element name="b" type="xs:int"/></xs:all></xs:group>
 			 <xs:complexType name="c"><xs:all><xs:element name="a" type="xs:int"/><xs:group ref="tns:g" maxOccurs="3"/></xs:all></xs:complexType>`,
 			[]string{"cos-all-limited"}},
+		{"same element twice in an all group",
+			`<xs:element name="o" type="xs:int"/>
+			 <xs:complexType name="c"><xs:all><xs:element ref="tns:o"/><xs:element name="x" type="xs:int"/><xs:element ref="tns:o"/></xs:all></xs:complexType>`,
+			[]string{"cos-nonambig"}},
+		{"substitutable element competes in an all group",
+			`<xs:element name="o" type="xs:int"/>
+			 <xs:element name="p" type="xs:int" substitutionGroup="tns:o"/>
+			 <xs:complexType name="c"><xs:all><xs:element ref="tns:o"/><xs:element ref="tns:p"/></xs:all></xs:complexType>`,
+			[]string{"cos-nonambig"}},
+		{"overlapping wildcards in an all group",
+			`<xs:complexType name="c"><xs:all><xs:any namespace="urn:a urn:b"/><xs:any namespace="urn:b urn:c"/></xs:all></xs:complexType>`,
+			[]string{"cos-nonambig"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},

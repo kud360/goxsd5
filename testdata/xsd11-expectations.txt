@@ -4536,6 +4536,10 @@ saxonMeta/All.testSet#all231 pass
 saxonMeta/All.testSet#all232 pass
 saxonMeta/All.testSet#all234 pass
 saxonMeta/All.testSet#all237 pass
+saxonMeta/All.testSet#all240 pass
+saxonMeta/All.testSet#all241 pass
+saxonMeta/All.testSet#all242 pass
+saxonMeta/All.testSet#all243 pass
 saxonMeta/All.testSet#all301 pass
 saxonMeta/All.testSet#all304 pass
 saxonMeta/All.testSet#all306 pass
@@ -4811,6 +4815,7 @@ saxonMeta/Subsgroup.testSet#subsgroup001 pass
 saxonMeta/Subsgroup.testSet#subsgroup002 pass
 saxonMeta/Subsgroup.testSet#subsgroup003 pass
 saxonMeta/Subsgroup.testSet#subsgroup901 pass
+saxonMeta/Subsgroup.testSet#subsgroup903 pass
 saxonMeta/TargetNS.testSet#target001 pass
 saxonMeta/TargetNS.testSet#target002 pass
 saxonMeta/TargetNS.testSet#target003 pass

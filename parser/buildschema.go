@@ -219,9 +219,157 @@ func (b *builder) finishComplexTypes() {
 	for _, t := range b.types {
 		if ct, ok := t.(*xsd.ComplexType); ok {
 			b.checkElementConsistent(ct, subMembers)
+			b.checkAllUPA(ct, subMembers)
 		}
 	}
 	b.checkSubstitutionCycles()
+}
+
+// checkAllUPA enforces Unique Particle Attribution (cos-nonambig) within
+// <all> model groups. Because every particle of an all group matches an
+// independent run of children regardless of order, UPA there reduces to a
+// pairwise test: no two element particles may accept a common element (by
+// name or substitution group), and no two wildcard particles may have
+// overlapping namespace constraints. (Sequence/choice UPA, which needs a
+// particle automaton, is still deferred.)
+func (b *builder) checkAllUPA(ct *xsd.ComplexType, subMembers map[*xsd.ElementDecl][]*xsd.ElementDecl) {
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok || ec.Particle == nil {
+		return
+	}
+	// accepted returns the set of expanded names an element particle for e can
+	// match: e itself plus every declaration transitively substitutable for it.
+	acceptedCache := map[*xsd.ElementDecl]map[xsd.QName]bool{}
+	accepted := func(e *xsd.ElementDecl) map[xsd.QName]bool {
+		if s, ok := acceptedCache[e]; ok {
+			return s
+		}
+		s := map[xsd.QName]bool{}
+		var add func(d *xsd.ElementDecl)
+		add = func(d *xsd.ElementDecl) {
+			if s[d.Name] {
+				return
+			}
+			s[d.Name] = true
+			for _, m := range subMembers[d] {
+				add(m)
+			}
+		}
+		add(e)
+		acceptedCache[e] = s
+		return s
+	}
+
+	seen := map[*xsd.ModelGroup]bool{}
+	var walk func(mg *xsd.ModelGroup)
+	walk = func(mg *xsd.ModelGroup) {
+		if mg == nil || seen[mg] {
+			return
+		}
+		seen[mg] = true
+		if mg.Compositor == xsd.CompositorAll {
+			b.checkAllGroupParticles(ct, mg, accepted)
+		}
+		for _, p := range mg.Particles {
+			switch term := p.Term.(type) {
+			case *xsd.ModelGroup:
+				walk(term)
+			case *xsd.GroupRef:
+				if term.Ref != nil {
+					walk(term.Ref.Group)
+				}
+			}
+		}
+	}
+	if mg, ok := ec.Particle.Term.(*xsd.ModelGroup); ok {
+		walk(mg)
+	} else if gr, ok := ec.Particle.Term.(*xsd.GroupRef); ok && gr.Ref != nil {
+		walk(gr.Ref.Group)
+	}
+}
+
+func (b *builder) checkAllGroupParticles(ct *xsd.ComplexType, all *xsd.ModelGroup, accepted func(*xsd.ElementDecl) map[xsd.QName]bool) {
+	type elemP struct {
+		decl  *xsd.ElementDecl
+		names map[xsd.QName]bool
+		pos   xsd.Pos
+	}
+	var elems []elemP
+	var wilds []*xsd.Wildcard
+	for _, p := range all.Particles {
+		switch term := p.Term.(type) {
+		case *xsd.ElementDecl:
+			names := accepted(term)
+			for _, prev := range elems {
+				if namesOverlap(prev.names, names) {
+					// spec: cos-nonambig — XSD 1.1 Part 1 §3.8.6.4 (xmlschema11-1.md#cos-nonambig)
+					b.errf(xsd.SpecCosNonambig, p.Pos, "elements %s and %s compete in the <all> group of %s (Unique Particle Attribution)", prev.decl.Name, term.Name, describeCT(ct))
+				}
+			}
+			elems = append(elems, elemP{decl: term, names: names, pos: p.Pos})
+		case *xsd.Wildcard:
+			for _, prev := range wilds {
+				if wildcardsOverlap(prev, term) {
+					b.errf(xsd.SpecCosNonambig, p.Pos, "two wildcards compete in the <all> group of %s (Unique Particle Attribution)", describeCT(ct))
+				}
+			}
+			wilds = append(wilds, term)
+		}
+	}
+}
+
+func namesOverlap(a, b map[xsd.QName]bool) bool {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	for n := range a {
+		if b[n] {
+			return true
+		}
+	}
+	return false
+}
+
+// wildcardsOverlap reports whether two wildcards can match a common element.
+// It returns false (no competition) when either carries notQName so the check
+// never produces a false positive from the disallowed-names subtraction.
+func wildcardsOverlap(a, b *xsd.Wildcard) bool {
+	if len(a.NotQName) > 0 || len(b.NotQName) > 0 {
+		return false
+	}
+	if a.Mode == xsd.NSConstraintAny || b.Mode == xsd.NSConstraintAny {
+		return true
+	}
+	switch {
+	case a.Mode == xsd.NSConstraintNot && b.Mode == xsd.NSConstraintNot:
+		// Both are "any namespace except a finite set"; their intersection
+		// (the complement of the union) is always non-empty.
+		return true
+	case a.Mode == xsd.NSConstraintEnumeration && b.Mode == xsd.NSConstraintEnumeration:
+		return namespacesIntersect(a.Namespaces, b.Namespaces)
+	default:
+		// One enumeration, one not: overlap iff the enumeration lists a
+		// namespace the "not" set does not exclude.
+		enum, not := a, b
+		if a.Mode == xsd.NSConstraintNot {
+			enum, not = b, a
+		}
+		for _, ns := range enum.Namespaces {
+			if !slices.Contains(not.Namespaces, ns) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func namespacesIntersect(a, b []string) bool {
+	for _, x := range a {
+		if slices.Contains(b, x) {
+			return true
+		}
+	}
+	return false
 }
 
 // checkSubstitutionCycles enforces e-props-correct.6: it must not be possible
