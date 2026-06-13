@@ -174,7 +174,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
 | cos-nonambig (UPA) | §3.8.6 | post-M9 | done (<all>-group pairwise competition + sequence/choice Glushkov position automaton) | parser/upa.go |
-| cos-particle-restrict | §3.9.6 | M9+ | wip (per-name occurrence/type bag check for flat all/sequence element models; wildcard-subset, choice, and open-content subsumption deferred) | parser/restrict.go |
+| cos-particle-restrict | §3.9.6 | M9+ | wip (per-name occurrence/type bag check for flat all/sequence element/wildcard models, incl. a choice of flat branches checked per-branch; multi-base-wildcard packing deferred) | parser/restrict.go |
 | cos-element-consistent (EDC) | §3.8.6 | M9+ | deferred (element declarations consistent) | |
 | cos-ct-derived-ok | §3.4.6 | M9+ | deferred (complex-type derivation OK) | |
 | cos-st-derived-ok | §3.16.6 | M9+ | deferred (simple-type derivation OK) | |

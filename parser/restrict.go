@@ -36,9 +36,23 @@ package parser
 
 import "github.com/kud360/goxsd5/xsd"
 
+// baseSlot is one particle of a flat base content model: an element
+// declaration (with its accepted-name set) or the single wildcard, plus the
+// effective occurrence range that base particle contributes.
+type baseSlot struct {
+	decl     *xsd.ElementDecl // element slot
+	wc       *xsd.Wildcard    // wildcard slot
+	min, max int
+	names    map[xsd.QName]bool
+}
+
 // checkParticleRestrict reports cos-particle-restrict violations for ct when ct
-// is a complexContent restriction of a complex base and both content models are
-// a flat all/sequence of element particles.
+// is a complexContent restriction of a complex base whose base content model is
+// a flat all/sequence of element/wildcard particles. The restriction content
+// model may be the same flat shape (one run) or a choice of flat branches, in
+// which case each branch is checked independently: an instance matching the
+// choice matches exactly one branch, so every branch must on its own be a valid
+// restriction of the base.
 func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool) {
 	if ct.DerivationMethod != xsd.DeriveRestriction {
 		return
@@ -53,30 +67,18 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		return // empty-content restriction: emptiability is checked elsewhere
 	}
 	if rec.OpenContent != nil || bec.OpenContent != nil {
-		return // open-content subset is deferred (NOTES.md)
+		return // open-content subset is handled by checkOpenContentRestrict
 	}
 
-	rParts, rTop, rOK := flatGroup(rec.Particle)
 	bParts, bTop, bOK := flatGroup(bec.Particle)
-	if !rOK || !bOK {
-		return // a choice / nested group / group ref is present: give up safely
+	if !bOK {
+		return // base is not a flat all/sequence: give up safely
 	}
 
-	// Build a slot per base particle: element slots carry the declaration's
-	// accepted-name set; the wildcard slot (at most one is handled) carries the
-	// wildcard. With two or more base wildcards a restriction particle could map
-	// to either, so give up rather than guess.
-	type baseSlot struct {
-		decl     *xsd.ElementDecl // element slot
-		wc       *xsd.Wildcard    // wildcard slot
-		min, max int
-		names    map[xsd.QName]bool
-		sumMin   int
-		sumMax   int
-		mapped   bool
-	}
+	// Build a slot per base particle. With two or more base wildcards a
+	// restriction particle could map to either, so give up rather than guess.
 	slots := make([]*baseSlot, 0, len(bParts))
-	var baseWC *baseSlot
+	baseWC := -1
 	for _, bp := range bParts {
 		s := &baseSlot{min: mulOcc(bTop.MinOccurs, bp.MinOccurs), max: mulOcc(bTop.MaxOccurs, bp.MaxOccurs)}
 		switch term := bp.Term.(type) {
@@ -84,20 +86,44 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 			s.decl = term
 			s.names = accepted(term)
 		case *xsd.Wildcard:
-			if baseWC != nil {
+			if baseWC >= 0 {
 				return // more than one base wildcard: give up
 			}
 			s.wc = term
-			baseWC = s
+			baseWC = len(slots)
 		}
 		slots = append(slots, s)
 	}
 
-	// mapTo accumulates rp's occurrence onto slot s and marks it mapped.
-	mapTo := func(s *baseSlot, rp *xsd.Particle) {
-		s.mapped = true
-		s.sumMin = addOcc(s.sumMin, mulOcc(rTop.MinOccurs, rp.MinOccurs))
-		s.sumMax = addOcc(s.sumMax, mulOcc(rTop.MaxOccurs, rp.MaxOccurs))
+	if rParts, rTop, rOK := flatGroup(rec.Particle); rOK {
+		b.checkRestrictRun(ct, slots, baseWC, rParts, rTop)
+		return
+	}
+	// A choice restriction: validate every branch on its own. A branch term that
+	// is a wildcard, group reference, nested choice, or occurs other than once
+	// makes the whole choice unanalyzable, so give up.
+	branches, rOK := choiceBranches(rec.Particle)
+	if !rOK {
+		return
+	}
+	unitTop := &xsd.Particle{MinOccurs: 1, MaxOccurs: 1}
+	for _, br := range branches {
+		b.checkRestrictRun(ct, slots, baseWC, br, unitTop)
+	}
+}
+
+// checkRestrictRun checks one flat run of restriction particles (rParts, each
+// scaled by rTop's occurrence) against the base slots, reporting any
+// cos-particle-restrict violation. Occurrence accumulation is local to the run,
+// so the same slots can be reused for each branch of a choice.
+func (b *builder) checkRestrictRun(ct *xsd.ComplexType, slots []*baseSlot, baseWC int, rParts []*xsd.Particle, rTop *xsd.Particle) {
+	sumMin := make([]int, len(slots))
+	sumMax := make([]int, len(slots))
+	mapped := make([]bool, len(slots))
+	mapTo := func(i int, rp *xsd.Particle) {
+		mapped[i] = true
+		sumMin[i] = addOcc(sumMin[i], mulOcc(rTop.MinOccurs, rp.MinOccurs))
+		sumMax[i] = addOcc(sumMax[i], mulOcc(rTop.MaxOccurs, rp.MaxOccurs))
 	}
 
 	for _, rp := range rParts {
@@ -105,29 +131,29 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		case *xsd.ElementDecl:
 			// Find the base element particle whose accepted names include this
 			// element (exact name or substitution-group membership).
-			var slot *baseSlot
+			slot := -1
 			ambiguous := false
-			for _, s := range slots {
+			for i, s := range slots {
 				if s.decl != nil && s.names[term.Name] {
-					if slot != nil {
+					if slot != -1 {
 						ambiguous = true
 						break
 					}
-					slot = s
+					slot = i
 				}
 			}
 			if ambiguous {
 				return // can't decide which base particle it restricts: give up
 			}
-			if slot != nil {
+			if slot != -1 {
 				mapTo(slot, rp)
-				if !validlyDerivedByRestriction(term.Type, slot.decl.Type) {
+				if !validlyDerivedByRestriction(term.Type, slots[slot].decl.Type) {
 					// spec: cos-particle-restrict — §3.4.6.4 clause 2 /
 					// NameAndTypeOK: the restricting element's type must derive
 					// from the base's.
 					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", term.Name, describeCT(ct))
 				}
-				if !slot.decl.Nillable && term.Nillable {
+				if !slots[slot].decl.Nillable && term.Nillable {
 					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s may not be nillable when the base element is not", term.Name, describeCT(ct))
 				}
 				continue
@@ -135,7 +161,7 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 			// No base element matches: the element must be accepted by the base
 			// wildcard (NSCompat), else the restriction introduces a name the
 			// base disallows.
-			if baseWC != nil && wildcardAllowsName(baseWC.wc, term.Name) {
+			if baseWC >= 0 && wildcardAllowsName(slots[baseWC].wc, term.Name) {
 				mapTo(baseWC, rp)
 				continue
 			}
@@ -144,13 +170,13 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		case *xsd.Wildcard:
 			// A restriction wildcard can only restrict the base wildcard, and
 			// only if it is a wildcard subset of it (NSSubset).
-			if baseWC == nil {
+			if baseWC < 0 {
 				// spec: cos-particle-restrict — §3.4.6.4 clause 1: the base has no
 				// wildcard, so the restriction may not introduce one.
 				b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "the restriction of %s introduces a wildcard the base content model does not allow", describeCT(ct))
 				continue
 			}
-			if !namespaceConstraintSubset(term, baseWC.wc) {
+			if !namespaceConstraintSubset(term, slots[baseWC].wc) {
 				// spec: cos-particle-restrict — §3.4.6.4 clause 1 / NSSubset:
 				// the restricting wildcard must be a subset of the base's.
 				b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "a wildcard in the restriction of %s allows elements the base wildcard does not", describeCT(ct))
@@ -159,22 +185,52 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		}
 	}
 
-	for _, s := range slots {
-		if !s.mapped {
+	for i, s := range slots {
+		if !mapped[i] {
 			if s.min > 0 {
 				// spec: cos-particle-restrict — §3.4.6.4 clause 1: required base
 				// content must remain required in the restriction.
-				b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s omits required base content (%s)", describeCT(ct), slotName(s.decl))
+				b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s omits required base content (%s)", describeCT(ct), slotName(s.decl))
 			}
 			continue
 		}
-		if s.sumMin < s.min {
-			b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s allows %s fewer times than the base requires", describeCT(ct), slotName(s.decl))
+		if sumMin[i] < s.min {
+			b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s allows %s fewer times than the base requires", describeCT(ct), slotName(s.decl))
 		}
-		if !occLE(s.sumMax, s.max) {
-			b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), slotName(s.decl))
+		if !occLE(sumMax[i], s.max) {
+			b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), slotName(s.decl))
 		}
 	}
+}
+
+// choiceBranches returns the branches of a restriction content model that is a
+// choice (occurring exactly once) of flat element runs: each branch is a single
+// element/wildcard particle or a once-occurring all/sequence of them. It reports
+// ok=false (give up) for a repeating choice or any branch that is itself a
+// wildcard, a nested choice, a group reference, or occurs other than once.
+func choiceBranches(p *xsd.Particle) (branches [][]*xsd.Particle, ok bool) {
+	mg, isMG := p.Term.(*xsd.ModelGroup)
+	if !isMG || mg.Compositor != xsd.CompositorChoice || p.MinOccurs != 1 || p.MaxOccurs != 1 {
+		return nil, false
+	}
+	for _, c := range mg.Particles {
+		switch c.Term.(type) {
+		case *xsd.ElementDecl:
+			branches = append(branches, []*xsd.Particle{c})
+		case *xsd.ModelGroup:
+			// A nested model group branch must be a flat all/sequence occurring
+			// exactly once, so each instance taking the branch produces its
+			// elements exactly once.
+			parts, _, fok := flatGroup(c)
+			if !fok || c.MinOccurs != 1 || c.MaxOccurs != 1 {
+				return nil, false
+			}
+			branches = append(branches, parts)
+		default:
+			return nil, false // wildcard or group-ref branch: give up
+		}
+	}
+	return branches, true
 }
 
 // checkOpenContentRestrict reports derivation-ok-restriction violations for the

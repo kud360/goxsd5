@@ -198,6 +198,14 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:sequence/></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute namespace="##any"/></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"derivation-ok-restriction"}},
+		{"all restriction by a choice whose branch overshoots a base maxOccurs",
+			`<xs:complexType name="b"><xs:all><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="5"/><xs:element name="bb" type="xs:int" minOccurs="1" maxOccurs="5"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:choice><xs:sequence><xs:element name="bb" type="xs:int" minOccurs="3" maxOccurs="4"/></xs:sequence><xs:sequence><xs:element name="a" type="xs:int" minOccurs="1" maxOccurs="8"/><xs:element name="bb" type="xs:int" minOccurs="3" maxOccurs="4"/></xs:sequence></xs:choice></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"choice restriction branch omits a required base element",
+			`<xs:complexType name="b"><xs:sequence><xs:element name="a" type="xs:int"/><xs:element name="bb" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:choice><xs:element name="a" type="xs:int"/><xs:element name="bb" type="xs:int"/></xs:choice></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
 		// Open content restriction subset (derivation-ok-restriction §3.4.6.4
 		// clause 9): R's open content may not out-reach the base's (open016-019).
 		{"restriction adds open content the base lacks",
@@ -735,6 +743,9 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		// Base wildcard replaced by a concrete element it admits (NSCompat).
 		`<xs:complexType name="b"><xs:sequence><xs:any namespace="##any" maxOccurs="3"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="e" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// All restricted by a choice of branches, each within the base ranges.
+		`<xs:complexType name="b"><xs:all><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="3"/><xs:element name="bb" type="xs:int" minOccurs="0" maxOccurs="3"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:choice><xs:element name="a" type="xs:int" minOccurs="1" maxOccurs="2"/><xs:sequence><xs:element name="bb" type="xs:int" minOccurs="1" maxOccurs="2"/></xs:sequence></xs:choice></xs:restriction></xs:complexContent></xs:complexType>`,
 		// Open content narrowed: suffix mode kept, wildcard namespace reduced.
 		`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o urn:p"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
