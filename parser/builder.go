@@ -90,7 +90,7 @@ func (b *builder) registryFor(doc *schemaDoc) *registry {
 // namespace (built-ins are predefined everywhere), or an imported one. It
 // reports src-resolve and returns nil on failure.
 func (b *builder) lookupRef(s space, q xsd.QName, p xsd.Pos, doc *schemaDoc) *decl {
-	if doc != nil && q.Namespace != doc.targetNamespace && q.Namespace != xsd.XSDNS && !doc.importedNS[q.Namespace] {
+	if doc != nil && q.Namespace != doc.targetNamespace && q.Namespace != xsd.XSDNS && q.Namespace != xsd.XSINS && !doc.importedNS[q.Namespace] {
 		// spec: src-resolve.4 — XSD 1.1 Part 1 §3.15.3: a reference may only
 		// reach the target namespace or a namespace named by an import.
 		b.errf(xsd.SpecSrcResolve, p, "%s %s references namespace %q, which is not imported here", s, q, q.Namespace)

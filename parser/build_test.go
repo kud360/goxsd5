@@ -145,9 +145,6 @@ func TestBuilderNegatives(t *testing.T) {
 			 <xs:element name="head" type="tns:bt" final="restriction"/>
 			 <xs:element name="member" type="tns:dt" substitutionGroup="tns:head"/>`,
 			[]string{"e-props-correct"}},
-		{"element with ID type and default",
-			`<xs:element name="e" type="xs:ID" default="x"/>`,
-			[]string{"e-props-correct"}},
 		{"element default invalid for its type",
 			`<xs:element name="e" type="xs:int" default="abc"/>`,
 			[]string{"cos-valid-default"}},
@@ -157,9 +154,6 @@ func TestBuilderNegatives(t *testing.T) {
 			[]string{"cos-valid-default"}},
 
 		// Attribute declarations and uses.
-		{"attribute with ID type and default",
-			`<xs:attribute name="a" type="xs:ID" default="x"/>`,
-			[]string{"a-props-correct"}},
 		{"attribute typed by a complex type",
 			`<xs:complexType name="c"><xs:sequence/></xs:complexType>
 			 <xs:attribute name="a" type="tns:c"/>`,
@@ -180,9 +174,6 @@ func TestBuilderNegatives(t *testing.T) {
 		{"extension redeclares a base attribute",
 			`<xs:complexType name="b"><xs:attribute name="x" type="xs:int"/></xs:complexType>
 			 <xs:complexType name="d"><xs:complexContent><xs:extension base="tns:b"><xs:attribute name="x" type="xs:int"/></xs:extension></xs:complexContent></xs:complexType>`,
-			[]string{"ct-props-correct"}},
-		{"two ID-derived attributes",
-			`<xs:complexType name="c"><xs:attribute name="i1" type="xs:ID"/><xs:attribute name="i2" type="xs:ID"/></xs:complexType>`,
 			[]string{"ct-props-correct"}},
 		{"simpleContent restriction of a simple type",
 			`<xs:complexType name="c"><xs:simpleContent><xs:restriction base="xs:int"><xs:minInclusive value="0"/></xs:restriction></xs:simpleContent></xs:complexType>`,

@@ -279,8 +279,10 @@ func (b *builder) applyDefaultAttributes(ct *xsd.ComplexType, n *xmltree.Node, d
 
 // checkAttrUses runs the post-merge per-type attribute constraints.
 func (b *builder) checkAttrUses(ct *xsd.ComplexType) {
+	// Note: XSD 1.1 dropped the 1.0 rule (old ct-props-correct.5) limiting a
+	// complex type to a single ID-derived attribute; only the duplicate-name
+	// check (ct-props-correct.4) remains.
 	seen := map[xsd.QName]bool{}
-	idCount := 0
 	for _, u := range ct.AttributeUses {
 		if u.Decl == nil {
 			continue
@@ -291,13 +293,6 @@ func (b *builder) checkAttrUses(ct *xsd.ComplexType) {
 			continue
 		}
 		seen[u.Decl.Name] = true
-		if u.Decl.Type != nil && isIDDerived(u.Decl.Type) {
-			idCount++
-		}
-	}
-	if idCount > 1 {
-		// spec: ct-props-correct.5 — at most one ID-derived attribute.
-		b.errf(xsd.SpecCTPropsCorrect, ct.Pos, "%s has %d ID-derived attributes; at most one is allowed", describeCT(ct), idCount)
 	}
 }
 

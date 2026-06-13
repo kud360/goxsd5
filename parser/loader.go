@@ -62,7 +62,7 @@ type loader struct {
 
 func newLoader(resolver SchemaResolver, errs *xsd.ErrorList) *loader {
 	return &loader{
-		resolver:  resolver,
+		resolver:  builtinResolver{inner: resolver},
 		errs:      errs,
 		trees:     map[string]*treeEntry{},
 		validated: map[string]bool{},

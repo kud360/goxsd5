@@ -53,6 +53,21 @@ var AnyAtomicType = &xsd.SimpleType{
 	IsBuiltin: true,
 }
 
+// ErrorType is xs:error (XSD 1.1 §3.16.7.3): a special simple type with empty
+// value and lexical space — no lexical form is ever valid. It is a union with
+// no member types and {final} = #all, present in every schema so it can be
+// named (notably in conditional type assignment) to force invalidity.
+var ErrorType = &xsd.SimpleType{
+	Name:     qn("error"),
+	BaseType: AnySimpleType,
+	Variety:  xsd.VarietyUnion,
+	Final:    xsd.AllDerivations,
+	Parse: func(lexical string, _ xsd.ValueContext) (xsd.Value, error) {
+		return nil, fmt.Errorf("no value is valid against xs:error")
+	},
+	IsBuiltin: true,
+}
+
 func parseAsString(s string, _ xsd.ValueContext) (xsd.Value, error) { return xsd.String(s), nil }
 
 // primitive constructs a primitive type: based on anyAtomicType, its own
@@ -422,6 +437,37 @@ func AllBuiltins() []*xsd.SimpleType {
 		NMTOKENS, IDREFS, ENTITIES,
 		DateTimeStamp, YearMonthDuration, DayTimeDuration,
 	}
+}
+
+// xsiSchemaLocationType is the anonymous list-of-anyURI type of the built-in
+// xsi:schemaLocation attribute.
+var xsiSchemaLocationType = &xsd.SimpleType{
+	Name:      xsd.QName{Namespace: xsd.XSINS, Local: "schemaLocationType"},
+	BaseType:  AnySimpleType,
+	Variety:   xsd.VarietyList,
+	ItemType:  AnyURI,
+	IsBuiltin: true,
+}
+
+func xsiAttr(local string, t *xsd.SimpleType) *xsd.AttributeDecl {
+	return &xsd.AttributeDecl{
+		Name:        xsd.QName{Namespace: xsd.XSINS, Local: local},
+		Global:      true,
+		Form:        xsd.FormQualified,
+		Type:        t,
+		Inheritable: false,
+	}
+}
+
+// XSIAttributes are the four built-in attribute declarations in the XSI
+// namespace (§3.2.7): xsi:type, xsi:nil, xsi:schemaLocation and
+// xsi:noNamespaceSchemaLocation. They are present in every schema and a
+// reference to one requires no <import> of the XSI namespace.
+var XSIAttributes = []*xsd.AttributeDecl{
+	xsiAttr("type", QName),
+	xsiAttr("nil", Boolean),
+	xsiAttr("schemaLocation", xsiSchemaLocationType),
+	xsiAttr("noNamespaceSchemaLocation", AnyURI),
 }
 
 // Lookup returns the built-in simple type with the given local name in the

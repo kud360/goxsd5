@@ -7,10 +7,9 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — M8 DONE (2026-06-12). Next: M9.
+## Status — M9 DONE (2026-06-12). All milestones M0–M9 complete.
 NOTE ON ORDERING: user chose to do M8 before M9 (numeric order), overriding
-the original NOTES checklist that had M9 first. M9 is the only milestone
-left on the parser critical path.
+the original NOTES checklist that had M9 first.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
 - [x] M1 parser/xmltree (NS-scoped tree, line/col, src-qname, foreign content)
 - [x] M2 xsd model skeleton (model.go — full Part 1 §3 component shapes)
@@ -23,8 +22,42 @@ left on the parser critical path.
   pipeline per suite group: 5231 valid groups → 99 with errors (triage below)
 - [x] M8 mutation API (xsd/mutate.go), CONFORMANCE.md fill-in + guard test,
   cmd/goxsd5 — see "M8 shape" below
-- [ ] M9 W3C harness + expectations baseline — RESUME HERE (also fix the
-  pre-M7 bugs found by the full scan, see "M7 scan triage")
+- [x] M9 W3C harness + expectations baseline (ratchet); pre-M7 scan-triage
+  bugs fixed — see "M9 shape" below
+
+## M9 shape (as built)
+- parser/conformance_suite_test.go — TestConformanceSuite, the ratchet. Runs
+  by default when testdata/xsdtests is present (skips otherwise), gating
+  `go test ./parser`. Case id = "<testSet-relpath>#<group>" (unique, 5241
+  groups). Per case: full pipeline, our verdict (errs.Empty()) vs suite
+  validity; gated against testdata/xsd11-expectations.txt. Rules: recorded
+  pass now failing = regression FAIL; unlisted+now-correct = unexpected-pass
+  FAIL ("re-run -update-expectations"); unlisted+still-wrong = tolerated;
+  skip: = not gated. -update-expectations rewrites the pass set, PRESERVING
+  hand-curated skip: lines. Root-doc load failures (XML 1.1/DTD/non-wf) are
+  excluded from gating (not a schema verdict). GOXSD5_CONFORMANCE_GAPS=1 logs
+  the unrecorded gaps for triage.
+- BASELINE: 5709 determinate 1.1 schema cases → 5537 pass, 26 skip
+  (25 precisionDecimal + 1 introspection/xlink meta-schema), ~146 tolerated
+  unlisted gaps (deferred features: UPA/EDC/particle-restrict/wildcard
+  intersection/open-content/CTA/assertions — all in "Still-deferred" below).
+- TRIAGE FIXES (landed before baselining; were false positives in the M7 scan):
+  - Dropped the three 1.0 ID rules XSD 1.1 relaxed: a-props-correct.3,
+    e-props-correct.5, ct-props-correct.5 (value-constraint VALIDITY checks
+    kept). Removed isIDDerived + the three negative build_test cases.
+  - xs:error builtin (builtin.ErrorType, §3.16.7.3) — union, no members,
+    final=#all, Parse always errors; registered in newRegistry.
+  - Four XSI attribute decls (builtin.XSIAttributes, §3.2.7) — resolvable
+    with NO import (lookupRef treats XSINS as reachable like XSDNS); decl
+    grew a builtinAttr field, buildAttrUse uses it.
+  - xml namespace: builtinResolver (parser/builtinschemas.go) wraps the
+    loader's resolver and serves a bundled xml.xsd for the well-known w3.org
+    URLs (2001/2007/2009 revs, http+https). Wired in newLoader so ALL paths
+    (Parse, harness, tests) get it.
+  - parser/builtinschemas_test.go unit-tests all three so they hold without
+    the suite (which is gitignored).
+- suitescan_test.go (GOXSD5_SCAN, M5/M7 informational error histogram) kept
+  alongside the real harness; still useful for triage.
 
 ## M8 shape (as built)
 - xsd/mutate.go — safe mutation API, all copy-on-write (validate a candidate,

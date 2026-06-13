@@ -60,10 +60,10 @@ constant name in code.
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
 | st-props-correct | §3.16.6 | M4/M6 | done (2 = cycles; 3 = final exclusion for list/union) | parser/builder.go:147 |
-| ct-props-correct | §3.4.6 | M6 | done (4 = duplicate attr uses; 5 = ≤1 ID attr) | parser/buildschema.go:261 |
+| ct-props-correct | §3.4.6 | M6 | done (4 = duplicate attr uses; the 1.0 "≤1 ID attr" rule was dropped in 1.1) | parser/buildschema.go:261 |
 | ct-props-correct.3 (no circular defs) | §3.4.6 | M6 | done (post-pass; cycle broken to keep the model walkable) | |
-| e-props-correct | §3.3.6 | M6 | done (2 = value constraint; 4 = subst final exclusion; 5 = no ID default) | parser/buildterms.go:98 |
-| a-props-correct | §3.2.6 | M6 | done (2 = simple type + value constraint; 3 = no ID default) | parser/buildterms.go:259 |
+| e-props-correct | §3.3.6 | M6 | done (2 = value constraint; 4 = subst final exclusion; the 1.0 "no ID default" rule was dropped in 1.1) | parser/buildterms.go:98 |
+| a-props-correct | §3.2.6 | M6 | done (2 = simple type + value constraint; the 1.0 "no ID default" rule was dropped in 1.1) | parser/buildterms.go:259 |
 | au-props-correct | §3.5.6 | M6 | done (2 = fixed consistency) | parser/buildterms.go:357 |
 | mg-props-correct | §3.8.6 | M6 | done (2 = circular model groups) | parser/buildterms.go:484 |
 | c-props-correct | §3.11.6 | M6 | done (keyref category + field arity; ref cycles) | parser/buildterms.go:578 |
@@ -186,3 +186,24 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | mgd-props-correct | §3.7.6 | M9+ | deferred (model group definition properties) | |
 | st-restrict-facets | §4.1.6 | M9+ | deferred (companion to cos-st-restricts facet recursion) | |
 | src-expredef | §4.2.5 | M9+ | deferred (redefine/override is a legal redefinition) | |
+
+## Built-in declarations present in every schema (M9)
+
+These are not constraints but components the spec mandates be available
+without an explicit `<import>`. They were added in M9 so the W3C suite's
+schemas that reference them resolve correctly.
+
+| Component | Section | Status | Impl (file:line) |
+|-----------|---------|--------|------------------|
+| `xs:error` special simple type | §3.16.7.3 | done (no valid instances; resolvable as a type) | builtin/builtin.go (ErrorType) |
+| Built-in XSI attribute declarations (`xsi:type`, `xsi:nil`, `xsi:schemaLocation`, `xsi:noNamespaceSchemaLocation`) | §3.2.7 | done (reference needs no import) | builtin/builtin.go (XSIAttributes) |
+| xml namespace schema (`xml:lang`/`space`/`base`/`id`, `specialAttrs`) | §F.1 / xml.xsd | done (well-known w3.org URLs served by builtinResolver) | parser/builtinschemas.go |
+
+## Conformance harness (M9)
+
+The W3C XSD test suite is wired through `parser/TestConformanceSuite`. For
+every schema test applicable to XSD 1.1 it runs the full pipeline and compares
+our verdict to the suite's declared validity, gated against the committed
+ratchet `testdata/xsd11-expectations.txt` (`pass` lines auto-ratchet up,
+`skip:` lines are curated for deferred features). Regressions and unrecorded
+passes both fail; see PLAN.md M9. Run with `-update-expectations` to re-baseline.

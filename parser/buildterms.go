@@ -98,11 +98,11 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 	// spec: e-props-correct.2 / cos-valid-default — XSD 1.1 Part 1 §3.3.6
 	if vc := valueConstraint(e.Default, e.Fixed); vc != nil {
 		if st := contentSimpleType(e.Type); st != nil {
-			if isIDDerived(st) {
-				// spec: e-props-correct.5 — no value constraint for
-				// ID-derived element types.
-				b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s has an ID-derived type and must not have a default or fixed value", e.Name)
-			} else if _, err := st.ParseValue(*vc, nsContext{n}); err != nil {
+			// Note: XSD 1.1 dropped the 1.0 rule (old e-props-correct.5)
+			// forbidding value constraints on ID-derived element types; it is
+			// now only a non-normative "should avoid" note, so we no longer
+			// reject it.
+			if _, err := st.ParseValue(*vc, nsContext{n}); err != nil {
 				b.errf(xsd.SpecCosValidDefault, n.Pos, "default/fixed value %q is not valid for the type of element %s: %v", *vc, e.Name, err)
 			}
 		} else if ct, ok := e.Type.(*xsd.ComplexType); ok {
@@ -169,16 +169,6 @@ func contentSimpleType(t xsd.Type) *xsd.SimpleType {
 		}
 	}
 	return nil
-}
-
-// isIDDerived reports whether st derives from xs:ID by restriction.
-func isIDDerived(st *xsd.SimpleType) bool {
-	for t := st; t != nil; t, _ = t.BaseType.(*xsd.SimpleType) {
-		if t.Name == (xsd.QName{Namespace: xsd.XSDNS, Local: "ID"}) {
-			return true
-		}
-	}
-	return false
 }
 
 // derivationMethods walks t's base-type chain to anc, collecting the
@@ -271,10 +261,10 @@ func (b *builder) buildAttributeDecl(n *xmltree.Node, doc *schemaDoc, global boo
 		a.Fixed = &v
 	}
 	if vc := valueConstraint(a.Default, a.Fixed); vc != nil {
-		if isIDDerived(a.Type) {
-			// spec: a-props-correct.3 — XSD 1.1 Part 1 §3.2.6
-			b.errf(xsd.SpecAPropsCorrect, n.Pos, "attribute %s has an ID-derived type and must not have a default or fixed value", a.Name)
-		} else if _, err := a.Type.ParseValue(*vc, nsContext{n}); err != nil {
+		// Note: XSD 1.1 dropped the 1.0 rule (old a-props-correct.3) forbidding
+		// value constraints on ID-derived attribute types; only the value
+		// constraint's validity (a-props-correct.2) is still enforced.
+		if _, err := a.Type.ParseValue(*vc, nsContext{n}); err != nil {
 			// spec: a-props-correct.2 (value constraint valid)
 			b.errf(xsd.SpecAPropsCorrect, n.Pos, "default/fixed value %q is not valid for the type of attribute %s: %v", *vc, a.Name, err)
 		}
@@ -347,7 +337,11 @@ func (b *builder) buildAttrUse(c *xmltree.Node, doc *schemaDoc) *xsd.AttributeUs
 		if d == nil {
 			return nil
 		}
-		u.Decl = b.buildAttributeDecl(d.node, d.doc, true)
+		if d.builtinAttr != nil {
+			u.Decl = d.builtinAttr
+		} else {
+			u.Decl = b.buildAttributeDecl(d.node, d.doc, true)
+		}
 		if v, ok := c.Attr("default"); ok {
 			u.Default = &v
 		}

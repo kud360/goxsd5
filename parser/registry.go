@@ -54,8 +54,11 @@ type decl struct {
 	pos  xsd.Pos
 	node *xmltree.Node // nil for builtins
 	doc  *schemaDoc    // nil for builtins
-	// builtin is the prebuilt component for the seeded entries.
+	// builtin is the prebuilt component for the seeded type entries.
 	builtin xsd.Type
+	// builtinAttr is the prebuilt component for the seeded XSI attribute
+	// declarations (xsi:type, xsi:nil, …).
+	builtinAttr *xsd.AttributeDecl
 }
 
 // registry maps (space, QName) → declaration. parent chains a scoped
@@ -71,8 +74,14 @@ type registry struct {
 func newRegistry() *registry {
 	r := &registry{}
 	r.add(spaceType, &decl{name: builtin.AnyType.Name, builtin: builtin.AnyType})
+	r.add(spaceType, &decl{name: builtin.ErrorType.Name, builtin: builtin.ErrorType})
 	for _, t := range builtin.AllBuiltins() {
 		r.add(spaceType, &decl{name: t.Name, builtin: t})
+	}
+	// The four built-in XSI attribute declarations (§3.2.7); a reference to
+	// one needs no import of the XSI namespace.
+	for _, a := range builtin.XSIAttributes {
+		r.add(spaceAttribute, &decl{name: a.Name, builtinAttr: a})
 	}
 	return r
 }
