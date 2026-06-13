@@ -302,6 +302,14 @@ func (l *loader) registerReplacement(reg *registry, rep *replacement) {
 		}
 		q := xsd.QName{Namespace: rep.owner.targetNamespace, Local: name}
 		k := symKey{s, q}
+		if rep.owner.suppressed[k] {
+			// This replacement's own document is in turn redefined/overridden
+			// by a higher composition that replaces the same name; the override
+			// transformation is applied outermost-last, so the higher
+			// replacement supersedes this one. Registering both would be a
+			// spurious duplicate (over009: a two-level override chain).
+			continue
+		}
 		orig := l.findOriginal(rep.target, k, map[*schemaDoc]bool{})
 		d := &decl{name: q, pos: c.Pos, node: c, doc: rep.owner}
 		switch rep.kind {

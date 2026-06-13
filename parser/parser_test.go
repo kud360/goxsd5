@@ -398,6 +398,34 @@ func TestOverride(t *testing.T) {
 		}
 		rejects(t, st, "abcd")
 	})
+
+	t.Run("override of an override registers only the outermost replacement", func(t *testing.T) {
+		// top overrides mid, mid overrides deep; all three replace "st". The
+		// override transformation is applied outermost-last, so only top's
+		// replacement becomes a component — registering mid's too would be a
+		// spurious duplicate (over009).
+		schemas, err := parseMap(t, map[string]string{
+			"top.xsd": `<xs:schema ` + xsNS + ` targetNamespace="urn:t">
+  <xs:override schemaLocation="mid.xsd">
+    <xs:simpleType name="st"><xs:restriction base="xs:string"><xs:maxLength value="3"/></xs:restriction></xs:simpleType>
+  </xs:override>
+</xs:schema>`,
+			"mid.xsd": `<xs:schema ` + xsNS + ` targetNamespace="urn:t">
+  <xs:override schemaLocation="deep.xsd">
+    <xs:simpleType name="st"><xs:restriction base="xs:string"><xs:maxLength value="6"/></xs:restriction></xs:simpleType>
+  </xs:override>
+</xs:schema>`,
+			"deep.xsd": `<xs:schema ` + xsNS + ` targetNamespace="urn:t">
+  <xs:simpleType name="st"><xs:restriction base="xs:string"><xs:maxLength value="10"/></xs:restriction></xs:simpleType>
+</xs:schema>`,
+		}, "top.xsd")
+		wantNoErr(t, err)
+		st, _ := schemas[0].Types[xsd.QName{Namespace: "urn:t", Local: "st"}].(*xsd.SimpleType)
+		if st == nil {
+			t.Fatal("overriding type missing")
+		}
+		rejects(t, st, "abcd") // top's maxLength=3 wins
+	})
 }
 
 func TestParseFileResolver(t *testing.T) {

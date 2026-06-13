@@ -4743,6 +4743,7 @@ saxonMeta/Override.testSet#over005 pass
 saxonMeta/Override.testSet#over006 pass
 saxonMeta/Override.testSet#over007 pass
 saxonMeta/Override.testSet#over008 pass
+saxonMeta/Override.testSet#over009 pass
 saxonMeta/Override.testSet#over010 pass
 saxonMeta/Override.testSet#over011 pass
 saxonMeta/Override.testSet#over012 pass

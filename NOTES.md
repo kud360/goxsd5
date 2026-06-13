@@ -7,7 +7,19 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — EDC type-tables + open048 DONE (5640 → 5646); remainder below <<<
+## >>> NEXT SESSION — EDC type-tables + open048 + over009 DONE (5640 → 5647) <<<
+SESSION 2026-06-13 phase 4c (5646 → 5647, +1): over009 — two-level override
+chain double-registration FALSE POSITIVE fixed. When top overrides mid and mid
+overrides deep, all replacing the same name, both top's and mid's replacement
+children registered → spurious sch-props-correct.2 duplicate. Fix in
+registerReplacement (loader.go): skip a replacement child when rep.owner.suppressed[k]
+— its own document is in turn overridden by a higher composition that replaces
+the same name, and the override transformation is applied outermost-last, so the
+higher replacement supersedes it. The suppress phase already marks the lower
+owner (suppress walks DOWN through targets from the higher override). Unit test:
+TestOverride "override of an override registers only the outermost replacement".
+over030 (false mg-props-correct cycle) still tolerated — separate bug.
+
 SESSION 2026-06-13 phase 4b (5645 → 5646, +1): open048 — minOccurs/maxOccurs on
 the <any> of <openContent>/<defaultOpenContent> is rejected (saxon bug 15618;
 that wildcard is an Open Content component, not a Particle). checkOpenContentAnyOccurs
