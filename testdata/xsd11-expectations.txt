@@ -405,6 +405,7 @@ ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6v08 pass
 ibmMeta/rf_whiteSpace.testSet#d4_3_6ii01 pass
 ibmMeta/rf_whiteSpace.testSet#d4_3_6v01 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2si01 pass
+ibmMeta/substitutionGroup.testSet#s2_2_2si02 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2v01 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2v02 pass
 ibmMeta/substitutionGroup.testSet#s2_2_2v03 pass

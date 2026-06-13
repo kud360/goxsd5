@@ -70,6 +70,10 @@ func TestBuilderNegatives(t *testing.T) {
 			 <xs:element name="bar" type="xs:string" substitutionGroup="tns:zot"/>
 			 <xs:element name="zot" type="xs:string" substitutionGroup="tns:foo"/>`,
 			[]string{"e-props-correct"}},
+		{"member type not derived from head type",
+			`<xs:element name="head" type="xs:integer"/>
+			 <xs:element name="mem" type="xs:string" substitutionGroup="tns:head"/>`,
+			[]string{"e-props-correct"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},

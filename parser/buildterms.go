@@ -119,11 +119,17 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 	// invalid. Unreachable chains are left to the deferred derivation-ok
 	// checks rather than guessed at.
 	for _, head := range e.SubstitutionGroups {
-		if head.Type == nil || head.Final == 0 {
+		if head.Type == nil || e.Type == nil {
 			continue
 		}
-		if methods, ok := derivationMethods(e.Type, head.Type); ok && methods&head.Final != 0 {
-			// spec: e-props-correct.4 — XSD 1.1 Part 1 §3.3.6
+		// spec: e-props-correct.4 — XSD 1.1 Part 1 §3.3.6 — the member's type
+		// must be validly derived from the head's type, and the derivation
+		// methods used must not be among the head's {substitution group
+		// exclusions} ({final}).
+		methods, ok := derivationMethods(e.Type, head.Type)
+		if !ok {
+			b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: its type is not validly derived from the head's type", e.Name, head.Name)
+		} else if methods&head.Final != 0 {
 			b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: the head excludes this derivation", e.Name, head.Name)
 		}
 	}
