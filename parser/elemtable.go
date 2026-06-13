@@ -337,6 +337,7 @@ var elemTable = map[string]*elemSpec{
 			if strings.TrimSpace(mode) != "none" && !hasAny {
 				w.errf(xsd.SpecSrcCT, n.Pos, "openContent requires an <any> child unless mode is \"none\"")
 			}
+			checkOpenContentAnyOccurs(w, n, xsd.SpecSrcCT)
 		},
 	},
 	"defaultOpenContent": {
@@ -346,6 +347,9 @@ var elemTable = map[string]*elemSpec{
 			"mode": optA(vcEnum("interleave", "suffix")),
 		},
 		content: seq(annQ, one("any")),
+		extra: func(w *walker, n *xmltree.Node) {
+			checkOpenContentAnyOccurs(w, n, xsd.SpecSrcSchema)
+		},
 	},
 	"assert": {
 		ref: xsd.SpecSrcCT,
@@ -788,6 +792,23 @@ func forbidWithRef(w *walker, n *xmltree.Node, ref xsd.SpecRef, what string, att
 	for _, c := range children {
 		if countChildren(n, c) > 0 {
 			w.errf(ref, n.Pos, "%s with ref must not have <%s> children", what, c)
+		}
+	}
+}
+
+// checkOpenContentAnyOccurs rejects minOccurs/maxOccurs on the <any> child of
+// an <openContent>/<defaultOpenContent>: that wildcard is an Open Content
+// component, not a Particle, so it carries no occurrence range (saxon bug
+// 15618, schema-for-schemas restricts the element's attribute set).
+func checkOpenContentAnyOccurs(w *walker, n *xmltree.Node, ref xsd.SpecRef) {
+	for _, c := range n.Children {
+		if c.Name.Space != xsd.XSDNS || c.Name.Local != "any" {
+			continue
+		}
+		for _, a := range [...]string{"minOccurs", "maxOccurs"} {
+			if _, ok := c.Attr(a); ok {
+				w.errf(ref, c.Pos, "%s is not allowed on the <any> wildcard of open content", a)
+			}
 		}
 	}
 }

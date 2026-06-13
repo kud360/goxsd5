@@ -231,6 +231,12 @@ func TestStructuralNegatives(t *testing.T) {
 		{"two inline types in element",
 			`<xs:element name="e"><xs:simpleType><xs:restriction base="xs:int"/></xs:simpleType><xs:complexType/></xs:element>`,
 			[]string{"src-element"}},
+		{"maxOccurs on an openContent wildcard",
+			`<xs:complexType name="t"><xs:openContent mode="interleave"><xs:any namespace="##any" maxOccurs="unbounded"/></xs:openContent><xs:sequence/></xs:complexType>`,
+			[]string{"src-ct"}},
+		{"minOccurs on a defaultOpenContent wildcard",
+			`<xs:defaultOpenContent mode="interleave"><xs:any namespace="##any" minOccurs="0"/></xs:defaultOpenContent>`,
+			[]string{"src-schema"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

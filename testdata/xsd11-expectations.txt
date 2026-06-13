@@ -4729,6 +4729,7 @@ saxonMeta/Open.testSet#open043 pass
 saxonMeta/Open.testSet#open044 pass
 saxonMeta/Open.testSet#open045 pass
 saxonMeta/Open.testSet#open047 pass
+saxonMeta/Open.testSet#open048 pass
 saxonMeta/Open.testSet#open201 pass
 saxonMeta/Open.testSet#open202 pass
 saxonMeta/Open.testSet#open203 pass

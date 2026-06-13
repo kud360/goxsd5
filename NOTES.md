@@ -7,7 +7,13 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — EDC type-tables DONE (5640 → 5645); see remainder below <<<
+## >>> NEXT SESSION — EDC type-tables + open048 DONE (5640 → 5646); remainder below <<<
+SESSION 2026-06-13 phase 4b (5645 → 5646, +1): open048 — minOccurs/maxOccurs on
+the <any> of <openContent>/<defaultOpenContent> is rejected (saxon bug 15618;
+that wildcard is an Open Content component, not a Particle). checkOpenContentAnyOccurs
+in elemtable.go, wired into both elements' extra. Unit tests in
+TestStructuralNegatives (src-ct + src-schema).
+
 SESSION 2026-06-13 phase 4 (5640 → 5645, +5): Element Declarations Consistent
 {type table} comparison (cos-element-consistent §3.8.6). checkElementConsistent
 in buildschema.go now (a) requires like-named co-occurring declarations to
