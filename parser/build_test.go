@@ -406,6 +406,22 @@ func TestBuilderNegatives(t *testing.T) {
 		{"same element name with different types in one sequence",
 			`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:int"/><xs:element name="x" type="xs:string"/></xs:sequence></xs:complexType>`,
 			[]string{"cos-element-consistent"}},
+		{"same element name, same type, differing type tables (one has none)",
+			`<xs:complexType name="c"><xs:sequence>
+			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>
+			   <xs:element name="x" type="xs:string"/></xs:sequence></xs:complexType>`,
+			[]string{"cos-element-consistent"}},
+		{"same element name, same type, differing type-table alternatives",
+			`<xs:complexType name="c"><xs:sequence>
+			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>
+			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='2'" type="xs:int"/></xs:element></xs:sequence></xs:complexType>`,
+			[]string{"cos-element-consistent"}},
+		{"strict wildcard binds a global whose type table differs from a local",
+			`<xs:complexType name="c"><xs:sequence>
+			   <xs:element name="x" type="xs:string" form="qualified"/>
+			   <xs:any namespace="##targetNamespace" processContents="strict"/></xs:sequence></xs:complexType>
+			 <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>`,
+			[]string{"cos-element-consistent"}},
 
 		// Group cycles.
 		{"model group cycle",
@@ -704,6 +720,33 @@ func TestBuildUPAValidModels(t *testing.T) {
 		`<xs:complexType name="c"><xs:choice><xs:element name="a" type="xs:int"/><xs:any namespace="##any"/></xs:choice></xs:complexType>`,
 		// Disjoint wildcards in a choice.
 		`<xs:complexType name="c"><xs:choice><xs:any namespace="urn:a"/><xs:any namespace="urn:b"/></xs:choice></xs:complexType>`,
+	}
+	for _, body := range cases {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
+		wantClean(t, errs)
+	}
+}
+
+func TestBuildElementConsistentValidModels(t *testing.T) {
+	// Content models that must NOT trip cos-element-consistent: a strict/lax
+	// wildcard binding a like-named global whose TYPE differs is a dynamic
+	// check (cvc-complex-type.5), leaving the schema valid; only a differing
+	// TYPE TABLE is a static violation.
+	cases := []string{
+		// Local element and a wildcard-bound global of the same name differ only
+		// in type — neither has a type table (wild061/062/075).
+		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:date" form="qualified"/><xs:any namespace="##targetNamespace" processContents="strict"/></xs:sequence></xs:complexType>
+		 <xs:element name="x" type="xs:time"/>`,
+		// Same, with processContents=lax.
+		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:date" form="qualified"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:sequence></xs:complexType>
+		 <xs:element name="x" type="xs:time"/>`,
+		// A skip wildcard never binds a declaration, so no consistency applies
+		// even when type tables would differ.
+		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:string" form="qualified"><xs:alternative test="@a='1'" type="xs:int"/></xs:element><xs:any namespace="##targetNamespace" processContents="skip"/></xs:sequence></xs:complexType>
+		 <xs:element name="x" type="xs:string"/>`,
+		// Local and wildcard-bound global share an (identical) type table.
+		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:string" form="qualified"><xs:alternative test="@a='1'" type="xs:int"/></xs:element><xs:any namespace="##targetNamespace" processContents="strict"/></xs:sequence></xs:complexType>
+		 <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

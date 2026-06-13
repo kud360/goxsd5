@@ -214,9 +214,13 @@ func (b *builder) finishComplexTypes() {
 	// declarations substitutable for it (one hop); the walk closes it
 	// transitively for the "implicitly contains" rule.
 	subMembers := map[*xsd.ElementDecl][]*xsd.ElementDecl{}
+	globalsByName := map[xsd.QName]*xsd.ElementDecl{}
 	for _, e := range b.elements {
 		for _, head := range e.SubstitutionGroups {
 			subMembers[head] = append(subMembers[head], e)
+		}
+		if e.Global {
+			globalsByName[e.Name] = e
 		}
 	}
 	// accepted returns the set of expanded names an element particle for e can
@@ -243,7 +247,7 @@ func (b *builder) finishComplexTypes() {
 	}
 	for _, t := range b.types {
 		if ct, ok := t.(*xsd.ComplexType); ok {
-			b.checkElementConsistent(ct, subMembers)
+			b.checkElementConsistent(ct, subMembers, globalsByName)
 			b.checkAllUPA(ct, accepted)
 			b.checkSeqChoiceUPA(ct, accepted)
 			b.checkParticleRestrict(ct, accepted)
@@ -414,10 +418,11 @@ func (b *builder) checkSubstitutionCycles() {
 
 // checkElementConsistent enforces Element Declarations Consistent
 // (cos-element-consistent): within one content model, all element
-// declarations sharing an expanded name — directly, through nested groups, or
-// implicitly through substitution groups — must have the same top-level type
-// definition.
-func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xsd.ElementDecl][]*xsd.ElementDecl) {
+// declarations sharing an expanded name — directly, through nested groups,
+// implicitly through substitution groups, or implicitly through a strict/lax
+// wildcard that matches a like-named global declaration — must share both a
+// top-level type definition and a {type table} (XSD 1.1 §3.8.6).
+func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xsd.ElementDecl][]*xsd.ElementDecl, globalsByName map[xsd.QName]*xsd.ElementDecl) {
 	ec, ok := ct.Content.(*xsd.ElementContent)
 	if !ok || ec.Particle == nil {
 		return
@@ -425,6 +430,7 @@ func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xs
 	byName := map[xsd.QName][]*xsd.ElementDecl{}
 	seenGroups := map[*xsd.ModelGroup]bool{}
 	seenElems := map[*xsd.ElementDecl]bool{}
+	var wildcards []*xsd.Wildcard
 	// addElem records e and, transitively, every declaration substitutable
 	// for it (implicitly contained per the substitution-group rule).
 	var addElem func(e *xsd.ElementDecl)
@@ -446,6 +452,13 @@ func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xs
 		switch term := p.Term.(type) {
 		case *xsd.ElementDecl:
 			addElem(term)
+		case *xsd.Wildcard:
+			// A skip wildcard validates nothing, so it imposes no
+			// consistency requirement; strict/lax ones may bind a global
+			// declaration and so participate (handled after the walk).
+			if term.ProcessContents != xsd.ProcessSkip {
+				wildcards = append(wildcards, term)
+			}
 		case *xsd.ModelGroup:
 			if seenGroups[term] {
 				return
@@ -465,23 +478,83 @@ func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xs
 	}
 	walk(ec.Particle)
 
+	// Declarations that co-occur as named particles — directly, through nested
+	// groups, or implicitly through substitution groups — must share both a
+	// top-level type definition and a {type table}.
 	for name, decls := range byName {
 		if len(decls) < 2 {
 			continue
 		}
-		ref := decls[0].Type
-		for _, d := range decls {
-			if d.Type == ref {
-				continue
-			}
-			rq, dq := typeNameOf(ref), typeNameOf(d.Type)
-			if rq.IsZero() || dq.IsZero() || rq != dq {
+		ref := decls[0]
+		for _, d := range decls[1:] {
+			if !sameTopLevelType(ref.Type, d.Type) || !typeTablesEqual(ref, d) {
 				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
-				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s appears more than once in the content model of %s with differing types", name, describeCT(ct))
+				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s appears more than once in the content model of %s with differing types or type tables", name, describeCT(ct))
 				break
 			}
 		}
 	}
+
+	// A strict/lax wildcard implicitly binds a global element declaration it
+	// matches by name. When that global shares its name with a local element
+	// particle, their {type table}s must be equal: a differing type alone is a
+	// dynamic check that leaves the schema valid (cvc-complex-type.5), but a
+	// differing type table is a static EDC violation (§3.8.6). We only consult
+	// a global that already collides with a present local name, so the wildcard
+	// never widens the comparison beyond an existing local/global pairing.
+	for name, decls := range byName {
+		g := globalsByName[name]
+		if g == nil || seenElems[g] {
+			continue
+		}
+		matched := false
+		for _, w := range wildcards {
+			if wildcardAllowsName(w, name) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		for _, d := range decls {
+			if !typeTablesEqual(g, d) {
+				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
+				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s has a type table inconsistent with the global declaration a wildcard binds in the content model of %s", name, describeCT(ct))
+				break
+			}
+		}
+	}
+}
+
+// sameTopLevelType reports whether two element declarations share a type
+// definition for Element Declarations Consistent: identical component, or the
+// same named top-level type.
+func sameTopLevelType(a, b xsd.Type) bool {
+	if a == b {
+		return true
+	}
+	aq, bq := typeNameOf(a), typeNameOf(b)
+	return !aq.IsZero() && !bq.IsZero() && aq == bq
+}
+
+// typeTablesEqual reports whether two element declarations have equal {type
+// table}s. A declaration with no alternatives has no type table; if one has a
+// table and the other does not, or their alternatives differ in order, test
+// expression, or named type, the tables are unequal. Anonymous alternative
+// types compare by their (zero) names, which can only mask a real difference
+// (a false negative), never invent one.
+func typeTablesEqual(a, b *xsd.ElementDecl) bool {
+	if len(a.TypeAlternatives) != len(b.TypeAlternatives) {
+		return false
+	}
+	for i := range a.TypeAlternatives {
+		x, y := a.TypeAlternatives[i], b.TypeAlternatives[i]
+		if x.Test != y.Test || typeNameOf(x.Type) != typeNameOf(y.Type) {
+			return false
+		}
+	}
+	return true
 }
 
 // typeNameOf returns a type's name, or the zero QName for anonymous types.

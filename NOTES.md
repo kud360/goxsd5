@@ -7,7 +7,27 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — cos-particle-restrict phase 3 (the hard remainder) <<<
+## >>> NEXT SESSION — EDC type-tables DONE (5640 → 5645); see remainder below <<<
+SESSION 2026-06-13 phase 4 (5640 → 5645, +5): Element Declarations Consistent
+{type table} comparison (cos-element-consistent §3.8.6). checkElementConsistent
+in buildschema.go now (a) requires like-named co-occurring declarations to
+share a {type table} as well as a top-level type (typeTablesEqual: same length,
+same Test strings, same named alternative types — anonymous types compare by
+zero name, only ever a false negative), and (b) for a strict/lax wildcard that
+binds a like-named GLOBAL element, requires equal {type table}s ONLY (NOT equal
+types). CRITICAL false-positive lesson re-learned: a differing TYPE between a
+local particle and a wildcard-bound global is a DYNAMIC check (cvc-complex-type.5)
+that leaves the SCHEMA valid (wild061/062/066/075 are valid!); only a differing
+TYPE TABLE is a static EDC violation. First naive cut applied addElem+full type
+check to wildcard globals → 12 regressions (wild061-068/075/076, all006, ibm
+edcWildcard) — fixed by splitting into a type-table-only wildcard pass that only
+consults a global already colliding with a present local name. +5
+(cta9009err/cta9010err two-local-decl type-table mismatch; wild078/079/081
+wildcard binds global with mismatched type table). wild069 correctly NO LONGER
+caught (it is a restriction/all-wildcard case, not EDC — stays tolerated). Unit
+tests: TestBuilderNegatives 3 new + TestBuildElementConsistentValidModels 4 new.
+
+## >>> cos-particle-restrict phase 3 (the hard remainder) <<<
 Phase-3 progress so far (5635 → 5640): the RESTRICTION open-content subset
 (item 4 below, restriction half) and the all→choice subsumption (item 3) are
 DONE. The remaining gaps are the genuinely hard / risky ones. CORE SAFETY RULE

@@ -4624,6 +4624,8 @@ saxonMeta/CTA.testSet#cta0045 pass
 saxonMeta/CTA.testSet#cta9001err pass
 saxonMeta/CTA.testSet#cta9006err pass
 saxonMeta/CTA.testSet#cta9007err pass
+saxonMeta/CTA.testSet#cta9009err pass
+saxonMeta/CTA.testSet#cta9010err pass
 saxonMeta/Complex.testSet#complex001 pass
 saxonMeta/Complex.testSet#complex002 pass
 saxonMeta/Complex.testSet#complex003 pass
@@ -4950,7 +4952,10 @@ saxonMeta/Wild.testSet#wild074 pass
 saxonMeta/Wild.testSet#wild075 pass
 saxonMeta/Wild.testSet#wild076 pass
 saxonMeta/Wild.testSet#wild077 pass
+saxonMeta/Wild.testSet#wild078 pass
+saxonMeta/Wild.testSet#wild079 pass
 saxonMeta/Wild.testSet#wild080 pass
+saxonMeta/Wild.testSet#wild081 pass
 saxonMeta/Wild.testSet#wild082 pass
 saxonMeta/Wild.testSet#wild083 pass
 saxonMeta/Wild.testSet#wild084 pass
