@@ -339,6 +339,7 @@ ibmMeta/openContent.testSet#s3_4_1ii05 pass
 ibmMeta/openContent.testSet#s3_4_1si01 pass
 ibmMeta/openContent.testSet#s3_4_1si02 pass
 ibmMeta/openContent.testSet#s3_4_1si03 pass
+ibmMeta/openContent.testSet#s3_4_1si04 pass
 ibmMeta/openContent.testSet#s3_4_1si08 pass
 ibmMeta/openContent.testSet#s3_4_1si09 pass
 ibmMeta/openContent.testSet#s3_4_1v01 pass
@@ -4541,9 +4542,17 @@ saxonMeta/All.testSet#all241 pass
 saxonMeta/All.testSet#all242 pass
 saxonMeta/All.testSet#all243 pass
 saxonMeta/All.testSet#all301 pass
+saxonMeta/All.testSet#all302 pass
+saxonMeta/All.testSet#all303 pass
 saxonMeta/All.testSet#all304 pass
+saxonMeta/All.testSet#all305 pass
 saxonMeta/All.testSet#all306 pass
 saxonMeta/All.testSet#all307 pass
+saxonMeta/All.testSet#all309 pass
+saxonMeta/All.testSet#all310 pass
+saxonMeta/All.testSet#all311 pass
+saxonMeta/All.testSet#all312 pass
+saxonMeta/All.testSet#all313 pass
 saxonMeta/All.testSet#all314 pass
 saxonMeta/Assert.testSet#assert-simple001 pass
 saxonMeta/Assert.testSet#assert-simple003 pass

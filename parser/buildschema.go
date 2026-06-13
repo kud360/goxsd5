@@ -530,7 +530,37 @@ func (b *builder) finishExtensionParticle(ct, bct *xsd.ComplexType) {
 		}
 		if ec.Particle == nil {
 			ec.Particle = bc.Particle
+		} else if baseAll, ownAll := allGroupTerm(bc.Particle), allGroupTerm(ec.Particle); baseAll != nil && ownAll != nil {
+			// spec: §3.4.2.3.3 clause 4.2.3.2 — extending an <all> group with an
+			// <all> group yields a single <all> group whose particles are the
+			// base's followed by the extension's (NOT a sequence). This keeps
+			// the merged particles in one all group so Unique Particle
+			// Attribution (checkAllUPA) sees a re-added element as a conflict.
+			// spec: cos-ct-extends — XSD 1.1 Part 1 §3.4.6.2 clause 1.4.3.2.2.2
+			// invokes cos-particle-extend.3.1: the extended <all> particle's
+			// {min occurs} must equal the base's.
+			if ec.Particle.MinOccurs != bc.Particle.MinOccurs {
+				b.errf(xsd.SpecCosCTExtends, ec.Particle.Pos, "extending the <all> group of %s requires the same minOccurs as the base", describeCT(bct))
+			}
+			merged := make([]*xsd.Particle, 0, len(baseAll.Particles)+len(ownAll.Particles))
+			merged = append(merged, baseAll.Particles...)
+			merged = append(merged, ownAll.Particles...)
+			ec.Particle = &xsd.Particle{
+				MinOccurs: ec.Particle.MinOccurs, MaxOccurs: 1,
+				Term: &xsd.ModelGroup{
+					Compositor: xsd.CompositorAll,
+					Particles:  merged,
+					Pos:        ec.Particle.Pos,
+				},
+				Pos: ec.Particle.Pos,
+			}
 		} else {
+			// spec: cos-all-limited.1 — clause 4.2.3.3 wraps base + extension in
+			// a sequence; if either side is an <all> group (and they did not both
+			// merge above), that <all> would sit illegally inside a sequence.
+			if allGroupTerm(bc.Particle) != nil || allGroupTerm(ec.Particle) != nil {
+				b.errf(xsd.SpecCosAllLimited, ec.Particle.Pos, "cannot extend %s: an <all> group may not be combined with a sequence by extension", describeCT(bct))
+			}
 			ec.Particle = &xsd.Particle{
 				MinOccurs: 1, MaxOccurs: 1,
 				Term: &xsd.ModelGroup{
@@ -542,6 +572,25 @@ func (b *builder) finishExtensionParticle(ct, bct *xsd.ComplexType) {
 			}
 		}
 	}
+}
+
+// allGroupTerm returns the model group of p's term if it is an <all> group
+// (directly or via a group reference), else nil.
+func allGroupTerm(p *xsd.Particle) *xsd.ModelGroup {
+	if p == nil {
+		return nil
+	}
+	switch t := p.Term.(type) {
+	case *xsd.ModelGroup:
+		if t.Compositor == xsd.CompositorAll {
+			return t
+		}
+	case *xsd.GroupRef:
+		if t.Ref != nil && t.Ref.Group != nil && t.Ref.Group.Compositor == xsd.CompositorAll {
+			return t.Ref.Group
+		}
+	}
+	return nil
 }
 
 // checkTypeCycles detects cyclic complex-type derivation chains. Cycles are

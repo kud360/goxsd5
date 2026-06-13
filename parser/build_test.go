@@ -115,6 +115,18 @@ func TestBuilderNegatives(t *testing.T) {
 		{"choice of overlapping wildcards",
 			`<xs:complexType name="c"><xs:choice><xs:any namespace="urn:a urn:b"/><xs:any namespace="urn:b"/></xs:choice></xs:complexType>`,
 			[]string{"cos-nonambig"}},
+		{"all extension re-adds a base element (UPA)",
+			`<xs:complexType name="b"><xs:all><xs:element name="x" type="xs:int"/></xs:all></xs:complexType>
+			 <xs:complexType name="e"><xs:complexContent><xs:extension base="tns:b"><xs:all><xs:element name="x" type="xs:int"/></xs:all></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-nonambig"}},
+		{"sequence cannot extend an all group",
+			`<xs:complexType name="b"><xs:all><xs:element name="x" type="xs:int"/></xs:all></xs:complexType>
+			 <xs:complexType name="e"><xs:complexContent><xs:extension base="tns:b"><xs:sequence><xs:element name="y" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-all-limited"}},
+		{"all extension must keep the base minOccurs",
+			`<xs:complexType name="b"><xs:all><xs:element name="x" type="xs:int"/></xs:all></xs:complexType>
+			 <xs:complexType name="e"><xs:complexContent><xs:extension base="tns:b"><xs:all minOccurs="0"><xs:element name="y" type="xs:int"/></xs:all></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-ct-extends"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
