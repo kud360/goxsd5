@@ -157,6 +157,7 @@ ibmMeta/dateTimeStamp.testSet#d3_4_28v05 pass
 ibmMeta/dateTimeStamp.testSet#d3_4_28v06 pass
 ibmMeta/dateTimeStamp.testSet#d3_4_28v07 pass
 ibmMeta/dateTimeStamp.testSet#d3_4_28v08 pass
+ibmMeta/dateTimeStamp.testSet#d3_4_28v09 pass
 ibmMeta/dateTimeStamp.testSet#d3_4_28v10 pass
 ibmMeta/dayTimeDuration.testSet#d3_4_27ii01 pass
 ibmMeta/dayTimeDuration.testSet#d3_4_27ii02 pass
@@ -4724,6 +4725,8 @@ saxonMeta/PDecimal.testSet#pdecimal020 skip:precisionDecimal optional datatype (
 saxonMeta/Simple.testSet#simple001 pass
 saxonMeta/Simple.testSet#simple002 pass
 saxonMeta/Simple.testSet#simple003 pass
+saxonMeta/Simple.testSet#simple004 pass
+saxonMeta/Simple.testSet#simple005 pass
 saxonMeta/Simple.testSet#simple006 pass
 saxonMeta/Simple.testSet#simple010 pass
 saxonMeta/Simple.testSet#simple012 pass
@@ -4737,8 +4740,10 @@ saxonMeta/Simple.testSet#simple021 pass
 saxonMeta/Simple.testSet#simple022 pass
 saxonMeta/Simple.testSet#simple040 pass
 saxonMeta/Simple.testSet#simple041 pass
+saxonMeta/Simple.testSet#simple042 pass
 saxonMeta/Simple.testSet#simple043 pass
 saxonMeta/Simple.testSet#simple044 pass
+saxonMeta/Simple.testSet#simple045 pass
 saxonMeta/Simple.testSet#simple046 pass
 saxonMeta/Simple.testSet#simple050 pass
 saxonMeta/Simple.testSet#simple051 pass
@@ -5010,7 +5015,11 @@ sunMeta/CType.testSet#derivationmethod00101m1 pass
 sunMeta/CType.testSet#derivationmethod00101m2 pass
 sunMeta/CType.testSet#derivationmethod00102m1 pass
 sunMeta/CType.testSet#derivationmethod00102m2 pass
+sunMeta/CType.testSet#final00101m2 pass
 sunMeta/CType.testSet#final00101m3 pass
+sunMeta/CType.testSet#final00101m4 pass
+sunMeta/CType.testSet#final00101m5 pass
+sunMeta/CType.testSet#final00101m6 pass
 sunMeta/CType.testSet#name00101m pass
 sunMeta/CType.testSet#psubstitutions00101m pass
 sunMeta/CType.testSet#psubstitutions00102m pass
@@ -5455,6 +5464,7 @@ sunMeta/SType.testSet#st_facets00603 pass
 sunMeta/SType.testSet#st_facets00604 pass
 sunMeta/SType.testSet#st_facets00605 pass
 sunMeta/SType.testSet#st_facets00608 pass
+sunMeta/SType.testSet#st_final00101m1 pass
 sunMeta/SType.testSet#st_final00101m2 pass
 sunMeta/SType.testSet#st_final00101m3 pass
 sunMeta/SType.testSet#st_final00101m4 pass

@@ -361,8 +361,8 @@ func (p *reParser) charClassExpr() (rangeSet, error) {
 			p.pos++
 			closed = true
 		case '-':
-			switch p.peekAt(1) {
-			case '[':
+			switch {
+			case p.peekAt(1) == '[':
 				// Subtraction: must be the last item of the group.
 				p.pos++
 				s, err := p.charClassExpr()
@@ -373,20 +373,18 @@ func (p *reParser) charClassExpr() (rangeSet, error) {
 					return nil, fmt.Errorf("subtraction must end the character class")
 				}
 				sub = s
-			case ']':
-				// Trailing literal '-' — legal even as the only member: [-].
+			case p.peekAt(1) == '-' && p.peekAt(2) != ']' && p.peekAt(2) != '[':
+				// '-' '-' X would be a charRange whose lower bound is an
+				// unescaped '-', which the spec forbids, e.g. [--z].
+				return nil, fmt.Errorf("'-' cannot be the lower bound of a range")
+			default:
+				// A '-' at the start of a group item is a literal: it is
+				// leading, trailing ([-]), or follows a completed range or
+				// other item (e.g. [a-z-+] = a–z, '-', '+'). A '-' can never
+				// begin a range, so it is always literal here.
 				p.pos++
 				set = addRange(set, '-', '-')
 				first = false
-			default:
-				if first {
-					// Leading '-' is a literal.
-					p.pos++
-					set = addRange(set, '-', '-')
-					first = false
-					continue
-				}
-				return nil, fmt.Errorf("misplaced '-' in character class")
 			}
 		case '[':
 			return nil, fmt.Errorf("unescaped '[' in character class")
@@ -404,6 +402,11 @@ func (p *reParser) charClassExpr() (rangeSet, error) {
 			// or is the trailing literal '-'.
 			if p.peek() == '-' && p.peekAt(1) != '[' && p.peekAt(1) != ']' {
 				p.pos++
+				if p.peek() == '-' {
+					// A literal (unescaped) '-' may not be the upper bound of
+					// a range, e.g. [!--] is invalid (only \- could end one).
+					return nil, fmt.Errorf("'-' cannot be the upper bound of a range")
+				}
 				hi, isChar2, _, err := p.classChar()
 				if err != nil {
 					return nil, err

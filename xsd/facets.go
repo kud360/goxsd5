@@ -222,6 +222,22 @@ func (t *SimpleType) compareFunc() CompareFunc {
 // Assertions (stage 8) are stored but not evaluated (no XPath engine).
 // ctx may be nil except for QName/NOTATION values.
 func (t *SimpleType) ParseValue(lexical string, ctx ValueContext) (Value, error) {
+	return t.parseValue(lexical, ctx, false)
+}
+
+// ParseFacetValue parses a value used as a constraining-facet value (e.g. the
+// value of a derived minInclusive/maxExclusive) against t. It is like
+// ParseValue but does NOT apply t's own value-range bound facets (min/max
+// inclusive/exclusive): a derived bound is permitted to equal the base's
+// corresponding bound (e.g. maxExclusive-valid-restriction allows equality),
+// and all bound-vs-bound ordering relationships are validated separately by
+// CheckFacetRestriction. The lexical space, patterns, whiteSpace, length,
+// digit, and enumeration constraints of t still apply.
+func (t *SimpleType) ParseFacetValue(lexical string, ctx ValueContext) (Value, error) {
+	return t.parseValue(lexical, ctx, true)
+}
+
+func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool) (Value, error) {
 	f := &t.Facets
 
 	// Stage 1: whiteSpace.
@@ -278,21 +294,23 @@ func (t *SimpleType) ParseValue(lexical string, ctx ValueContext) (Value, error)
 		}
 		return nil
 	}
-	// spec: cvc-minInclusive-valid — XSD 1.1 Part 2 §4.3.10.4 (xmlschema11-2.md#cvc-minInclusive-valid)
-	if err := check(f.MinInclusive, SpecMinInclusiveValid, func(o Order) bool { return o >= OrderEqual }, "minInclusive"); err != nil {
-		return nil, err
-	}
-	// spec: cvc-maxInclusive-valid — XSD 1.1 Part 2 §4.3.7.4 (xmlschema11-2.md#cvc-maxInclusive-valid)
-	if err := check(f.MaxInclusive, SpecMaxInclusiveValid, func(o Order) bool { return o <= OrderEqual }, "maxInclusive"); err != nil {
-		return nil, err
-	}
-	// spec: cvc-minExclusive-valid — XSD 1.1 Part 2 §4.3.9.4 (xmlschema11-2.md#cvc-minExclusive-valid)
-	if err := check(f.MinExclusive, SpecMinExclusiveValid, func(o Order) bool { return o > OrderEqual }, "minExclusive"); err != nil {
-		return nil, err
-	}
-	// spec: cvc-maxExclusive-valid — XSD 1.1 Part 2 §4.3.8.4 (xmlschema11-2.md#cvc-maxExclusive-valid)
-	if err := check(f.MaxExclusive, SpecMaxExclusiveValid, func(o Order) bool { return o < OrderEqual }, "maxExclusive"); err != nil {
-		return nil, err
+	if !skipRange {
+		// spec: cvc-minInclusive-valid — XSD 1.1 Part 2 §4.3.10.4 (xmlschema11-2.md#cvc-minInclusive-valid)
+		if err := check(f.MinInclusive, SpecMinInclusiveValid, func(o Order) bool { return o >= OrderEqual }, "minInclusive"); err != nil {
+			return nil, err
+		}
+		// spec: cvc-maxInclusive-valid — XSD 1.1 Part 2 §4.3.7.4 (xmlschema11-2.md#cvc-maxInclusive-valid)
+		if err := check(f.MaxInclusive, SpecMaxInclusiveValid, func(o Order) bool { return o <= OrderEqual }, "maxInclusive"); err != nil {
+			return nil, err
+		}
+		// spec: cvc-minExclusive-valid — XSD 1.1 Part 2 §4.3.9.4 (xmlschema11-2.md#cvc-minExclusive-valid)
+		if err := check(f.MinExclusive, SpecMinExclusiveValid, func(o Order) bool { return o > OrderEqual }, "minExclusive"); err != nil {
+			return nil, err
+		}
+		// spec: cvc-maxExclusive-valid — XSD 1.1 Part 2 §4.3.8.4 (xmlschema11-2.md#cvc-maxExclusive-valid)
+		if err := check(f.MaxExclusive, SpecMaxExclusiveValid, func(o Order) bool { return o < OrderEqual }, "maxExclusive"); err != nil {
+			return nil, err
+		}
 	}
 	if f.TotalDigits != nil || f.FractionDigits != nil {
 		if d, ok := v.(*Decimal); ok {

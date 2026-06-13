@@ -68,6 +68,7 @@ func (b *builder) buildSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc 
 		base = b.resolveType(q, r.Pos, doc)
 	}
 	ct.BaseType = base
+	b.checkFinalAllows(base, ct.DerivationMethod, r.Pos)
 
 	var contentST *xsd.SimpleType
 	switch base := base.(type) {
@@ -158,7 +159,36 @@ func (b *builder) buildComplexContent(ct *xsd.ComplexType, n, cc *xmltree.Node, 
 		b.errf(xsd.SpecSrcCT, r.Pos, "complexContent requires a complex base type, not the simple type %s", base.TypeName())
 		base = builtin.AnyType
 	}
+	b.checkFinalAllows(base, method, r.Pos)
 	b.buildElementOnlyContent(ct, n, r, doc, base, method, mixed)
+}
+
+// checkFinalAllows reports an error when base's {final} set blocks deriving a
+// new type from it by the given method (extension or restriction).
+// spec: cos-ct-extends.1.1 / derivation-ok-restriction.1 — XSD 1.1 Part 1
+// §3.4.6: B.{final} must not contain the derivation method being used.
+func (b *builder) checkFinalAllows(base xsd.Type, method xsd.Derivation, pos xsd.Pos) {
+	var final xsd.DerivationSet
+	switch t := base.(type) {
+	case *xsd.SimpleType:
+		final = t.Final
+	case *xsd.ComplexType:
+		final = t.Final
+	default:
+		return
+	}
+	if !final.Has(method) {
+		return
+	}
+	ref, verb := xsd.SpecDerivationOKRestriction, "restriction"
+	if method == xsd.DeriveExtension {
+		ref, verb = xsd.SpecCosCTExtends, "extension"
+	}
+	name := "the base type"
+	if q := base.TypeName(); !q.IsZero() {
+		name = q.String()
+	}
+	b.errf(ref, pos, "%s is final for %s; it cannot be the base of a %s", name, verb, verb)
 }
 
 // buildElementOnlyContent fills ct with element (or empty) content read

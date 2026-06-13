@@ -53,6 +53,7 @@ func (b *builder) buildSTRestriction(st *xsd.SimpleType, r *xmltree.Node, doc *s
 		base, _ = b.buildAnonType(r, doc, builtin.AnySimpleType).(*xsd.SimpleType)
 	}
 
+	b.checkFinalAllows(base, xsd.DeriveRestriction, r.Pos)
 	b.applyRestriction(st, base, r, doc)
 }
 
@@ -251,7 +252,7 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 		if !ok {
 			return nil
 		}
-		v, err := base.ParseValue(lex, nsContext{c})
+		v, err := base.ParseFacetValue(lex, nsContext{c})
 		if err != nil {
 			b.errf(ref, c.Pos, "%s value %q is not valid against the base type %s: %v", c.Name.Local, lex, base.TypeName(), err)
 			return nil

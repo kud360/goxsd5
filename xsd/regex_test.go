@@ -29,6 +29,11 @@ func TestRegexTranslate(t *testing.T) {
 		{"[abc-]", []string{"-", "c"}, []string{"d"}},
 		{"[-]", []string{"-"}, []string{"a", ""}},
 		{"[^-]", []string{"a"}, []string{"-"}},
+		// A '-' after a completed range or escape is a literal singleChar
+		// (Part 2 §G.1 disambiguation), so these match the dash too.
+		{"[a-z-+]+", []string{"abz", "-", "+", "a-+"}, []string{"A", "1"}},
+		{"[a-z-b]+", []string{"abz", "-"}, []string{"A"}},
+		{`[\d-x]+`, []string{"42", "-", "x"}, []string{"a"}},
 		{"[^a-c]", []string{"d", "-"}, []string{"a", "b"}},
 		// Class subtraction.
 		{"[a-z-[aeiou]]+", []string{"bcd", "xyz"}, []string{"a", "bea"}},
@@ -101,9 +106,9 @@ func TestRegexInvalid(t *testing.T) {
 		`\p{Lx}`,  // unknown category
 		`\px`,     // malformed \p
 		"[z-a]",   // reversed range
-		`[\d-x]`,  // multi-char escape as range start
 		"a\\",     // trailing backslash
-		"[a-z-b]", // misplaced - in class
+		"[!--]",   // a literal '-' may not be a range's upper bound
+		"[--z]",   // a literal '-' may not be a range's lower bound
 		"]",       // unescaped ] outside class
 		"}",       // unescaped } outside class (strict)
 	} {

@@ -192,6 +192,22 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="sc"><xs:simpleContent><xs:extension base="xs:int"/></xs:simpleContent></xs:complexType>
 			 <xs:complexType name="c"><xs:complexContent><xs:extension base="tns:sc"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`,
 			[]string{"cos-ct-extends"}},
+		{"extension of a complex type final for extension",
+			`<xs:complexType name="b" final="extension"><xs:sequence/></xs:complexType>
+			 <xs:complexType name="d"><xs:complexContent><xs:extension base="tns:b"><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-ct-extends"}},
+		{"restriction of a complex type final for restriction",
+			`<xs:complexType name="b" final="restriction"><xs:sequence/></xs:complexType>
+			 <xs:complexType name="d"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction of a simple type final for restriction",
+			`<xs:simpleType name="b" final="restriction"><xs:restriction base="xs:int"/></xs:simpleType>
+			 <xs:simpleType name="d"><xs:restriction base="tns:b"><xs:minInclusive value="0"/></xs:restriction></xs:simpleType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"simpleContent extension of a simple type final for extension",
+			`<xs:simpleType name="b" final="extension"><xs:restriction base="xs:int"/></xs:simpleType>
+			 <xs:complexType name="d"><xs:simpleContent><xs:extension base="tns:b"><xs:attribute name="a" type="xs:string"/></xs:extension></xs:simpleContent></xs:complexType>`,
+			[]string{"cos-ct-extends"}},
 
 		// Group cycles.
 		{"model group cycle",
@@ -233,6 +249,17 @@ func TestBuilderNegatives(t *testing.T) {
 			wantIDs(t, errs, tc.ids...)
 		})
 	}
+}
+
+// A derived bound may equal the corresponding base bound, even when that
+// bound is exclusive: the *-valid-restriction rules permit equality (the
+// facet value must not be validated against the base's own exclusive bound).
+func TestBuildDerivedExclusiveBoundEqualsBase(t *testing.T) {
+	_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
+		<xs:simpleType name="b"><xs:restriction base="xs:int"><xs:maxExclusive value="10"/></xs:restriction></xs:simpleType>
+		<xs:simpleType name="d"><xs:restriction base="tns:b"><xs:maxExclusive value="10"/></xs:restriction></xs:simpleType>
+	</xs:schema>`)
+	wantClean(t, errs)
 }
 
 func TestBuildSimpleTypeModels(t *testing.T) {

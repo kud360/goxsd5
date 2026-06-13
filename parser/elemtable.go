@@ -47,6 +47,10 @@ const (
 	eltFinalSet = xsd.DerivationSet(xsd.DeriveExtension | xsd.DeriveRestriction)
 	ctBlockSet  = xsd.DerivationSet(xsd.DeriveExtension | xsd.DeriveRestriction)
 	ctFinalSet  = xsd.DerivationSet(xsd.DeriveExtension | xsd.DeriveRestriction)
+	// A simple type's {final} may contain any of restriction/extension/list/
+	// union (XSD 1.1 permits simpleType/@final="extension" — spec bug 2074 —
+	// even though it has no effect unless the type is used as an extension
+	// base, which is then blocked).
 	stFinalSet  = xsd.DerivationSet(xsd.DeriveList | xsd.DeriveUnion | xsd.DeriveRestriction | xsd.DeriveExtension)
 	blockDefSet = eltBlockSet
 	finalDefSet = stFinalSet
