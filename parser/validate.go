@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kud360/goxsd5/builtin"
 	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 )
@@ -38,6 +39,18 @@ func (w *walker) validate(n *xmltree.Node, variant string) {
 		panic("parser: no table entry for variant " + variant)
 	}
 	w.checkAttrs(n, spec)
+
+	// If the <schema> element itself is conditionally excluded (§4.2.2), the
+	// document becomes empty: every child (including compositions) is removed
+	// and no content is judged. Only targetNamespace/minVersion/maxVersion
+	// would survive, none of which we validate further here.
+	if variant == "schema" && w.prunedByConditionalInclusion(n) {
+		for _, c := range n.Children {
+			w.doc.pruned[c] = true
+		}
+		return
+	}
+
 	if spec.extra != nil {
 		spec.extra(w, n)
 	}
@@ -56,7 +69,7 @@ func (w *walker) validate(n *xmltree.Node, variant string) {
 	// raised — matching nodes are pruned, not rejected.
 	var kept []*xmltree.Node
 	for _, c := range n.Children {
-		if w.prunedByVersion(c) {
+		if w.prunedByConditionalInclusion(c) {
 			w.doc.pruned[c] = true
 			continue
 		}
@@ -166,31 +179,97 @@ func (w *walker) checkOccurs(n *xmltree.Node) {
 	}
 }
 
-// prunedByVersion implements vc:minVersion/vc:maxVersion conditional
-// inclusion: an element is retained iff minVersion <= V < maxVersion for
-// this processor's version V. Unparseable version numbers are ignored, and
-// the other vc:* conditions (typeAvailable, facetAvailable, …) are not
-// evaluated, so their elements are retained — the lenient default.
-func (w *walker) prunedByVersion(n *xmltree.Node) bool {
+// prunedByConditionalInclusion implements XSD 1.1 conditional inclusion
+// (§4.2.2): an element carrying vc:* attributes is removed unless every
+// condition holds — minVersion <= V < maxVersion for this processor's version
+// V, every vc:typeAvailable/facetAvailable item is known, and not every
+// vc:typeUnavailable/facetUnavailable item is known. Each attribute value
+// must also be locally valid (decimal, or list of QName); a malformed value
+// is reported (cip) even though it does not by itself stop the element from
+// being pruned.
+func (w *walker) prunedByConditionalInclusion(n *xmltree.Node) bool {
+	pruned := false
 	for i := range n.Attrs {
 		a := &n.Attrs[i]
 		if a.Name.Space != xsd.VCNS {
 			continue
 		}
-		v, err := strconv.ParseFloat(strings.TrimSpace(a.Value), 64)
-		if err != nil {
-			continue
-		}
 		switch a.Name.Local {
-		case "minVersion":
-			if v > xsdVersion {
-				return true
+		case "minVersion", "maxVersion":
+			if _, err := xsd.ParseDecimal(a.Value); err != nil {
+				// spec: cip — XSD 1.1 Part 1 §4.2.2: the value must be a valid xs:decimal.
+				w.errf(xsd.SpecCIP, a.Pos, "vc:%s value %q is not a valid xs:decimal", a.Name.Local, a.Value)
+				continue
 			}
-		case "maxVersion":
-			if v <= xsdVersion {
-				return true
+			v, _ := strconv.ParseFloat(strings.TrimSpace(a.Value), 64)
+			if a.Name.Local == "minVersion" && v > xsdVersion {
+				pruned = true
+			}
+			if a.Name.Local == "maxVersion" && v <= xsdVersion {
+				pruned = true
+			}
+		case "typeAvailable", "typeUnavailable", "facetAvailable", "facetUnavailable":
+			isType := strings.HasPrefix(a.Name.Local, "type")
+			// An element is pruned when any "Available" item is unknown, or
+			// when every "Unavailable" item is known (empty list = vacuously
+			// every, so it prunes).
+			allKnown, anyUnknown := true, false
+			for _, tok := range strings.Fields(a.Value) {
+				q, err := n.ResolveQName(tok)
+				if err != nil {
+					// spec: cip — the value must be a valid list of xs:QName.
+					w.errf(xsd.SpecCIP, a.Pos, "vc:%s item %q is not a valid QName", a.Name.Local, tok)
+					continue
+				}
+				known := typeAutomaticallyKnown(q)
+				if !isType {
+					known = facetKnown(q)
+				}
+				if !known {
+					allKnown, anyUnknown = false, true
+				}
+			}
+			switch a.Name.Local {
+			case "typeAvailable", "facetAvailable":
+				if anyUnknown {
+					pruned = true
+				}
+			case "typeUnavailable", "facetUnavailable":
+				if allKnown {
+					pruned = true
+				}
 			}
 		}
+	}
+	return pruned
+}
+
+// typeAutomaticallyKnown reports whether q names a type the processor provides
+// automatically: a built-in datatype, or one of the special types. User types
+// are not "automatically known" — conditional inclusion runs before assembly.
+func typeAutomaticallyKnown(q xsd.QName) bool {
+	if q.Namespace != xsd.XSDNS {
+		return false
+	}
+	switch q.Local {
+	case "anyType", "anySimpleType", "anyAtomicType", "error":
+		return true
+	}
+	return builtin.Lookup(q.Local) != nil
+}
+
+// facetKnown reports whether q names a constraining facet this processor
+// supports (by the element name used to apply it). xs:minScale / xs:maxScale
+// (precisionDecimal facets) are deliberately absent.
+func facetKnown(q xsd.QName) bool {
+	if q.Namespace != xsd.XSDNS {
+		return false
+	}
+	switch q.Local {
+	case "length", "minLength", "maxLength", "pattern", "enumeration", "whiteSpace",
+		"maxInclusive", "maxExclusive", "minInclusive", "minExclusive",
+		"totalDigits", "fractionDigits", "assertion", "explicitTimezone":
+		return true
 	}
 	return false
 }

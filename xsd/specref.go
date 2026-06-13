@@ -52,6 +52,7 @@ var (
 	SpecSrcWildcard       = ref(1, "src-wildcard", "3.10.3", "src-wildcard")
 	SpecSrcDupID          = ref(1, "src-id", "3.17.3", "src-id") // unique xs:ID values within a schema document
 	SpecSrcTA             = ref(1, "src-ta", "3.12.3", "src-ta") // type alternative representation OK
+	SpecCIP               = ref(1, "cip", "4.2.2", "cip")        // conditional inclusion (vc:* attribute validity)
 )
 
 // Part 1 — Structures: component constraints (*-props-correct, cos-*, …).

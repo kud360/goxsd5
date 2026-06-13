@@ -418,6 +418,45 @@ func TestConditionalInclusion(t *testing.T) {
 </xs:schema>`)
 		wantClean(t, errs)
 	})
+	t.Run("typeAvailable/typeUnavailable select a branch", func(t *testing.T) {
+		// xs:error is available, so the typeAvailable branch is kept and the
+		// typeUnavailable branch is pruned: no duplicate attribute.
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning">
+  <xs:complexType name="c">
+    <xs:attribute name="a" type="xs:error" vc:typeAvailable="xs:error"/>
+    <xs:attribute name="a" vc:typeUnavailable="xs:error"/>
+  </xs:complexType>
+</xs:schema>`)
+		wantClean(t, errs)
+	})
+	t.Run("unavailable type prunes the element", func(t *testing.T) {
+		// xs:precisionDecimal is not supported, so the element using it is
+		// removed and its broken content is never judged.
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning">
+  <xs:element name="e" type="xs:precisionDecimal" vc:typeAvailable="xs:precisionDecimal"/>
+</xs:schema>`)
+		wantClean(t, errs)
+	})
+	t.Run("invalid vc:minVersion is an error", func(t *testing.T) {
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning">
+  <xs:element name="e" type="xs:int" vc:minVersion="1.1.3"/>
+</xs:schema>`)
+		wantIDs(t, errs, "cip")
+	})
+	t.Run("invalid QName in vc:typeUnavailable is an error", func(t *testing.T) {
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning">
+  <xs:element name="e" type="xs:int" vc:typeUnavailable="xs:integer 23"/>
+</xs:schema>`)
+		wantIDs(t, errs, "cip")
+	})
+	t.Run("a conditionally-ignored schema element is emptied", func(t *testing.T) {
+		// vc:maxVersion <= 1.1 ignores the whole <schema>, so the bogus child
+		// is removed rather than rejected.
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning" vc:maxVersion="0.9">
+  <xs:somethingInvalid/>
+</xs:schema>`)
+		wantClean(t, errs)
+	})
 }
 
 func TestRedefineOverrideRegistration(t *testing.T) {

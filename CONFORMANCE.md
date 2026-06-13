@@ -43,6 +43,7 @@ constant name in code.
 | src-annotation | §3.15.3 | M5 | done | |
 | src-wildcard | §3.10.3 | M5 | done | parser/elemtable.go:761 |
 | src-id | §3.17.3 | M5 | done | parser/validate.go:139 |
+| cip | §4.2.2 | M9 | done (conditional inclusion: vc:minVersion/maxVersion + typeAvailable/Unavailable + facetAvailable/Unavailable evaluation and value validity) | parser/validate.go:170 |
 | no-xmlns | §3.2.6.3 | M5 | done | parser/elemtable.go:750 |
 | no-xsi | §3.2.6.4 | M5 | wip (ref'd uses → M6) | parser/elemtable.go:754 |
 | sch-props-correct.2 (unique globals) | §3.17.6 | M5 | done | |
