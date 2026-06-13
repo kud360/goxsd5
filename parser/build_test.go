@@ -153,6 +153,22 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:all><xs:element name="a" type="xs:int" minOccurs="1" maxOccurs="5"/></xs:all></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="4"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"cos-particle-restrict"}},
+		{"all restriction wildcard widens the base wildcard namespace",
+			`<xs:complexType name="b"><xs:all><xs:any namespace="urn:y"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x urn:y"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction splits a base wildcard past its maxOccurs",
+			`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x urn:y" maxOccurs="5"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x" maxOccurs="3"/><xs:any namespace="urn:y" maxOccurs="3"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction splits a base wildcard below its minOccurs",
+			`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x urn:y" minOccurs="5" maxOccurs="unbounded"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x" minOccurs="2" maxOccurs="unbounded"/><xs:any namespace="urn:y" minOccurs="2" maxOccurs="unbounded"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"restriction introduces a content wildcard the base lacks",
+			`<xs:complexType name="b"><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="a" type="xs:int"/><xs:any namespace="##any" minOccurs="0"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
 		{"all restriction splits a head whose substitutes overshoot maxOccurs",
 			`<xs:element name="a" type="xs:int"/>
 			 <xs:element name="A1" type="xs:int" substitutionGroup="tns:a"/>
@@ -695,6 +711,12 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		// Attribute wildcard dropped entirely by the restriction (allowed).
 		`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute namespace="##any"/></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Content wildcard narrowed to a subset namespace (NSSubset).
+		`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x urn:y"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Base wildcard replaced by a concrete element it admits (NSCompat).
+		`<xs:complexType name="b"><xs:sequence><xs:any namespace="##any" maxOccurs="3"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="e" type="xs:int"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

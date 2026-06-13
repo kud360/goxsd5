@@ -14,6 +14,8 @@ ibmMeta/allGroup.testSet#s3_3_6ii01 pass
 ibmMeta/allGroup.testSet#s3_3_6ii02 pass
 ibmMeta/allGroup.testSet#s3_3_6ii03 pass
 ibmMeta/allGroup.testSet#s3_3_6si01 pass
+ibmMeta/allGroup.testSet#s3_3_6si02 pass
+ibmMeta/allGroup.testSet#s3_3_6si03 pass
 ibmMeta/allGroup.testSet#s3_3_6v01 pass
 ibmMeta/allGroup.testSet#s3_3_6v04 pass
 ibmMeta/allGroup.testSet#s3_3_6v05 pass
@@ -397,6 +399,7 @@ ibmMeta/regularExpression.testSet#d6_gv04 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6ii01 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6ii03 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6si01 pass
+ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6si02 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6si03 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6si04 pass
 ibmMeta/restrictionOfComplexTypes.testSet#s3_4_6si05 pass
@@ -4543,10 +4546,13 @@ saxonMeta/All.testSet#all225 pass
 saxonMeta/All.testSet#all226 pass
 saxonMeta/All.testSet#all227 pass
 saxonMeta/All.testSet#all228 pass
+saxonMeta/All.testSet#all229 pass
 saxonMeta/All.testSet#all230 pass
 saxonMeta/All.testSet#all231 pass
 saxonMeta/All.testSet#all232 pass
 saxonMeta/All.testSet#all234 pass
+saxonMeta/All.testSet#all235 pass
+saxonMeta/All.testSet#all236 pass
 saxonMeta/All.testSet#all237 pass
 saxonMeta/All.testSet#all240 pass
 saxonMeta/All.testSet#all241 pass
@@ -4913,6 +4919,7 @@ saxonMeta/Wild.testSet#wild046 pass
 saxonMeta/Wild.testSet#wild047 pass
 saxonMeta/Wild.testSet#wild049 pass
 saxonMeta/Wild.testSet#wild050 pass
+saxonMeta/Wild.testSet#wild051 pass
 saxonMeta/Wild.testSet#wild052 pass
 saxonMeta/Wild.testSet#wild053 pass
 saxonMeta/Wild.testSet#wild054 pass

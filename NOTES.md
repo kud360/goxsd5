@@ -7,7 +7,7 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — M9 DONE (2026-06-12). All milestones M0–M9 complete. Post-M9 at 5628 pass.
+## Status — M9 DONE (2026-06-12). All milestones M0–M9 complete. Post-M9 at 5635 pass.
 NOTE ON ORDERING: user chose to do M8 before M9 (numeric order), overriding
 the original NOTES checklist that had M9 first.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
@@ -39,11 +39,24 @@ the original NOTES checklist that had M9 first.
   the unrecorded gaps for triage.
 - BASELINE: 5709 determinate 1.1 schema cases. Initial M9 baseline was 5537
   pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
-  to 5628 pass (see "Post-M9 conformance fixes" below).
+  to 5635 pass (see "Post-M9 conformance fixes" below).
 
-## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5628 pass)
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5635 pass)
 Worked the false positives + small/medium well-defined checks. Each landed
 with unit tests and a re-baseline; NO regressions. Commits:
+- SESSION 2026-06-13 part 5 (5628 → 5635, +7): ELEMENT WILDCARD particle
+  subsumption. checkParticleRestrict (restrict.go) now handles wildcards in the
+  flat all/sequence bag check, but only when the BASE group has at most ONE
+  wildcard (≥2 → give up: a restriction particle could map to either). Base
+  slots are element-or-wildcard; a restriction element maps to a base element
+  by name/substitution, else to the base wildcard via NSCompat
+  (wildcardAllowsName); a restriction wildcard maps to the base wildcard via
+  NSSubset (namespaceConstraintSubset); all particles mapping to a slot sum
+  their occurrence ranges, which must stay within the slot's. processContents
+  ordering is NOT checked (lenient → no false positive; loses all238). +7
+  (all229/235/236 wildcard-in-all NSSubset+cardinality, ibm allGroup si02/03,
+  restrictionOfComplexTypes si02, wild051 multi-wildcard notQName gap). flatGroup
+  replaced flatElementGroup.
 - SESSION 2026-06-13 part 4 (5624 → 5628, +4): ATTRIBUTE WILDCARD SUBSET. New
   parser/wildcard.go implements the Wildcard Subset relation (cos-ns-subset,
   §3.10.6.2: namespaceConstraintSubset) + Wildcard allows Expanded Name
@@ -137,14 +150,18 @@ with unit tests and a re-baseline; NO regressions. Commits:
 REMAINING gaps (~60 after the 2026-06-13 session), all the genuinely hard /
 large features. UPA is DONE (part 2); cos-particle-restrict is PARTLY done
 (part 3) — remaining cases below:
-- Particle restriction "subsumption" / cos-particle-restrict: the flat
-  element-only all/sequence per-name occurrence/type check is DONE (part 3,
-  parser/restrict.go). REMAINING (give-up paths, still tolerated): wildcard
-  subsumption (saxon All all229/235/236/238/244 wildcard-in-all,
-  wild020-022/048/051/057, ibm allGroup si02/03, restrictionOfComplexTypes
-  si02), all→choice subsumption (all233), open content subset
-  (open016-019/033). These need the full subsumption algorithm (wildcard
-  NSSubset/NSRecurseCheckCardinality + choice MapAndSum/RecurseLax).
+- Particle restriction "subsumption" / cos-particle-restrict: DONE for flat
+  all/sequence element models (part 3), single-base-wildcard element/wildcard
+  models (part 5), and attribute wildcard subset (part 4). REMAINING (give-up
+  paths, still tolerated): MULTI-base-wildcard combination reasoning (all238,
+  all244, wild048 — ≥2 base wildcards with overlapping namespaces, the
+  pathological cases), all→choice subsumption (all233 — choice compositor
+  gives up), processContents ordering in NSSubset (part of all238). These need
+  proper choice MapAndSum/RecurseLax and a multi-wildcard cardinality solver.
+- EDC type-table / wildcard cases wild069/078/079/081 + wild041 (xsi: in
+  notQName).
+- Open content extension/restriction subset (open016-019/030/033/046/048,
+  complex018) — open-content particle subsumption, deferred.
 - all308 (xs:all extension of mixed empty content — spec bug 6202, borderline;
   leave tolerated).
 - Wildcards cos-aw-* intersection/union/subset (Wild restriction subset, EDC

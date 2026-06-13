@@ -56,14 +56,19 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		return // open-content subset is deferred (NOTES.md)
 	}
 
-	rParts, rTop, rOK := flatElementGroup(rec.Particle)
-	bParts, bTop, bOK := flatElementGroup(bec.Particle)
+	rParts, rTop, rOK := flatGroup(rec.Particle)
+	bParts, bTop, bOK := flatGroup(bec.Particle)
 	if !rOK || !bOK {
-		return // a wildcard / choice / nested group is present: give up safely
+		return // a choice / nested group / group ref is present: give up safely
 	}
 
+	// Build a slot per base particle: element slots carry the declaration's
+	// accepted-name set; the wildcard slot (at most one is handled) carries the
+	// wildcard. With two or more base wildcards a restriction particle could map
+	// to either, so give up rather than guess.
 	type baseSlot struct {
-		decl     *xsd.ElementDecl
+		decl     *xsd.ElementDecl // element slot
+		wc       *xsd.Wildcard    // wildcard slot
 		min, max int
 		names    map[xsd.QName]bool
 		sumMin   int
@@ -71,69 +76,114 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 		mapped   bool
 	}
 	slots := make([]*baseSlot, 0, len(bParts))
+	var baseWC *baseSlot
 	for _, bp := range bParts {
-		decl := bp.Term.(*xsd.ElementDecl)
-		slots = append(slots, &baseSlot{
-			decl:  decl,
-			min:   mulOcc(bTop.MinOccurs, bp.MinOccurs),
-			max:   mulOcc(bTop.MaxOccurs, bp.MaxOccurs),
-			names: accepted(decl),
-		})
+		s := &baseSlot{min: mulOcc(bTop.MinOccurs, bp.MinOccurs), max: mulOcc(bTop.MaxOccurs, bp.MaxOccurs)}
+		switch term := bp.Term.(type) {
+		case *xsd.ElementDecl:
+			s.decl = term
+			s.names = accepted(term)
+		case *xsd.Wildcard:
+			if baseWC != nil {
+				return // more than one base wildcard: give up
+			}
+			s.wc = term
+			baseWC = s
+		}
+		slots = append(slots, s)
+	}
+
+	// mapTo accumulates rp's occurrence onto slot s and marks it mapped.
+	mapTo := func(s *baseSlot, rp *xsd.Particle) {
+		s.mapped = true
+		s.sumMin = addOcc(s.sumMin, mulOcc(rTop.MinOccurs, rp.MinOccurs))
+		s.sumMax = addOcc(s.sumMax, mulOcc(rTop.MaxOccurs, rp.MaxOccurs))
 	}
 
 	for _, rp := range rParts {
-		decl := rp.Term.(*xsd.ElementDecl)
-		// Find the base particle whose accepted names include this element
-		// (an exact name match or a substitution-group membership).
-		var slot *baseSlot
-		ambiguous := false
-		for _, s := range slots {
-			if s.names[decl.Name] {
-				if slot != nil {
-					ambiguous = true
-					break
+		switch term := rp.Term.(type) {
+		case *xsd.ElementDecl:
+			// Find the base element particle whose accepted names include this
+			// element (exact name or substitution-group membership).
+			var slot *baseSlot
+			ambiguous := false
+			for _, s := range slots {
+				if s.decl != nil && s.names[term.Name] {
+					if slot != nil {
+						ambiguous = true
+						break
+					}
+					slot = s
 				}
-				slot = s
 			}
-		}
-		if ambiguous {
-			return // can't decide which base particle it restricts: give up
-		}
-		if slot == nil {
+			if ambiguous {
+				return // can't decide which base particle it restricts: give up
+			}
+			if slot != nil {
+				mapTo(slot, rp)
+				if !validlyDerivedByRestriction(term.Type, slot.decl.Type) {
+					// spec: cos-particle-restrict — §3.4.6.4 clause 2 /
+					// NameAndTypeOK: the restricting element's type must derive
+					// from the base's.
+					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", term.Name, describeCT(ct))
+				}
+				if !slot.decl.Nillable && term.Nillable {
+					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s may not be nillable when the base element is not", term.Name, describeCT(ct))
+				}
+				continue
+			}
+			// No base element matches: the element must be accepted by the base
+			// wildcard (NSCompat), else the restriction introduces a name the
+			// base disallows.
+			if baseWC != nil && wildcardAllowsName(baseWC.wc, term.Name) {
+				mapTo(baseWC, rp)
+				continue
+			}
 			// spec: cos-particle-restrict — XSD 1.1 Part 1 §3.4.6.4 clause 1
-			b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s is not allowed by the base content model", decl.Name, describeCT(ct))
-			continue
-		}
-		slot.mapped = true
-		slot.sumMin = addOcc(slot.sumMin, mulOcc(rTop.MinOccurs, rp.MinOccurs))
-		slot.sumMax = addOcc(slot.sumMax, mulOcc(rTop.MaxOccurs, rp.MaxOccurs))
-
-		if !validlyDerivedByRestriction(decl.Type, slot.decl.Type) {
-			// spec: cos-particle-restrict — §3.4.6.4 clause 2 / NameAndTypeOK:
-			// the restricting element's type must derive from the base's.
-			b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", decl.Name, describeCT(ct))
-		}
-		if !slot.decl.Nillable && decl.Nillable {
-			b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s may not be nillable when the base element is not", decl.Name, describeCT(ct))
+			b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s is not allowed by the base content model", term.Name, describeCT(ct))
+		case *xsd.Wildcard:
+			// A restriction wildcard can only restrict the base wildcard, and
+			// only if it is a wildcard subset of it (NSSubset).
+			if baseWC == nil {
+				// spec: cos-particle-restrict — §3.4.6.4 clause 1: the base has no
+				// wildcard, so the restriction may not introduce one.
+				b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "the restriction of %s introduces a wildcard the base content model does not allow", describeCT(ct))
+				continue
+			}
+			if !namespaceConstraintSubset(term, baseWC.wc) {
+				// spec: cos-particle-restrict — §3.4.6.4 clause 1 / NSSubset:
+				// the restricting wildcard must be a subset of the base's.
+				b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "a wildcard in the restriction of %s allows elements the base wildcard does not", describeCT(ct))
+			}
+			mapTo(baseWC, rp)
 		}
 	}
 
 	for _, s := range slots {
 		if !s.mapped {
 			if s.min > 0 {
-				// spec: cos-particle-restrict — §3.4.6.4 clause 1: a required
-				// base element must remain required in the restriction.
-				b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s omits the required base element %s", describeCT(ct), s.decl.Name)
+				// spec: cos-particle-restrict — §3.4.6.4 clause 1: required base
+				// content must remain required in the restriction.
+				b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s omits required base content (%s)", describeCT(ct), slotName(s.decl))
 			}
 			continue
 		}
 		if s.sumMin < s.min {
-			b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s allows element %s fewer times than the base requires", describeCT(ct), s.decl.Name)
+			b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s allows %s fewer times than the base requires", describeCT(ct), slotName(s.decl))
 		}
 		if !occLE(s.sumMax, s.max) {
-			b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s allows element %s more times than the base permits", describeCT(ct), s.decl.Name)
+			b.errf(xsd.SpecCosParticleRestrict, rec.Particle.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), slotName(s.decl))
 		}
 	}
+}
+
+// slotName names a base slot for diagnostics: the element name, or "a wildcard"
+// for the wildcard slot.
+func slotName(decl *xsd.ElementDecl) string {
+	if decl == nil {
+		return "a wildcard"
+	}
+	return "element " + decl.Name.String()
 }
 
 // checkAttrWildcardRestriction enforces that a complexContent/simpleContent
@@ -156,18 +206,20 @@ func (b *builder) checkAttrWildcardRestriction(ct *xsd.ComplexType, r, base *xsd
 	}
 }
 
-// flatElementGroup returns the element particles of p's term when that term is
-// an all or sequence model group every one of whose particles is a plain
-// element declaration. It reports ok=false (so the caller gives up) for a
-// choice compositor, a group reference, or any wildcard or nested group, since
-// those need the full subsumption algorithm.
-func flatElementGroup(p *xsd.Particle) (parts []*xsd.Particle, top *xsd.Particle, ok bool) {
+// flatGroup returns the particles of p's term when that term is an all or
+// sequence model group every one of whose particles is a plain element
+// declaration or a wildcard. It reports ok=false (so the caller gives up) for a
+// choice compositor, a group reference, or any nested model group, since those
+// need the full subsumption algorithm.
+func flatGroup(p *xsd.Particle) (parts []*xsd.Particle, top *xsd.Particle, ok bool) {
 	mg, isMG := p.Term.(*xsd.ModelGroup)
 	if !isMG || mg.Compositor == xsd.CompositorChoice {
 		return nil, nil, false
 	}
 	for _, c := range mg.Particles {
-		if _, isElem := c.Term.(*xsd.ElementDecl); !isElem {
+		switch c.Term.(type) {
+		case *xsd.ElementDecl, *xsd.Wildcard:
+		default:
 			return nil, nil, false
 		}
 	}
