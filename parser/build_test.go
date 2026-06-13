@@ -160,6 +160,28 @@ func TestBuilderNegatives(t *testing.T) {
 			 <xs:complexType name="b"><xs:all><xs:element ref="tns:a" minOccurs="10" maxOccurs="20"/></xs:all></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element ref="tns:A1" minOccurs="6" maxOccurs="15"/><xs:element ref="tns:A2" minOccurs="6" maxOccurs="15"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"cos-particle-restrict"}},
+		// Attribute wildcard restriction subset (derivation-ok-restriction /
+		// Wildcard Subset, §3.4.6.3 / §3.10.6.2): R's wildcard ⊆ B's.
+		{"restriction attribute wildcard widens an enumeration past a notNamespace base",
+			`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x urn:y"/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute namespace="urn:z urn:x"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction attribute wildcard not is broader than the base not",
+			`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x urn:y"/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction attribute wildcard ##any over a constrained base",
+			`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x"/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute namespace="##any"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction attribute wildcard drops the base ##defined disallowance",
+			`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute namespace="##any" notQName="##defined" processContents="skip"/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute namespace="##local" processContents="skip"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction adds an attribute wildcard the base lacks",
+			`<xs:complexType name="b"><xs:sequence/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute namespace="##any"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
@@ -667,6 +689,12 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		`<xs:simpleType name="u"><xs:union memberTypes="xs:date xs:time"/></xs:simpleType>
 		 <xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:u"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="xs:date"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Attribute wildcard narrowed to a subset (notNamespace widened set).
+		`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x"/></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x urn:y"/></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Attribute wildcard dropped entirely by the restriction (allowed).
+		`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute namespace="##any"/></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/></xs:restriction></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

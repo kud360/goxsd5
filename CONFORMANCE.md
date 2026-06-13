@@ -75,7 +75,7 @@ constant name in code.
 |---------------|---------|-----------|--------|------------------|
 | cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts + 1.4.3.2.2.1 mixed consistency + all-group extension merge & cos-particle-extend.3.1 minOccurs done; sequence particle subsumption deferred) | parser/buildcomplex.go:188 |
 | cos-ct-restricts | §3.4.6 | M6/M9 | deferred (cos-particle-restrict; expectations ratchet tolerates) | |
-| derivation-ok-restriction | §3.4.6 | M6/M9 | deferred | |
+| derivation-ok-restriction | §3.4.6 | M6/M9 | wip (base {final} blocks restriction; attribute-wildcard subset; particle subsumption via cos-particle-restrict) | parser/restrict.go |
 | cos-equiv-class (substitution groups) | §3.3.6 | M6 | deferred (the enforced part — substitution-group final exclusion — is reported under e-props-correct.4; full equivalence-class membership not yet checked under this ID) | |
 | cos-valid-default | §3.3.6 | M6 | done (mixed-emptiable clause deferred) | parser/buildterms.go:110 |
 | enumeration-required-notation | Part 2 §3.3.19 | M6 | done | parser/buildterms.go:226 |
@@ -180,7 +180,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | cos-st-derived-ok | §3.16.6 | M9+ | deferred (simple-type derivation OK) | |
 | cos-aw-union | §3.10.6 | M9+ | deferred (wildcard union; first-wildcard-wins approximation) | |
 | cos-aw-intersect | §3.10.6 | M9+ | deferred (wildcard intersection) | |
-| cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset) | |
+| cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset relation implemented in parser/wildcard.go; violations reported under derivation-ok-restriction) | |
 | cos-all-limited | §3.8.6 | post-M9 | done (clause 2 + 1.3 nested model groups; clause 1 for all-vs-sequence extension; full top-level placement 1.1/1.2 partial) | parser/buildterms.go:480 |
 | cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
 | ag-props-correct | §3.6.6 | M9+ | deferred (attribute group definition properties) | |

@@ -136,6 +136,26 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 	}
 }
 
+// checkAttrWildcardRestriction enforces that a complexContent/simpleContent
+// restriction's attribute wildcard admits only attributes the base's does
+// (derivation-ok-restriction, §3.4.6.3: every attribute valid against the
+// restriction must be valid against the base). r is the restriction's declared
+// attribute wildcard (non-nil); base is the base type's, which may be absent.
+func (b *builder) checkAttrWildcardRestriction(ct *xsd.ComplexType, r, base *xsd.Wildcard) {
+	if base == nil {
+		// spec: derivation-ok-restriction — §3.4.6.3: the base allows no
+		// wildcard attributes, so the restriction may not introduce one.
+		b.errf(xsd.SpecDerivationOKRestriction, r.Pos, "the attribute wildcard on the restriction of %s is not allowed: the base type has no attribute wildcard", describeCT(ct))
+		return
+	}
+	if !namespaceConstraintSubset(r, base) {
+		// spec: derivation-ok-restriction — §3.4.6.3 / Wildcard Subset
+		// (cos-ns-subset): the restricting wildcard must be a subset of the
+		// base's.
+		b.errf(xsd.SpecDerivationOKRestriction, r.Pos, "the attribute wildcard on the restriction of %s allows attributes the base type's wildcard does not", describeCT(ct))
+	}
+}
+
 // flatElementGroup returns the element particles of p's term when that term is
 // an all or sequence model group every one of whose particles is a plain
 // element declaration. It reports ok=false (so the caller gives up) for a

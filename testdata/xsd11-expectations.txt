@@ -4884,6 +4884,9 @@ saxonMeta/Wild.testSet#wild016 pass
 saxonMeta/Wild.testSet#wild017 pass
 saxonMeta/Wild.testSet#wild018 pass
 saxonMeta/Wild.testSet#wild019 pass
+saxonMeta/Wild.testSet#wild020 pass
+saxonMeta/Wild.testSet#wild021 pass
+saxonMeta/Wild.testSet#wild022 pass
 saxonMeta/Wild.testSet#wild023 pass
 saxonMeta/Wild.testSet#wild024 pass
 saxonMeta/Wild.testSet#wild025 pass
@@ -4915,6 +4918,7 @@ saxonMeta/Wild.testSet#wild053 pass
 saxonMeta/Wild.testSet#wild054 pass
 saxonMeta/Wild.testSet#wild055 pass
 saxonMeta/Wild.testSet#wild056 pass
+saxonMeta/Wild.testSet#wild057 pass
 saxonMeta/Wild.testSet#wild058 pass
 saxonMeta/Wild.testSet#wild059 pass
 saxonMeta/Wild.testSet#wild060 pass

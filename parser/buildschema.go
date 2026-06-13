@@ -197,6 +197,9 @@ func (b *builder) finishComplexTypes() {
 			// stands in when the type declares none.
 			ct.AttributeWildcard = baseWC
 		}
+		if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil && p.wc != nil {
+			b.checkAttrWildcardRestriction(ct, p.wc, baseWC)
+		}
 		b.applyDefaultAttributes(ct, p.node, p.doc)
 		b.checkAttrUses(ct)
 	}

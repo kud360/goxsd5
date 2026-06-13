@@ -7,7 +7,7 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## Status — M9 DONE (2026-06-12). All milestones M0–M9 complete.
+## Status — M9 DONE (2026-06-12). All milestones M0–M9 complete. Post-M9 at 5628 pass.
 NOTE ON ORDERING: user chose to do M8 before M9 (numeric order), overriding
 the original NOTES checklist that had M9 first.
 - [x] M0 foundations (xsd: Pos, QName, SpecRef registry, Error/ErrorList, RefIDs)
@@ -39,11 +39,21 @@ the original NOTES checklist that had M9 first.
   the unrecorded gaps for triage.
 - BASELINE: 5709 determinate 1.1 schema cases. Initial M9 baseline was 5537
   pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
-  to 5624 pass (see "Post-M9 conformance fixes" below).
+  to 5628 pass (see "Post-M9 conformance fixes" below).
 
-## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5624 pass)
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5628 pass)
 Worked the false positives + small/medium well-defined checks. Each landed
 with unit tests and a re-baseline; NO regressions. Commits:
+- SESSION 2026-06-13 part 4 (5624 → 5628, +4): ATTRIBUTE WILDCARD SUBSET. New
+  parser/wildcard.go implements the Wildcard Subset relation (cos-ns-subset,
+  §3.10.6.2: namespaceConstraintSubset) + Wildcard allows Expanded Name
+  (cvc-wildcard-name: wildcardAllowsName) — variety cases 1-4 plus the
+  disallowed-names (notQName, ##defined/##definedSibling) conditions. Wired in
+  finishComplexTypes: a complexContent/simpleContent RESTRICTION whose declared
+  attribute wildcard is not a subset of the base's (or that adds a wildcard the
+  base lacks) is a derivation-ok-restriction error (checkAttrWildcardRestriction
+  in restrict.go). +4 (wild020-022 attr ns subset, wild057 drops base
+  ##defined). Element-wildcard particle subsumption still deferred (part 5).
 - SESSION 2026-06-13 part 3 (5613 → 5624, +11): PARTICLE RESTRICTION
   (cos-particle-restrict, §3.4.6.4 / §3.9.6) — first cut. parser/restrict.go:
   checkParticleRestrict runs in finishComplexTypes for each complexContent
