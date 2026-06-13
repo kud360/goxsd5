@@ -7,7 +7,17 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5655 (+4). Remainder below <<<
+## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5656 (+5). Remainder below <<<
+SESSION 2026-06-13 phase 5b (5655 → 5656, +1): no-xsi for GLOBAL attributes
+(§3.2.6.4, wild041). The pass-1 walker already caught a LOCAL attribute with an
+explicit targetNamespace="…XMLSchema-instance", but a top-level attribute
+inherits its {target namespace} from the schema, so a schema whose own
+targetNamespace IS the xsi namespace declares an illegal attribute with no
+targetNamespace attr to catch structurally. Added a global-only check in
+buildAttributeDecl (buildterms.go): global && a.Name.Namespace == XSINS ⇒
+SpecNoXsi. Disjoint from the pass-1 local-explicit check (top-level attrs can't
+carry targetNamespace), so no double-report. Unit test TestBuildNoXsiGlobalAttribute.
+
 SESSION 2026-06-13 phase 5 (5651 → 5655, +4): TYPE-ALTERNATIVE substitutability
 (e-props-correct.7) + ATTRIBUTE-RESTRICTION inheritability (derivation-ok-restriction).
 Two purely-STATIC checks carved out of the CTA/typeAlternatives cluster that

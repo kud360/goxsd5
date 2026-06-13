@@ -524,6 +524,20 @@ func TestBuildDerivedExclusiveBoundEqualsBase(t *testing.T) {
 	wantClean(t, errs)
 }
 
+// A top-level attribute inherits the schema's target namespace; when that is
+// the XML Schema instance namespace, the declaration is illegal (no-xsi,
+// §3.2.6.4) even though there is no explicit targetNamespace attribute to catch
+// in pass 1.
+func TestBuildNoXsiGlobalAttribute(t *testing.T) {
+	_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` targetNamespace="http://www.w3.org/2001/XMLSchema-instance">
+		<xs:attribute name="nonStandardAttribute" type="xs:string"/>
+	</xs:schema>`)
+	if errs.Empty() {
+		t.Fatal("expected a no-xsi error, got none")
+	}
+	wantIDs(t, errs, "no-xsi")
+}
+
 func TestBuildSimpleTypeModels(t *testing.T) {
 	s, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
   <xs:simpleType name="size">

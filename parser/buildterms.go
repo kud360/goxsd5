@@ -243,6 +243,15 @@ func (b *builder) buildAttributeDecl(n *xmltree.Node, doc *schemaDoc, global boo
 	name, _ := n.Attr("name")
 	if global {
 		a.Name = xsd.QName{Namespace: doc.targetNamespace, Local: name}
+		if a.Name.Namespace == xsd.XSINS {
+			// spec: no-xsi — XSD 1.1 Part 1 §3.2.6.4: only the four built-in
+			// xsi: attribute declarations may target the XML Schema instance
+			// namespace. A top-level attribute inherits its {target namespace}
+			// from the schema, so a schema whose targetNamespace is the xsi
+			// namespace declares one illegally. (The explicit-targetNamespace
+			// form on a local attribute is caught structurally in pass 1.)
+			b.errf(xsd.SpecNoXsi, n.Pos, "attribute %s must not target the XML Schema instance namespace", name)
+		}
 	} else {
 		a.Name = localQName(n, doc, name, doc.attributeFormDefault)
 	}
