@@ -4747,6 +4747,8 @@ saxonMeta/Simple.testSet#simple045 pass
 saxonMeta/Simple.testSet#simple046 pass
 saxonMeta/Simple.testSet#simple050 pass
 saxonMeta/Simple.testSet#simple051 pass
+saxonMeta/Simple.testSet#simple052 pass
+saxonMeta/Simple.testSet#simple053 pass
 saxonMeta/Simple.testSet#simple054 pass
 saxonMeta/Simple.testSet#simple055 pass
 saxonMeta/Simple.testSet#simple060 pass
@@ -4778,7 +4780,10 @@ saxonMeta/Simple.testSet#simple085 pass
 saxonMeta/Simple.testSet#simple086 pass
 saxonMeta/Simple.testSet#simple090 pass
 saxonMeta/Simple.testSet#simple091 pass
+saxonMeta/Simple.testSet#simple092 pass
+saxonMeta/Simple.testSet#simple093 pass
 saxonMeta/Simple.testSet#simple094 pass
+saxonMeta/Simple.testSet#simple095 pass
 saxonMeta/Subsgroup.testSet#subsgroup001 pass
 saxonMeta/Subsgroup.testSet#subsgroup002 pass
 saxonMeta/Subsgroup.testSet#subsgroup003 pass
@@ -5344,6 +5349,7 @@ sunMeta/Notation.testSet#annotation00101m2 pass
 sunMeta/Notation.testSet#annotation00101m3 pass
 sunMeta/Notation.testSet#annotation00101m4 pass
 sunMeta/Notation.testSet#name00101m1 pass
+sunMeta/Notation.testSet#name00101m2 pass
 sunMeta/Notation.testSet#name00201m1 pass
 sunMeta/Notation.testSet#publicid00101m1 pass
 sunMeta/Notation.testSet#publicid00201m1 pass

@@ -137,6 +137,24 @@ func TestBuilderNegatives(t *testing.T) {
 		{"NOTATION-derived type without enumeration",
 			`<xs:attribute name="a"><xs:simpleType><xs:restriction base="xs:NOTATION"/></xs:simpleType></xs:attribute>`,
 			[]string{"enumeration-required-notation"}},
+		{"list of NOTATION without enumeration",
+			`<xs:simpleType name="t"><xs:list itemType="xs:NOTATION"/></xs:simpleType>`,
+			[]string{"enumeration-required-notation"}},
+		{"union with a bare NOTATION member",
+			`<xs:simpleType name="t"><xs:union memberTypes="xs:string xs:NOTATION"/></xs:simpleType>`,
+			[]string{"enumeration-required-notation"}},
+		{"NOTATION enumeration value names no declared notation",
+			`<xs:notation name="jpeg" public="image/jpeg"/>
+			 <xs:attribute name="a"><xs:simpleType><xs:restriction base="xs:NOTATION"><xs:enumeration value="png"/></xs:restriction></xs:simpleType></xs:attribute>`,
+			[]string{"enumeration-required-notation"}},
+
+		// The special types must not be used as a list/union item type.
+		{"list of xs:anyAtomicType",
+			`<xs:simpleType name="t"><xs:list itemType="xs:anyAtomicType"/></xs:simpleType>`,
+			[]string{"cos-st-restricts"}},
+		{"union member xs:anyAtomicType",
+			`<xs:simpleType name="t"><xs:union memberTypes="xs:anyAtomicType xs:string"/></xs:simpleType>`,
+			[]string{"cos-st-restricts"}},
 
 		// Element declarations.
 		{"substitution excluded by head final",

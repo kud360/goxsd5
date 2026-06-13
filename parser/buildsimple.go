@@ -37,6 +37,14 @@ func (b *builder) buildSimpleType(n *xmltree.Node, doc *schemaDoc, name xsd.QNam
 	return st
 }
 
+// isSpecialBase reports whether st is xs:anySimpleType or xs:anyAtomicType,
+// the special types that may not be used directly as a restriction base, list
+// item type, or union member type.
+func isSpecialBase(st *xsd.SimpleType) bool {
+	return st != nil && st.Name.Namespace == xsd.XSDNS &&
+		(st.Name.Local == "anySimpleType" || st.Name.Local == "anyAtomicType")
+}
+
 // buildSTRestriction fills st from an xs:restriction inside xs:simpleType.
 // It is also the facet half of simpleContent restrictions (buildcomplex).
 func (b *builder) buildSTRestriction(st *xsd.SimpleType, r *xmltree.Node, doc *schemaDoc) {
@@ -95,6 +103,12 @@ func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDo
 	} else if inline := firstChild(l, doc, "simpleType"); inline != nil {
 		item, _ = b.buildAnonType(l, doc, builtin.AnySimpleType).(*xsd.SimpleType)
 	}
+	if isSpecialBase(item) {
+		// spec: cos-st-restricts.2 — XSD 1.1 Part 2 §4.1.6: anySimpleType /
+		// anyAtomicType have no functional lexical mapping, so they cannot be
+		// the item type of a list (resolution of WG bug 11103).
+		b.errf(xsd.SpecCosSTRestricts, l.Pos, "xs:%s must not be used as a list item type", item.Name.Local)
+	}
 	// spec: cos-st-restricts.2 — XSD 1.1 Part 2 §4.1.6: a list's item type
 	// must be atomic or a union of atomics.
 	switch item.Variety {
@@ -111,6 +125,9 @@ func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDo
 		// spec: st-props-correct.3 — final of the item type forbids list.
 		b.errf(xsd.SpecSTPropsCorrect, l.Pos, "item type %s forbids derivation by list", item.TypeName())
 	}
+	// A list of NOTATION is a use of NOTATION to validate, so the item type
+	// must itself carry an enumeration (enumeration-required-notation).
+	b.checkNotationEnum(item, l.Pos)
 
 	st.BaseType = builtin.AnySimpleType
 	st.Variety = xsd.VarietyList
@@ -148,6 +165,14 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 			// spec: st-props-correct.3 — final of a member forbids union.
 			b.errf(xsd.SpecSTPropsCorrect, u.Pos, "member type %s forbids derivation by union", m.TypeName())
 		}
+		if isSpecialBase(m) {
+			// spec: cos-st-restricts.3 — anySimpleType / anyAtomicType cannot
+			// be a union member type (resolution of WG bug 11103).
+			b.errf(xsd.SpecCosSTRestricts, u.Pos, "xs:%s must not be used as a union member type", m.Name.Local)
+		}
+		// A NOTATION union member is a use of NOTATION to validate, so it
+		// must carry an enumeration (enumeration-required-notation).
+		b.checkNotationEnum(m, u.Pos)
 		if m.Variety == xsd.VarietyUnion {
 			flat = append(flat, m.MemberTypes...)
 		} else {
@@ -341,6 +366,13 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 				// the base type.
 				b.errf(xsd.SpecEnumerationValidRestriction, c.Pos, "enumeration value %q is not valid against the base type %s: %v", lex, base.TypeName(), err)
 				continue
+			}
+			// For a NOTATION-derived type, an enumeration value must name a
+			// NOTATION declared in the schema (enumeration-required-notation).
+			if base.Primitive != nil && base.Primitive.Name.Local == "NOTATION" && base.Primitive.Name.Namespace == xsd.XSDNS {
+				if qv, ok := v.(xsd.QNameValue); ok && b.registryFor(doc).lookup(spaceNotation, qv.Name) == nil {
+					b.errf(xsd.SpecEnumNotation, c.Pos, "enumeration value %q does not name a declared notation", lex)
+				}
 			}
 			enums = append(enums, xsd.Enum{Value: v, Lexical: lex, Pos: c.Pos})
 		case "assertion":
