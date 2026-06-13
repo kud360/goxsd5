@@ -227,6 +227,15 @@ func TestBuilderNegatives(t *testing.T) {
 			 <xs:complexType name="d"><xs:simpleContent><xs:extension base="tns:b"><xs:attribute name="a" type="xs:string"/></xs:extension></xs:simpleContent></xs:complexType>`,
 			[]string{"cos-ct-extends"}},
 
+		// Element Declarations Consistent (cos-element-consistent).
+		{"extension reintroduces a base element name with a different type",
+			`<xs:complexType name="b"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="d"><xs:complexContent><xs:extension base="tns:b"><xs:sequence><xs:element name="x" type="xs:string"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`,
+			[]string{"cos-element-consistent"}},
+		{"same element name with different types in one sequence",
+			`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:int"/><xs:element name="x" type="xs:string"/></xs:sequence></xs:complexType>`,
+			[]string{"cos-element-consistent"}},
+
 		// Group cycles.
 		{"model group cycle",
 			`<xs:group name="g1"><xs:sequence><xs:group ref="tns:g2"/></xs:sequence></xs:group>

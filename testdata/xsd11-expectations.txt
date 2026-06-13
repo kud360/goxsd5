@@ -4596,6 +4596,7 @@ saxonMeta/Complex.testSet#complex013 pass
 saxonMeta/Complex.testSet#complex014 pass
 saxonMeta/Complex.testSet#complex015 pass
 saxonMeta/Complex.testSet#complex016 pass
+saxonMeta/Complex.testSet#complex017 pass
 saxonMeta/Complex.testSet#complex019 pass
 saxonMeta/Complex.testSet#complex020 pass
 saxonMeta/Complex.testSet#complex021 pass
@@ -4794,6 +4795,7 @@ saxonMeta/Simple.testSet#simple095 pass
 saxonMeta/Subsgroup.testSet#subsgroup001 pass
 saxonMeta/Subsgroup.testSet#subsgroup002 pass
 saxonMeta/Subsgroup.testSet#subsgroup003 pass
+saxonMeta/Subsgroup.testSet#subsgroup901 pass
 saxonMeta/TargetNS.testSet#target001 pass
 saxonMeta/TargetNS.testSet#target002 pass
 saxonMeta/TargetNS.testSet#target003 pass
@@ -5594,6 +5596,8 @@ sunMeta/suntest.testSet#xsd021 pass
 sunMeta/suntest.testSet#xsd022 pass
 sunMeta/suntest.testSet#xsd023.e pass
 sunMeta/suntest.testSet#xsd024 pass
+wgMeta/substitution-groups.testSet#sg-abstract-edc pass
+wgMeta/substitution-groups.testSet#sg-abstract-upa2 pass
 wgMeta/substitution-groups.testSet#sg-and-defined-Sibling-1 pass
 wgMeta/substitution-groups.testSet#sg-and-defined-Sibling-2 pass
 wgMeta/substitution-groups.testSet#sg-and-defined-Sibling-3 pass

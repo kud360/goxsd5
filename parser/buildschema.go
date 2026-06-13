@@ -205,6 +205,102 @@ func (b *builder) finishComplexTypes() {
 			finish(ct)
 		}
 	}
+	// Element Declarations Consistent runs after extension particles are
+	// assembled, so an extension that reintroduces a base element name with a
+	// different type is caught. subMembers maps each head element to the
+	// declarations substitutable for it (one hop); the walk closes it
+	// transitively for the "implicitly contains" rule.
+	subMembers := map[*xsd.ElementDecl][]*xsd.ElementDecl{}
+	for _, e := range b.elements {
+		for _, head := range e.SubstitutionGroups {
+			subMembers[head] = append(subMembers[head], e)
+		}
+	}
+	for _, t := range b.types {
+		if ct, ok := t.(*xsd.ComplexType); ok {
+			b.checkElementConsistent(ct, subMembers)
+		}
+	}
+}
+
+// checkElementConsistent enforces Element Declarations Consistent
+// (cos-element-consistent): within one content model, all element
+// declarations sharing an expanded name — directly, through nested groups, or
+// implicitly through substitution groups — must have the same top-level type
+// definition.
+func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xsd.ElementDecl][]*xsd.ElementDecl) {
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok || ec.Particle == nil {
+		return
+	}
+	byName := map[xsd.QName][]*xsd.ElementDecl{}
+	seenGroups := map[*xsd.ModelGroup]bool{}
+	seenElems := map[*xsd.ElementDecl]bool{}
+	// addElem records e and, transitively, every declaration substitutable
+	// for it (implicitly contained per the substitution-group rule).
+	var addElem func(e *xsd.ElementDecl)
+	addElem = func(e *xsd.ElementDecl) {
+		if seenElems[e] {
+			return
+		}
+		seenElems[e] = true
+		byName[e.Name] = append(byName[e.Name], e)
+		for _, m := range subMembers[e] {
+			addElem(m)
+		}
+	}
+	var walk func(p *xsd.Particle)
+	walk = func(p *xsd.Particle) {
+		if p == nil {
+			return
+		}
+		switch term := p.Term.(type) {
+		case *xsd.ElementDecl:
+			addElem(term)
+		case *xsd.ModelGroup:
+			if seenGroups[term] {
+				return
+			}
+			seenGroups[term] = true
+			for _, c := range term.Particles {
+				walk(c)
+			}
+		case *xsd.GroupRef:
+			if term.Ref != nil && term.Ref.Group != nil && !seenGroups[term.Ref.Group] {
+				seenGroups[term.Ref.Group] = true
+				for _, c := range term.Ref.Group.Particles {
+					walk(c)
+				}
+			}
+		}
+	}
+	walk(ec.Particle)
+
+	for name, decls := range byName {
+		if len(decls) < 2 {
+			continue
+		}
+		ref := decls[0].Type
+		for _, d := range decls {
+			if d.Type == ref {
+				continue
+			}
+			rq, dq := typeNameOf(ref), typeNameOf(d.Type)
+			if rq.IsZero() || dq.IsZero() || rq != dq {
+				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
+				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s appears more than once in the content model of %s with differing types", name, describeCT(ct))
+				break
+			}
+		}
+	}
+}
+
+// typeNameOf returns a type's name, or the zero QName for anonymous types.
+func typeNameOf(t xsd.Type) xsd.QName {
+	if t == nil {
+		return xsd.QName{}
+	}
+	return t.TypeName()
 }
 
 // finishExtensionParticle combines an extension's effective particle: the
