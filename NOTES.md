@@ -39,11 +39,49 @@ the original NOTES checklist that had M9 first.
   the unrecorded gaps for triage.
 - BASELINE: 5709 determinate 1.1 schema cases. Initial M9 baseline was 5537
   pass / 26 skip; post-M9 conformance work (commits after 7ff3a11) raised it
-  to 5613 pass (see "Post-M9 conformance fixes" below).
+  to 5624 pass (see "Post-M9 conformance fixes" below).
 
-## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5613 pass)
+## Post-M9 conformance fixes (deferred-gap triage, 5537 → 5624 pass)
 Worked the false positives + small/medium well-defined checks. Each landed
 with unit tests and a re-baseline; NO regressions. Commits:
+- SESSION 2026-06-13 part 3 (5613 → 5624, +11): PARTICLE RESTRICTION
+  (cos-particle-restrict, §3.4.6.4 / §3.9.6) — first cut. parser/restrict.go:
+  checkParticleRestrict runs in finishComplexTypes for each complexContent
+  restriction whose OWN content model and whose BASE content model are both a
+  flat all/sequence of element particles (flatElementGroup; a wildcard,
+  choice, group ref, nested group, or open content makes it give up and report
+  NOTHING — those wildcard-subset/choice/open cases stay tolerated, no false
+  positives). For flat element models the per-name count an instance may carry
+  ranges exactly over [Σ minOccurs, Σ maxOccurs], so these NECESSARY conditions
+  for L(R) ⊆ L(B) are checked: every restriction element maps to a base
+  particle (exact name OR substitution-group membership via accepted() closure;
+  ambiguous → give up); each base particle's summed restriction occurrence
+  range ⊆ its own range; required (min>0) base particles must remain present;
+  the restricting type validly derives from the base's; nillability not
+  widened. Type check is LENIENT on unions (involvesUnion → accept) because
+  member-union flattening discarded intervening unions, so cos-st-derived-ok
+  clause 2.2.4 can't be decided cleanly — simple011/014/015 stay tolerated.
+  +11 cases (saxon All all202-205, all212-215 [seq restricting all], all223/224
+  [substitution-group split occurrence], all227 [child type not derived]).
+  STILL DEFERRED (give-up paths): wildcard-in-all (all229/235/236/238/244),
+  attribute/element wildcard subset (wild020-022/048/051/057, ibm allGroup
+  si02/03, restrictionOfComplexTypes si02), all→choice (all233), open content
+  subset (open016-019/033). These need the full subsumption algorithm.
+- SESSION 2026-06-13 part 2 (5597 → 5613, +16): UNIQUE PARTICLE ATTRIBUTION
+  (cos-nonambig) done in full. (a) <all> groups: pairwise competition test
+  (checkAllUPA in buildschema.go) — two element particles whose accepted-name
+  sets, incl. transitive substitution-group closure, overlap; two wildcard
+  particles with overlapping namespace constraints; element-vs-wildcard never
+  compete. (b) sequence/choice: Glushkov position automaton (parser/upa.go) —
+  first/follow sets; any first/follow set with two competing positions is a
+  violation; <all> groups make it bail (handled by checkAllUPA). +7 cases
+  (all240-243, subsgroup902/903, sg-abstract-upa). Then ALL-GROUP EXTENSION
+  semantics (§3.4.2.3.3): clause 4.2.3.2 merges all+all into one <all> (was a
+  sequence) so re-added elements trip UPA; clause 4.2.3.3 + cos-all-limited.1
+  reject all-vs-sequence extension; cos-particle-extend.3.1 requires the
+  extension <all>'s minOccurs == base's. +9 cases (all302/303/305/309-313, ibm
+  openContent s3_4_1si04). all308 (mixed-empty, spec bug 6202) left tolerated.
+  Helpers: wildcardsOverlap/namespacesIntersect/namesOverlap/allGroupTerm.
 - SESSION 2026-06-13 part 2 (5597 → 5613, +16): UNIQUE PARTICLE ATTRIBUTION
   (cos-nonambig) done in full. (a) <all> groups: pairwise competition test
   (checkAllUPA in buildschema.go) — two element particles whose accepted-name
@@ -87,10 +125,16 @@ with unit tests and a re-baseline; NO regressions. Commits:
 - Element Declarations Consistent (cos-element-consistent) in
   finishComplexTypes, incl. substitution-group "implicitly contains".
 REMAINING gaps (~60 after the 2026-06-13 session), all the genuinely hard /
-large features — NONE done. UPA is now DONE (see part 2 above):
-- Particle restriction "subsumption" / cos-particle-restrict (saxon All
-  all2xx ~18, wild020-022/048/051/057, open016-019/033, ibm allGroup si02/03,
-  restrictionOfComplexTypes si02): the hardest XSD algorithm.
+large features. UPA is DONE (part 2); cos-particle-restrict is PARTLY done
+(part 3) — remaining cases below:
+- Particle restriction "subsumption" / cos-particle-restrict: the flat
+  element-only all/sequence per-name occurrence/type check is DONE (part 3,
+  parser/restrict.go). REMAINING (give-up paths, still tolerated): wildcard
+  subsumption (saxon All all229/235/236/238/244 wildcard-in-all,
+  wild020-022/048/051/057, ibm allGroup si02/03, restrictionOfComplexTypes
+  si02), all→choice subsumption (all233), open content subset
+  (open016-019/033). These need the full subsumption algorithm (wildcard
+  NSSubset/NSRecurseCheckCardinality + choice MapAndSum/RecurseLax).
 - all308 (xs:all extension of mixed empty content — spec bug 6202, borderline;
   leave tolerated).
 - Wildcards cos-aw-* intersection/union/subset (Wild restriction subset, EDC

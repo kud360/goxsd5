@@ -243,6 +243,7 @@ func (b *builder) finishComplexTypes() {
 			b.checkElementConsistent(ct, subMembers)
 			b.checkAllUPA(ct, accepted)
 			b.checkSeqChoiceUPA(ct, accepted)
+			b.checkParticleRestrict(ct, accepted)
 		}
 	}
 	b.checkSubstitutionCycles()

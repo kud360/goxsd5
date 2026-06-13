@@ -127,6 +127,39 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:all><xs:element name="x" type="xs:int"/></xs:all></xs:complexType>
 			 <xs:complexType name="e"><xs:complexContent><xs:extension base="tns:b"><xs:all minOccurs="0"><xs:element name="y" type="xs:int"/></xs:all></xs:extension></xs:complexContent></xs:complexType>`,
 			[]string{"cos-ct-extends"}},
+		// Particle restriction (cos-particle-restrict, §3.4.6.4 / §3.9.6):
+		// per-name occurrence/type bag check for flat all/sequence models.
+		{"all restriction loosens a base element minOccurs",
+			`<xs:complexType name="b"><xs:all><xs:element name="a" type="xs:int" minOccurs="1" maxOccurs="5"/><xs:element name="d" type="xs:int"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="d" type="xs:int"/><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="4"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction widens a base element maxOccurs",
+			`<xs:complexType name="b"><xs:all><xs:element name="d" type="xs:int" minOccurs="1" maxOccurs="1"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="d" type="xs:int" minOccurs="1" maxOccurs="5"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction omits a required base element",
+			`<xs:complexType name="b"><xs:all><xs:element name="b" type="xs:int" minOccurs="1"/><xs:element name="d" type="xs:int" minOccurs="1"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="b" type="xs:int" minOccurs="1"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction introduces an element the base disallows",
+			`<xs:complexType name="b"><xs:all><xs:element name="b" type="xs:int"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="b" type="xs:int"/><xs:element name="f" type="xs:int" minOccurs="0"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction gives a child an unrelated type",
+			`<xs:complexType name="b"><xs:all><xs:element name="c" type="xs:positiveInteger"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="c" type="xs:int"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"sequence restriction of an all loosens a base minOccurs",
+			`<xs:complexType name="b"><xs:all><xs:element name="a" type="xs:int" minOccurs="1" maxOccurs="5"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="4"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
+		{"all restriction splits a head whose substitutes overshoot maxOccurs",
+			`<xs:element name="a" type="xs:int"/>
+			 <xs:element name="A1" type="xs:int" substitutionGroup="tns:a"/>
+			 <xs:element name="A2" type="xs:int" substitutionGroup="tns:a"/>
+			 <xs:complexType name="b"><xs:all><xs:element ref="tns:a" minOccurs="10" maxOccurs="20"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element ref="tns:A1" minOccurs="6" maxOccurs="15"/><xs:element ref="tns:A2" minOccurs="6" maxOccurs="15"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
 		{"keyref refer undeclared",
 			`<xs:element name="e" type="xs:int"><xs:keyref name="r" refer="tns:nope"><xs:selector xpath="a"/><xs:field xpath="b"/></xs:keyref></xs:element>`,
 			[]string{"src-resolve"}},
@@ -607,6 +640,33 @@ func TestBuildUPAValidModels(t *testing.T) {
 		`<xs:complexType name="c"><xs:choice><xs:element name="a" type="xs:int"/><xs:any namespace="##any"/></xs:choice></xs:complexType>`,
 		// Disjoint wildcards in a choice.
 		`<xs:complexType name="c"><xs:choice><xs:any namespace="urn:a"/><xs:any namespace="urn:b"/></xs:choice></xs:complexType>`,
+	}
+	for _, body := range cases {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
+		wantClean(t, errs)
+	}
+}
+
+func TestBuildParticleRestrictValidModels(t *testing.T) {
+	// Restrictions that ARE valid and must NOT trip cos-particle-restrict.
+	cases := []string{
+		// All-to-all: narrows every occurrence range, drops an optional element.
+		`<xs:complexType name="b"><xs:all><xs:element name="a" type="xs:int" minOccurs="0" maxOccurs="5"/><xs:element name="d" type="xs:int" minOccurs="1"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="d" type="xs:int" minOccurs="1"/><xs:element name="a" type="xs:int" minOccurs="1" maxOccurs="3"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Sequence-to-sequence: narrows the child type by restriction.
+		`<xs:complexType name="b"><xs:sequence><xs:element name="n" type="xs:integer"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="n" type="xs:positiveInteger"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Substitution-group split whose summed occurrences stay within range.
+		`<xs:element name="a" type="xs:int"/>
+		 <xs:element name="A1" type="xs:int" substitutionGroup="tns:a"/>
+		 <xs:element name="A2" type="xs:int" substitutionGroup="tns:a"/>
+		 <xs:complexType name="b"><xs:all><xs:element ref="tns:a" minOccurs="4" maxOccurs="20"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element ref="tns:A1" minOccurs="2" maxOccurs="8"/><xs:element ref="tns:A2" minOccurs="2" maxOccurs="8"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Union-typed child restricted to a member type: union involvement is
+		// accepted (cos-st-derived-ok clause 2.2.4 stays tolerated, not rejected).
+		`<xs:simpleType name="u"><xs:union memberTypes="xs:date xs:time"/></xs:simpleType>
+		 <xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:u"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="xs:date"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
