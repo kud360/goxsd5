@@ -199,8 +199,11 @@ func (b *builder) finishComplexTypes() {
 			// stands in when the type declares none.
 			ct.AttributeWildcard = baseWC
 		}
-		if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil && p.wc != nil {
-			b.checkAttrWildcardRestriction(ct, p.wc, baseWC)
+		if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil {
+			if p.wc != nil {
+				b.checkAttrWildcardRestriction(ct, p.wc, baseWC)
+			}
+			b.checkAttrRestriction(p.own, baseUses)
 		}
 		b.applyDefaultAttributes(ct, p.node, p.doc)
 		b.checkAttrUses(ct)
@@ -257,6 +260,32 @@ func (b *builder) finishComplexTypes() {
 		}
 	}
 	b.checkSubstitutionCycles()
+	b.checkTypeAlternatives()
+}
+
+// checkTypeAlternatives enforces Element Declaration Properties Correct clause 7
+// (e-props-correct, §3.3.6.1): every type named in an element's {type table} —
+// each <alternative>'s {type definition} and the default type definition — must
+// be validly substitutable for the element's declared {type definition},
+// subject to the element's {disallowed substitutions}, unless it is xs:error
+// (clause 7.2). The {test} XPath expressions are never evaluated; this is a
+// purely static type-derivation check, so a reported violation is always a real
+// error.
+func (b *builder) checkTypeAlternatives() {
+	for _, e := range b.elements {
+		if e.Type == nil {
+			continue
+		}
+		for _, alt := range e.TypeAlternatives {
+			if alt.Type == nil || alt.Type == builtin.ErrorType {
+				continue
+			}
+			if !validlySubstitutable(alt.Type, e.Type, e.Block) {
+				// spec: e-props-correct.7 — XSD 1.1 Part 1 §3.3.6.1
+				b.errf(xsd.SpecEPropsCorrect, alt.Pos, "the type assigned by an <alternative> is not validly substitutable for the declared type of element %s", e.Name)
+			}
+		}
+	}
 }
 
 // checkAllUPA enforces Unique Particle Attribution (cos-nonambig) within

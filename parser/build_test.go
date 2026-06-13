@@ -427,20 +427,46 @@ func TestBuilderNegatives(t *testing.T) {
 			[]string{"cos-element-consistent"}},
 		{"same element name, same type, differing type tables (one has none)",
 			`<xs:complexType name="c"><xs:sequence>
-			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>
+			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:token"/></xs:element>
 			   <xs:element name="x" type="xs:string"/></xs:sequence></xs:complexType>`,
 			[]string{"cos-element-consistent"}},
 		{"same element name, same type, differing type-table alternatives",
 			`<xs:complexType name="c"><xs:sequence>
-			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>
-			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='2'" type="xs:int"/></xs:element></xs:sequence></xs:complexType>`,
+			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:token"/></xs:element>
+			   <xs:element name="x" type="xs:string"><xs:alternative test="@a='2'" type="xs:token"/></xs:element></xs:sequence></xs:complexType>`,
 			[]string{"cos-element-consistent"}},
 		{"strict wildcard binds a global whose type table differs from a local",
 			`<xs:complexType name="c"><xs:sequence>
 			   <xs:element name="x" type="xs:string" form="qualified"/>
 			   <xs:any namespace="##targetNamespace" processContents="strict"/></xs:sequence></xs:complexType>
-			 <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>`,
+			 <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:token"/></xs:element>`,
 			[]string{"cos-element-consistent"}},
+
+		// Type alternatives (e-props-correct.7): the alternative's type must be
+		// validly substitutable for the element's declared type.
+		{"alternative type not derived from the declared type",
+			`<xs:element name="e" type="xs:integer"><xs:alternative test="@k='s'" type="xs:string"/></xs:element>`,
+			[]string{"e-props-correct"}},
+		{"default alternative type not derived from the declared type",
+			`<xs:element name="e" type="xs:integer"><xs:alternative type="xs:decimal"/></xs:element>`,
+			[]string{"e-props-correct"}},
+		{"alternative complex type not derived from the declared complex type",
+			`<xs:complexType name="d"><xs:sequence/></xs:complexType>
+			 <xs:complexType name="u"><xs:sequence/></xs:complexType>
+			 <xs:element name="e" type="tns:d"><xs:alternative test="@k='u'" type="tns:u"/></xs:element>`,
+			[]string{"e-props-correct"}},
+
+		// Attribute restriction (derivation-ok-restriction §3.4.6.3 clause 3 /
+		// subsumes clause 5.3): the inheritability of a redeclared attribute may
+		// not change.
+		{"restriction changes attribute inheritability to false",
+			`<xs:complexType name="b"><xs:sequence/><xs:attribute name="a" type="xs:string" inheritable="true"/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:attribute name="a" type="xs:string" inheritable="false"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
+		{"restriction changes attribute inheritability to true",
+			`<xs:complexType name="b"><xs:sequence/><xs:attribute name="a" type="xs:string"/></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:attribute name="a" type="xs:string" inheritable="true"/></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"derivation-ok-restriction"}},
 
 		// Group cycles.
 		{"model group cycle",
@@ -776,11 +802,36 @@ func TestBuildElementConsistentValidModels(t *testing.T) {
 		 <xs:element name="x" type="xs:time"/>`,
 		// A skip wildcard never binds a declaration, so no consistency applies
 		// even when type tables would differ.
-		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:string" form="qualified"><xs:alternative test="@a='1'" type="xs:int"/></xs:element><xs:any namespace="##targetNamespace" processContents="skip"/></xs:sequence></xs:complexType>
+		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:string" form="qualified"><xs:alternative test="@a='1'" type="xs:token"/></xs:element><xs:any namespace="##targetNamespace" processContents="skip"/></xs:sequence></xs:complexType>
 		 <xs:element name="x" type="xs:string"/>`,
 		// Local and wildcard-bound global share an (identical) type table.
-		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:string" form="qualified"><xs:alternative test="@a='1'" type="xs:int"/></xs:element><xs:any namespace="##targetNamespace" processContents="strict"/></xs:sequence></xs:complexType>
-		 <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:int"/></xs:element>`,
+		`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:string" form="qualified"><xs:alternative test="@a='1'" type="xs:token"/></xs:element><xs:any namespace="##targetNamespace" processContents="strict"/></xs:sequence></xs:complexType>
+		 <xs:element name="x" type="xs:string"><xs:alternative test="@a='1'" type="xs:token"/></xs:element>`,
+	}
+	for _, body := range cases {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
+		wantClean(t, errs)
+	}
+}
+
+func TestBuildTypeAlternativeAndAttrRestrictValid(t *testing.T) {
+	// Schemas that must NOT trip e-props-correct.7 or the attribute
+	// inheritability subsumption (derivation-ok-restriction).
+	cases := []string{
+		// Alternative type is a restriction of the declared type (token <: string).
+		`<xs:element name="e" type="xs:string"><xs:alternative test="@k='t'" type="xs:token"/></xs:element>`,
+		// No declared type ⇒ {type definition} is xs:anyType ⇒ any alternative
+		// is substitutable.
+		`<xs:element name="e"><xs:alternative test="@k='i'" type="xs:int"/><xs:alternative type="xs:string"/></xs:element>`,
+		// Declared type is a union; an alternative naming a member of the union
+		// is validly derived from it (cos-st-derived-ok clause 2.2.4).
+		`<xs:simpleType name="u"><xs:union memberTypes="xs:int xs:date"/></xs:simpleType>
+		 <xs:element name="e" type="tns:u"><xs:alternative test="@k='i'" type="xs:int"/></xs:element>`,
+		// xs:error is always permitted as an alternative type (clause 7.2).
+		`<xs:element name="e" type="xs:integer"><xs:alternative test="@k='x'" type="xs:error"/></xs:element>`,
+		// Restriction redeclares an attribute keeping the same inheritability.
+		`<xs:complexType name="b"><xs:sequence/><xs:attribute name="a" type="xs:string" inheritable="true"/></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:attribute name="a" type="xs:token" inheritable="true"/></xs:restriction></xs:complexContent></xs:complexType>`,
 	}
 	for _, body := range cases {
 		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)

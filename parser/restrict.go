@@ -34,7 +34,10 @@ package parser
 // than risk a false positive. They are the wildcard-subset / choice cases
 // listed in NOTES.md.
 
-import "github.com/kud360/goxsd5/xsd"
+import (
+	"github.com/kud360/goxsd5/builtin"
+	"github.com/kud360/goxsd5/xsd"
+)
 
 // baseSlot is one particle of a flat base content model: an element
 // declaration (with its accepted-name set) or the single wildcard, plus the
@@ -742,6 +745,75 @@ func validlyDerivedByRestriction(rType, bType xsd.Type) bool {
 	}
 	_, derived := derivationMethods(rType, bType)
 	return derived
+}
+
+// validlySubstitutable reports whether type s is validly substitutable for type
+// t subject to the blocking keywords in block (key-val-sub-type, §3.16.6.3 /
+// §3.4.6.5): s must be validly derived from t and none of the derivation steps
+// may use a method named in block, unioned — for a complex base — with t's own
+// {prohibited substitutions}. A union base is honoured per cos-st-derived-ok
+// clause 2.2.4: a type derived from one of the union's (flattened) members is
+// validly derived from the union, so it stays substitutable. The relation is a
+// necessary condition, so reporting its failure never costs a false positive.
+func validlySubstitutable(s, t xsd.Type, block xsd.DerivationSet) bool {
+	if s == nil || t == nil || s == t {
+		return true
+	}
+	// xs:anyType is the root of the type hierarchy: every type derives from it
+	// (and it imposes no prohibited substitutions), so any type is substitutable
+	// for it. A plain complex type's {base type definition} is left implicit
+	// (nil) rather than pointing at the xs:anyType singleton, which would
+	// otherwise defeat the chain walk below.
+	if t == builtin.AnyType {
+		return true
+	}
+	if methods, ok := derivationMethods(s, t); ok {
+		eff := block
+		if ct, isComplex := t.(*xsd.ComplexType); isComplex {
+			eff |= ct.Block // {prohibited substitutions}
+		}
+		return methods&eff == 0
+	}
+	// cos-st-derived-ok clause 2.2.4: s may instead be validly derived from a
+	// member of a union base. Member-union flattening means the members are
+	// tested directly.
+	if st, ok := t.(*xsd.SimpleType); ok && st.Variety == xsd.VarietyUnion {
+		for _, m := range st.MemberTypes {
+			if validlySubstitutable(s, m, block) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// checkAttrRestriction enforces the attribute-use half of Derivation Valid
+// (Restriction, Complex) (§3.4.6.3 clause 3, via the "subsumes" relation,
+// clause 5.3): when a restriction redeclares a base attribute use of the same
+// name, the {inheritable} value must not change. (The companion clauses —
+// type-derivation 5.1 and value-constraint 5.2 — are checked or deferred
+// elsewhere; this adds only the always-sound inheritability equality, a
+// necessary condition for a valid restriction.)
+func (b *builder) checkAttrRestriction(own, base []*xsd.AttributeUse) {
+	byName := map[xsd.QName]*xsd.AttributeUse{}
+	for _, u := range base {
+		if u.Decl != nil {
+			byName[u.Decl.Name] = u
+		}
+	}
+	for _, u := range own {
+		if u.Decl == nil {
+			continue
+		}
+		v, ok := byName[u.Decl.Name]
+		if !ok {
+			continue
+		}
+		if u.Decl.Inheritable != v.Decl.Inheritable {
+			// spec: derivation-ok-restriction — XSD 1.1 Part 1 §3.4.6.3
+			b.errf(xsd.SpecDerivationOKRestriction, u.Pos, "attribute %s may not change its inheritability when restricting the base type", u.Decl.Name)
+		}
+	}
 }
 
 // involvesUnion reports whether t or any type in its simple-type base chain has

@@ -7,7 +7,45 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-4 conformance pushed 5640 → 5651 (+11). Remainder below <<<
+## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5655 (+4). Remainder below <<<
+SESSION 2026-06-13 phase 5 (5651 → 5655, +4): TYPE-ALTERNATIVE substitutability
+(e-props-correct.7) + ATTRIBUTE-RESTRICTION inheritability (derivation-ok-restriction).
+Two purely-STATIC checks carved out of the CTA/typeAlternatives cluster that
+were previously assumed to need an XPath engine — the {test} XPath is never
+evaluated:
+ (1) e-props-correct.7 (§3.3.6.1): every type named in an element's {type table}
+     — each <alternative>'s type AND the default type — must be validly
+     substitutable for the element's declared {type definition}, subject to the
+     element's {disallowed substitutions}, unless it is xs:error (clause 7.2).
+     checkTypeAlternatives (buildschema.go, run in finishComplexTypes tail over
+     b.elements) + validlySubstitutable (restrict.go). +2 (s3_12si03 string/decimal
+     alt of integer; cta9008err anon complexType alt not derived from docType).
+     SOUNDNESS: validlySubstitutable is key-val-sub-type (§3.16.6.5/§3.4.6.5):
+     derivationMethods(s,t) found AND methods & (block | t.{prohibited subs}) == 0;
+     PLUS cos-st-derived-ok clause 2.2.4 (s derived from a flattened union member
+     of t) to avoid false-positives on union-typed elements. CRITICAL gotcha: a
+     plain complex type's {base type definition} is left implicit (nil), NOT the
+     xs:anyType singleton, so derivationMethods can't walk to anyType — short-circuit
+     `t == builtin.AnyType ⇒ true` (every type derives from anyType; also why the
+     kitchen-sink "anything" element with anyType decl + tns:base alt is valid).
+     The old build_test fixtures used <alternative type="xs:int"> on type="xs:string"
+     elements — genuinely spec-invalid; rewritten to type="xs:token" (token <: string)
+     so EDC stays the only thing under test.
+ (2) derivation-ok-restriction §3.4.6.3 clause 3 via "subsumes" clause 5.3
+     (G.{inheritable} = S.{inheritable}): a restriction that redeclares a base
+     attribute use of the same name may not flip its inheritability.
+     checkAttrRestriction (restrict.go), wired in finishComplexTypes restriction
+     branch. +2 (cta9004err true→false; cta9005err absent(false)→true). Compares
+     only matched name pairs ⇒ necessary condition ⇒ no false positive.
+Unit tests: TestBuilderNegatives +5 (3 e-props-correct.7, 2 inheritability) and a
+new TestBuildTypeAlternativeAndAttrRestrictValid (token-restricts-string, anyType
+decl, union-member alt, xs:error alt, same-inheritable restriction). STILL gap in
+this cluster: cta0043 (Conditional Type Substitutable — a restriction redeclaring
+a stamp element with a narrower-but-not-derived alternative type; that's particle
+restriction × type-table comparison, derivation-ok-restriction clause 4, harder);
+the rest (s3_12si04/05/06, s3_12ii06) are malformed/ill-typed XPath needing an
+XPath PARSER — out of scope.
+
 SESSION 2026-06-13 phase 4e (5648 → 5651, +3): MULTI-BASE-WILDCARD particle
 restriction solver (all238, all244, wild048 — NOTES remainder item 2). When the
 base content model is a flat all/sequence holding ≥2 wildcards, the old code
