@@ -25,6 +25,9 @@ type walker struct {
 	doc  *schemaDoc
 	// ids maps each xs:ID value seen in this document to its first position.
 	ids map[string]xsd.Pos
+	// path is the stack of ancestor elements, from the root down to (and
+	// including) the element currently being validated.
+	path []*xmltree.Node
 }
 
 func (w *walker) errf(ref xsd.SpecRef, pos xsd.Pos, format string, args ...any) {
@@ -38,6 +41,8 @@ func (w *walker) validate(n *xmltree.Node, variant string) {
 		// Defensive: every variant the walker can reach is in the table.
 		panic("parser: no table entry for variant " + variant)
 	}
+	w.path = append(w.path, n)
+	defer func() { w.path = w.path[:len(w.path)-1] }()
 	w.checkAttrs(n, spec)
 
 	// If the <schema> element itself is conditionally excluded (§4.2.2), the
@@ -242,6 +247,43 @@ func (w *walker) prunedByConditionalInclusion(n *xmltree.Node) bool {
 		}
 	}
 	return pruned
+}
+
+// checkLocalDeclTargetNamespace enforces src-element.4.3 / src-attribute.6.3:
+// when a local element or attribute carries a targetNamespace differing from
+// the schema's, it must sit inside a <complexType> with a <restriction>
+// ancestor (between it and the nearest complexType) whose base is not
+// xs:anyType. kind is "element" or "attribute" for the message.
+func (w *walker) checkLocalDeclTargetNamespace(n *xmltree.Node, ref xsd.SpecRef, kind string) {
+	tns, ok := n.Attr("targetNamespace")
+	if !ok || tns == w.doc.targetNamespace {
+		return
+	}
+	ancestors := w.path[:len(w.path)-1] // exclude n itself
+	ctIdx := -1
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		if a := ancestors[i]; a.Name.Space == xsd.XSDNS && a.Name.Local == "complexType" {
+			ctIdx = i
+			break
+		}
+	}
+	if ctIdx < 0 {
+		w.errf(ref, n.Pos, "%s with targetNamespace %q must be local to a complexType restriction", kind, tns)
+		return
+	}
+	for i := ctIdx + 1; i < len(ancestors); i++ {
+		a := ancestors[i]
+		if a.Name.Space != xsd.XSDNS || a.Name.Local != "restriction" {
+			continue
+		}
+		base, _ := a.Attr("base")
+		q, err := a.ResolveQName(strings.TrimSpace(base))
+		if err == nil && !(q.Namespace == xsd.XSDNS && q.Local == "anyType") {
+			return // a qualifying restriction with a concrete base
+		}
+		break // the nearest restriction did not qualify
+	}
+	w.errf(ref, n.Pos, "%s targetNamespace %q is allowed only inside a complexType restriction whose base is not xs:anyType", kind, tns)
 }
 
 // typeAutomaticallyKnown reports whether q names a type the processor provides

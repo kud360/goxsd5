@@ -459,6 +459,35 @@ func TestConditionalInclusion(t *testing.T) {
 	})
 }
 
+func TestLocalDeclTargetNamespace(t *testing.T) {
+	// A local element/attribute with a differing targetNamespace is valid only
+	// inside a complexType restriction whose base is not xs:anyType.
+	t.Run("local element targetNamespace without a restriction is invalid", func(t *testing.T) {
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` targetNamespace="urn:a">
+  <xs:complexType name="c"><xs:sequence>
+    <xs:element name="e" type="xs:int" targetNamespace="urn:b"/>
+  </xs:sequence></xs:complexType>
+</xs:schema>`)
+		wantIDs(t, errs, "src-element")
+	})
+	t.Run("local attribute targetNamespace without a restriction is invalid", func(t *testing.T) {
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` targetNamespace="urn:a">
+  <xs:complexType name="c">
+    <xs:attribute name="s" type="xs:int" targetNamespace="urn:b"/>
+  </xs:complexType>
+</xs:schema>`)
+		wantIDs(t, errs, "src-attribute")
+	})
+	t.Run("local element targetNamespace equal to the schema's is fine", func(t *testing.T) {
+		_, _, errs := load(t, `<xs:schema `+xmlnsXS+` targetNamespace="urn:a">
+  <xs:complexType name="c"><xs:sequence>
+    <xs:element name="e" type="xs:int" targetNamespace="urn:a"/>
+  </xs:sequence></xs:complexType>
+</xs:schema>`)
+		wantClean(t, errs)
+	})
+}
+
 func TestRedefineOverrideRegistration(t *testing.T) {
 	// Pass 1 alone records compositions; the loader registers redefine/
 	// override children once their targets are loaded (parser_test.go covers

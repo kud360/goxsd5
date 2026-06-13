@@ -118,10 +118,15 @@ ibmMeta/constraintsOnAttribute.testSet#s3_2_3ii01 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3ii02 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3ii04 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3ii05 pass
+ibmMeta/constraintsOnAttribute.testSet#s3_2_3si01 pass
+ibmMeta/constraintsOnAttribute.testSet#s3_2_3si02 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3si03 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3si04 pass
+ibmMeta/constraintsOnAttribute.testSet#s3_2_3si05 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3si06 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3si07 pass
+ibmMeta/constraintsOnAttribute.testSet#s3_2_3si08 pass
+ibmMeta/constraintsOnAttribute.testSet#s3_2_3si09 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3si10 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3v01 pass
 ibmMeta/constraintsOnAttribute.testSet#s3_2_3v04 pass
@@ -4790,7 +4795,9 @@ saxonMeta/Subsgroup.testSet#subsgroup001 pass
 saxonMeta/Subsgroup.testSet#subsgroup002 pass
 saxonMeta/Subsgroup.testSet#subsgroup003 pass
 saxonMeta/TargetNS.testSet#target001 pass
+saxonMeta/TargetNS.testSet#target002 pass
 saxonMeta/TargetNS.testSet#target003 pass
+saxonMeta/TargetNS.testSet#target004 pass
 saxonMeta/TargetNS.testSet#target007 pass
 saxonMeta/VC.testSet#vc001 pass
 saxonMeta/VC.testSet#vc002 pass

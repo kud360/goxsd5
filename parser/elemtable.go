@@ -402,6 +402,9 @@ var elemTable = map[string]*elemSpec{
 					w.errf(xsd.SpecSrcElement, n.Pos, "element targetNamespace and form must not both be present")
 				}
 			}
+			// spec: src-element.4.3 — a differing targetNamespace requires a
+			// complexType restriction (base ≠ xs:anyType) ancestor.
+			w.checkLocalDeclTargetNamespace(n, xsd.SpecSrcElement, "element")
 			w.checkOccurs(n)
 		},
 	},
@@ -478,6 +481,9 @@ var elemTable = map[string]*elemSpec{
 					w.errf(xsd.SpecSrcAttribute, n.Pos, "attribute targetNamespace and form must not both be present")
 				}
 			}
+			// spec: src-attribute.6.3 — a differing targetNamespace requires a
+			// complexType restriction (base ≠ xs:anyType) ancestor.
+			w.checkLocalDeclTargetNamespace(n, xsd.SpecSrcAttribute, "attribute")
 		},
 	},
 
