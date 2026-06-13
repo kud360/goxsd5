@@ -8,6 +8,29 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 baseline `testdata/xsd11-expectations.txt`.
 
 ## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5663 (+12). Remainder below <<<
+REMAINING 11 GAPS after phase 5 (GOXSD5_CONFORMANCE_GAPS=1 to list), all the
+hard tail:
+ - OUT OF SCOPE — need an XPath PARSER (the <alternative>/<assert> test/select
+   subset): ibm typeAlternatives s3_12si04 (malformed XPath), s3_12si05 (AND vs
+   and case), s3_12si06 (bad cast QName prefix xs1::), s3_12ii06 (cast to a
+   complex type). 4 cases. Candidates for skip: lines unless an XPath grammar
+   gets built.
+ - OUT OF SCOPE — encoding/xml limitation: wg IRI iri-001 (custom DTD entities
+   &URI; — Go's encoding/xml won't expand them). skip candidate.
+ - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
+   content, bug 6202); saxon complex018 (open content restriction subset, bug
+   16786).
+ - GENUINELY HARD, deferred (need bigger structural work):
+   * simple011/014/015 — union derived-by-restriction (cos-st-derived-ok clause
+     2.2.4). Our builder FLATTENS union members at build time, discarding the
+     intervening-union structure the rule needs; fixing means preserving union
+     nesting through the pipeline. Invasive, high regression risk.
+   * wild069 — an xs:all restriction whose ##local lax wildcard binds a GLOBAL
+     element (e: duration) that the base's like-named NAMED particle (e:
+     union(date,time)) would type differently, so zang accepts <e>duration</e>
+     that zing rejects. Needs wildcard-binds-global vs named-element type
+     reasoning inside the all-restriction solver.
+
 SESSION 2026-06-13 phase 5e (5662 → 5663, +1): PARTICLE-RESTRICTION type-table
 equivalence (cta0043). derivation-ok-restriction §3.4.6.3 clause 3 "subsumes"
 clause 4.6: when a restriction element maps to a base element of the same name,
