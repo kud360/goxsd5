@@ -5694,6 +5694,7 @@ sunMeta/suntest.testSet#xsd021 pass
 sunMeta/suntest.testSet#xsd022 pass
 sunMeta/suntest.testSet#xsd023.e pass
 sunMeta/suntest.testSet#xsd024 pass
+wgMeta/IRI.testSet#iri-001 pass
 wgMeta/substitution-groups.testSet#sg-abstract-edc pass
 wgMeta/substitution-groups.testSet#sg-abstract-upa pass
 wgMeta/substitution-groups.testSet#sg-abstract-upa2 pass

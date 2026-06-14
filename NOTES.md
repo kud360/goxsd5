@@ -7,17 +7,147 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-8 wild069 pushed 5670 → 5671 (+1). Remainder below <<<
-REMAINING 3 GAPS after phase 8 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
-tail is now EXHAUSTED — what is left is 2 spec bugs (correctly tolerated) and
-1 encoding limitation (out of scope). No more genuinely-fixable gaps known:
- - OUT OF SCOPE — encoding/xml limitation: wg IRI iri-001 (custom DTD entities
-   &URI; — Go's encoding/xml won't expand them). skip candidate.
+## >>> NEXT SESSION — phase-9 iri-001 pushed 5671 → 5672 (+1). Remainder below <<<
+REMAINING 2 GAPS after phase 9 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
+tail is now EXHAUSTED — what is left is 2 spec bugs (correctly tolerated). No
+more genuinely-fixable gaps known:
  - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
    content, bug 6202); saxon complex018 (open content restriction subset, bug
    16786).
+
+SESSION 2026-06-13 phase 9 (5671 → 5672, +1): the former "encoding/xml
+limitation" (wg IRI iri-001) is FIXED, not out of scope. The schema uses an
+internal DTD subset (`<!DOCTYPE xs:schema [ <!ENTITY URI "…"> … ]>`) and
+references those custom general entities inside xs:pattern values (`&URI;`).
+Go's encoding/xml does not process the internal subset, so the references were
+hard errors. FIX (parser/xmltree/xmltree.go): pre-scan the internal subset in
+Parse, collect `<!ENTITY name "value">` decls (first-wins; skip parameter/
+external entities and comments via a quote-aware markup-decl scanner), fully
+resolve each replacement text (char refs, the 5 predefined entities, nested
+general-entity refs, with a cycle guard), and hand the map to
+xml.Decoder.Entity — the decoder then substitutes &name; literally wherever
+referenced. Verified encoding/xml substitutes the map value verbatim (an `&`
+in the value is NOT re-parsed), so resolving `&amp;`→`&` etc. up front is
+correct. Each type also carries an equivalent literal pattern, so the expanded
+regex compiles and the schema builds → validity=valid as expected.
  - DONE phase 8 (cos-particle-restrict, wildcard shadows named in <all>):
    wild069. See phase-8 block below.
+
+## >>> FUTURE WORK — architecture refactor + duplicate-state removal <<<
+Conformance is exhausted (only 2 tolerated spec bugs remain), so the next body
+of work is structural, NOT new spec features. Retro (2026-06-13) identified that
+the foundation was built in the right order but the hard semantics (UPA/EDC/
+particle-restriction/open-content/CTA) were sequenced too late and accreted
+around a model that was already frozen. Three tracks, each independently
+shippable behind the conformance ratchet (zero pass-count change is the success
+gate for C and A; B is a behavior-changing rewrite guarded by differential
+testing — see Track B). Do them in C → A → B order: C is the cheapest and
+de-risks A; B goes last so it reasons over already-deduplicated state.
+
+### Track C — minimize duplicate / derivable state (DO FIRST)
+PRINCIPLE: store a fact ONCE at its canonical source; compute every derivable
+view on demand. Every stored-derived field is currently copied by hand at each
+clone/build site (proof: the fundamental-facet derivation is duplicated verbatim
+in parser/buildsimple.go:91-98 AND xsd/mutate.go:42-51; RestrictWith also hand-
+copies Primitive + MemberTypes). That hand-copying IS the bug class — a new
+clone site that forgets a field silently desyncs. INVENTORY (canonical → derived
+view to replace with a method):
+
+ 1. SimpleType.MemberTypes (flattened basic members) is a PURE FUNCTION of
+    DirectMembers (un-flattened {member type definitions}) — flatten member
+    unions on demand. Keep DirectMembers as canonical; replace the field with
+    `(*SimpleType).BasicMembers() []*SimpleType` (memoize lazily if the union-
+    parse hot path in facets.go:393 buildValue shows up in a profile — schema-
+    only conformance never hits instance validation hard, so probably needn't).
+    Readers: facets.go:395, buildsimple.go:121/180/188, restrict.go:1039,
+    mutate.go:37. This pair only exists because flattening was chosen in M6 and
+    the un-flattened need surfaced 6 phases later (phase 7); collapse it.
+ 2. SimpleType.Primitive is derivable by walking BaseType to the self-primitive
+    (the primitive's own Primitive == itself). Replace with `(*SimpleType).
+    PrimitiveType()`. Readers: buildsimple.go:74/254/258/379, buildterms.go:220/
+    223, mutate.go:35.
+ 3. Fundamental facets Ordered/Bounded/Cardinality/Numeric are pure functions of
+    (base fundamentals, variety, length/bounds/enum facets). The derivation is
+    ALREADY duplicated (buildsimple.go:91-98 vs mutate.go:42-51). Move it to ONE
+    method `(*SimpleType).Fundamentals()` (or compute the four lazily) and delete
+    the stored fields + both copies. This is the highest-value item: it kills the
+    only place the codebase computes the same thing two ways.
+ 4. SimpleType.Facets (EFFECTIVE) = MergeFacets(base-chain, DeclaredFacets).
+    DeclaredFacets is canonical. Effective is read on the value-validation hot
+    path (facets.go parseValue reads t.Facets directly), so DO NOT naively drop
+    it — keep it as an explicitly-named memoized cache (`effective Facets` +
+    `(*SimpleType).EffectiveFacets()` already exists at the API). Document it as
+    derived, not authored. Lowest priority; touch only if A makes it free.
+ 5. ComplexType.Mixed DUPLICATES ElementContent.Mixed (both set to `mixed` at
+    buildcomplex.go:200 & :227) and the two can DRIFT — finishComplexTypes
+    inherits ec.Mixed independently (buildschema.go:626) without updating
+    ct.Mixed. Pick ElementContent.Mixed as canonical for element content; make
+    `(*ComplexType).IsMixed()` compute it (false for SimpleContent/empty). Reader
+    audit: buildcomplex.go:92, buildschema.go:613/625/626/633/635, buildterms.go:
+    110, restrict.go:782/789.
+SCOPE NOTE: the xsd package IS the public interface (PLAN), so field→method is a
+deliberate API change — fine pre-1.0, and it makes "derived" un-spoofable. Each
+removal: replace field with method, update the readers above, delete the build/
+clone-site assignments, re-run the ratchet (must stay at current count), commit.
+
+### Track A — topo-ordered type build, retire finishComplexTypes/pendingAttrs
+PLAN.md M6 step 2 SAID "topologically sort types by derivation edges, build so
+each base is fully built before its derivatives." The implementation instead did
+per-node memo + checkTypeCycles + a finishComplexTypes post-pass, parking each
+type's attribute material in builder.pendingAttrs (builder.go:39-58) because the
+base can still be mid-build when a derived type is constructed. That post-pass is
+a WORKAROUND for not building in topo order. Refactor: after checkTypeCycles
+(chains are acyclic there), build types in topological order of the derivation
+edge so a base's Content/AttributeUses are complete before any derived type reads
+them; then extension-particle assembly and attribute-use merging happen inline at
+build time and pendingAttrs + finishComplexTypes's merge half disappear. KEEP the
+genuinely cross-type STATIC checks currently riding in finishComplexTypes (EDC,
+particle-restriction, open-content, type-alternative) as an explicit post-pass —
+those are validation, not construction, and SHOULD run after all types exist.
+RISK: the "base content reaches back into a derived type" case (the kitchen-sink
+reason the post-pass exists) — verify the shell-memoization still lets content
+refs resolve to an in-progress derived type; the topo order is over DERIVATION
+edges only, and element/ref recursion is NOT a derivation edge (same insight as
+buildGroup phase-4d), so it terminates.
+
+### Track B — REWRITE restrict.go (1126 LOC) to one unified subsumption relation
+restrict.go accreted phase-by-phase as N necessary-condition fragments
+(checkRestrictRun, checkMultiWildcardRestrict, checkWildcardShadowsNamed,
+checkOpenContentRestrict, checkAttrWildcardRestriction, …), each a slice of
+cos-particle-restrict. The spec describes ONE recursive relation (Particle Valid
+(Restriction) §3.9.6: NSRecurseCheckCardinality / NSSubset / Recurse /
+RecurseUnordered / RecurseLax / MapAndSum). DECISION (2026-06-13, user): this is
+a new lib with no downstream consumers and a strong ratchet — do not fear the
+risk; collapse the fragments into the unified recursion. This is allowed to
+CHANGE BEHAVIOR (it decides cases the fragments give up on), unlike a pure
+reorg. The complexity win is real: one recursion with shared helpers replaces 8
+overlapping checks that each reinvent rep-name/region reasoning.
+TWO HARD CONSTRAINTS so "simpler" doesn't mean "loses coverage":
+ (1) DIFFERENTIAL TEST during the transition. Keep the OLD fragments compiled as
+     a reference oracle; run both old + new on every suite restriction pair AND
+     on fuzzed/generated particle pairs; assert they agree. Divergence = a bug in
+     exactly one — surfaced automatically. This is what makes "we have tests to
+     fall back on" load-bearing for the out-of-suite residual (the suite already
+     catches in-suite false positives as ratchet regressions, but not shapes it
+     never exercises). Delete the fragments ONLY once differential parity holds
+     on suite + fuzz.
+ (2) PRESERVE the supra-spec coverage. The fragments deliberately exceed the
+     NAIVE §3.9.6 recursion: the multi-wildcard cases (all238, wild048) are
+     caught by the collectReps/baseRegion representative-name solver because the
+     spec's literal relation does NOT catch them. A faithful transcription would
+     REGRESS those. So the unified relation must carry the rep-name engine as the
+     implementation of its wildcard cases (NSRecurseCheckCardinality / NSSubset),
+     not a naive transcription. Keep the "give up ⇒ sound" fallback for anything
+     still unanalyzable.
+Sequence B LAST (after C and A) so the model state it reasons over is already
+deduplicated and the build order is clean.
+
+SUCCESS GATE: GOXSD5_CONFORMANCE_GAPS=1 go test ./parser -run TestConformanceSuite
+stays at the current pass count for ALL three tracks (C and A are behavior-
+preserving; B may newly DECIDE give-up cases but must never regress a passing
+case and must keep differential parity with the fragments it replaces). Keep the
+unit-test + re-baseline + checkpoint-commit rhythm. Update this block as tracks
+land.
 
 SESSION 2026-06-13 phase 8 (5670 → 5671, +1): cos-particle-restrict — the
 WILDCARD-SHADOWS-NAMED case in an <all> base (saxon wild069). In an xs:all
@@ -559,8 +689,8 @@ large features. UPA is DONE (part 2); cos-particle-restrict is PARTLY done
   (phase 6, ibm typeAlternatives s3_12si04/05/06/ii06 DONE). What remains needs
   XPath EVALUATION (a runtime engine over an instance), which is out of scope.
 - 2 override false positives (over009 double-override dup; over030 false
-  mg-props-correct cycle — override-internals bugs) + over014 + iri-001
-  (custom DTD entities &URI; — encoding/xml limitation, skip candidate).
+  mg-props-correct cycle — override-internals bugs) + over014. (iri-001 custom
+  DTD entities &URI; — FIXED in phase 9, see NEXT SESSION block.)
 - simple011/014/015 (union derived-by-restriction substitutability —
   particle/type-derivation), complex018 (open content restriction subset).
 Triage tip: GOXSD5_CONFORMANCE_GAPS=1 go test ./parser -run TestConformanceSuite -v
