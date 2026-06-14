@@ -36,16 +36,29 @@ type builder struct {
 	// building marks nodes whose construction is on the stack.
 	building map[*xmltree.Node]bool
 
-	// pendingAttrs holds each complex type's own attribute material until
-	// finishComplexTypes merges it with the base's (the base may still be
-	// mid-build when the type is constructed).
-	pendingAttrs map[*xsd.ComplexType]*pendingAttrs
+	// Complex-type finish worklist. buildComplexType produces only a shell
+	// (header + resolved base); its content model and attribute uses are
+	// filled later by finishComplexTypes in base-first order, because a base
+	// may legally reach back into a type derived from it (a cycle no ordering
+	// of derivation edges linearizes). ctOrder is the discovery order (drained
+	// by index, since filling content discovers more anonymous types), ctFinish
+	// locates each type's source nodes, and ctDone guards the base-first walk.
+	ctOrder  []*xsd.ComplexType
+	ctFinish map[*xsd.ComplexType]*ctFinishEntry
+	ctDone   map[*xsd.ComplexType]bool
 }
 
-// pendingAttrs is the attribute material declared directly on one complex
-// type, recorded during construction and merged with the (by then complete)
-// base type in the finishComplexTypes post-pass.
-type pendingAttrs struct {
+// ctFinishEntry locates the source nodes a complex type's finish pass needs.
+type ctFinishEntry struct {
+	n   *xmltree.Node
+	doc *schemaDoc
+}
+
+// attrMaterial is the attribute material declared directly on one complex
+// type, collected while its content is filled and immediately merged with the
+// (by then complete) base type. It replaces the former per-builder pending map
+// now that the merge happens inline in finishComplexType.
+type attrMaterial struct {
 	own         []*xsd.AttributeUse
 	wc          *xsd.Wildcard
 	prohibited  map[xsd.QName]bool
@@ -59,17 +72,18 @@ type pendingAttrs struct {
 
 func newBuilder(reg *registry, errs *xsd.ErrorList) *builder {
 	return &builder{
-		reg:          reg,
-		errs:         errs,
-		types:        map[*xmltree.Node]xsd.Type{},
-		elements:     map[*xmltree.Node]*xsd.ElementDecl{},
-		attributes:   map[*xmltree.Node]*xsd.AttributeDecl{},
-		groups:       map[*xmltree.Node]*xsd.Group{},
-		attrGroups:   map[*xmltree.Node]*xsd.AttributeGroup{},
-		notations:    map[*xmltree.Node]*xsd.Notation{},
-		ics:          map[*xmltree.Node]*xsd.IdentityConstraint{},
-		building:     map[*xmltree.Node]bool{},
-		pendingAttrs: map[*xsd.ComplexType]*pendingAttrs{},
+		reg:        reg,
+		errs:       errs,
+		types:      map[*xmltree.Node]xsd.Type{},
+		elements:   map[*xmltree.Node]*xsd.ElementDecl{},
+		attributes: map[*xmltree.Node]*xsd.AttributeDecl{},
+		groups:     map[*xmltree.Node]*xsd.Group{},
+		attrGroups: map[*xmltree.Node]*xsd.AttributeGroup{},
+		notations:  map[*xmltree.Node]*xsd.Notation{},
+		ics:        map[*xmltree.Node]*xsd.IdentityConstraint{},
+		building:   map[*xmltree.Node]bool{},
+		ctFinish:   map[*xsd.ComplexType]*ctFinishEntry{},
+		ctDone:     map[*xsd.ComplexType]bool{},
 	}
 }
 
@@ -134,10 +148,11 @@ func (b *builder) resolveSimpleType(q xsd.QName, p xsd.Pos, doc *schemaDoc, ref 
 
 // buildTypeDecl builds the type for a registry declaration. Simple types
 // carry an in-progress mark: their facet construction requires a completed
-// base, so a base-chain re-entry must fail eagerly. Complex types memoize a
-// shell before building content instead — content references back into an
-// unfinished type are legal (only derivation edges form illegal cycles,
-// detected by checkTypeCycles after assembly).
+// base, so a base-chain re-entry must fail eagerly. Complex types return a
+// shell instead (header + resolved base) and have their content filled later
+// by the base-first finish pass — content references back into an unfinished
+// type are legal (only derivation edges form illegal cycles, detected by
+// checkTypeCycles after the shells are built).
 func (b *builder) buildTypeDecl(d *decl) xsd.Type {
 	if t, ok := b.types[d.node]; ok {
 		return t

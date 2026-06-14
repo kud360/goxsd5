@@ -736,7 +736,10 @@ func (b *builder) checkOpenContentRestrict(ct *xsd.ComplexType) {
 // post-merge content, so a non-empty base makes it non-empty even when the
 // extension's own particle is empty (W3C bug 13459, open046); otherwise the
 // extension inherits the base's open content unchanged (no narrowing).
-func (b *builder) checkExtensionOpenContent(ct, bct *xsd.ComplexType, p *pendingAttrs) {
+func (b *builder) checkExtensionOpenContent(ct, bct *xsd.ComplexType, contentNode *xmltree.Node, doc *schemaDoc) {
+	if contentNode == nil {
+		return // simple-content extension: no element-content open content
+	}
 	bec, _ := bct.Content.(*xsd.ElementContent)
 	bot := effectiveOpenContent(bec)
 	if bot == nil || bot.Mode != xsd.OpenContentInterleave {
@@ -745,13 +748,13 @@ func (b *builder) checkExtensionOpenContent(ct, bct *xsd.ComplexType, p *pending
 		return
 	}
 	eotMode := bot.Mode // inherited when no wildcard element governs the extension
-	if ocn := firstChild(p.contentNode, p.doc, "openContent"); ocn != nil {
+	if ocn := firstChild(contentNode, doc, "openContent"); ocn != nil {
 		if m := openContentModeAttr(ocn); m != xsd.OpenContentNone {
 			eotMode = m // mode=none ⇒ inherit the base (mapping clause 6.1)
 		}
-	} else if p.doc.defaultOpenContent != nil {
-		if !contentEmpty(ct) || boolAttr(p.doc.defaultOpenContent, "appliesToEmpty", false) {
-			if m := openContentModeAttr(p.doc.defaultOpenContent); m != xsd.OpenContentNone {
+	} else if doc.defaultOpenContent != nil {
+		if !contentEmpty(ct) || boolAttr(doc.defaultOpenContent, "appliesToEmpty", false) {
+			if m := openContentModeAttr(doc.defaultOpenContent); m != xsd.OpenContentNone {
 				eotMode = m
 			}
 		}

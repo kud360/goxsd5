@@ -39,7 +39,6 @@ func buildSchemas(reg *registry, l *loader, errs *xsd.ErrorList) []*xsd.Schema {
 			b.addReplacementComponents(s, rep)
 		}
 	}
-	b.checkElementDecls()
 	for _, s := range schemas {
 		b.checkTypeCycles(s)
 		b.checkGroupCycles(s)
@@ -59,7 +58,6 @@ func buildSchema(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) *xsd.Schema
 		}
 	}
 	b.addDocComponents(s, doc)
-	b.checkElementDecls()
 	b.checkTypeCycles(s)
 	b.checkGroupCycles(s)
 	b.finishComplexTypes()
@@ -157,67 +155,14 @@ func (b *builder) addComponent(s *xsd.Schema, c *xmltree.Node, doc *schemaDoc) {
 	}
 }
 
-// finishComplexTypes merges every complex type's base-dependent properties:
-// the effective particle of extensions (base particle followed by the
-// type's own) and the attribute uses inherited from the base. It runs as a
-// post-pass because a base can still be mid-build when a derived type is
-// constructed (the base's content may legally reach back into the derived
-// type), so the base's particle and attribute uses are only known once
-// everything is assembled. Bases are finished before the types derived from
-// them; derivation chains are acyclic here (checkTypeCycles broke any cycle).
-func (b *builder) finishComplexTypes() {
-	done := map[*xsd.ComplexType]bool{}
-	var finish func(ct *xsd.ComplexType)
-	finish = func(ct *xsd.ComplexType) {
-		if done[ct] {
-			return
-		}
-		done[ct] = true
-		bct, _ := ct.BaseType.(*xsd.ComplexType)
-		if bct != nil {
-			finish(bct)
-		}
-		if bct != nil && ct.DerivationMethod == xsd.DeriveExtension {
-			b.finishExtensionParticle(ct, bct)
-		}
-		p := b.pendingAttrs[ct]
-		if p == nil {
-			return // builtin (xs:anyType) or already-complete component
-		}
-		var baseUses []*xsd.AttributeUse
-		var baseWC *xsd.Wildcard
-		if bct != nil {
-			baseUses = bct.AttributeUses
-			baseWC = bct.AttributeWildcard
-		}
-		prohibited := p.prohibited
-		if !p.override {
-			prohibited = nil
-		}
-		ct.AttributeUses = b.mergeBaseAttrUses(p.own, baseUses, prohibited, p.override, p.pos)
-		ct.AttributeWildcard = p.wc
-		if p.wc == nil && p.wcFallback {
-			// Wildcard union (cos-aw-union) is deferred; the base's wildcard
-			// stands in when the type declares none.
-			ct.AttributeWildcard = baseWC
-		}
-		if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil {
-			if p.wc != nil {
-				b.checkAttrWildcardRestriction(ct, p.wc, baseWC)
-			}
-			b.checkAttrRestriction(p.own, baseUses)
-		}
-		if ct.DerivationMethod == xsd.DeriveExtension && bct != nil {
-			b.checkExtensionOpenContent(ct, bct, p)
-		}
-		b.applyDefaultAttributes(ct, p.node, p.doc)
-		b.checkAttrUses(ct)
-	}
-	for _, t := range b.types {
-		if ct, ok := t.(*xsd.ComplexType); ok {
-			finish(ct)
-		}
-	}
+// runStaticTypeChecks runs the cross-type static validation that requires
+// every type to be fully built: per-element type-dependent checks, Element
+// Declarations Consistent, Unique Particle Attribution, particle restriction,
+// open-content restriction, substitution cycles, and type-alternative
+// substitutability. It is the validation post-pass kept separate from the
+// content/attribute construction done by finishComplexType.
+func (b *builder) runStaticTypeChecks() {
+	b.checkElementDecls()
 	// Element Declarations Consistent runs after extension particles are
 	// assembled, so an extension that reintroduces a base element name with a
 	// different type is caught. subMembers maps each head element to the
@@ -610,8 +555,10 @@ func (b *builder) finishExtensionParticle(ct, bct *xsd.ComplexType) {
 	}
 	switch bc := bct.Content.(type) {
 	case *xsd.SimpleContent:
-		// Only reachable when the base was mid-build during construction
-		// (buildElementOnlyContent handles completed simple-content bases).
+		// Defensive: fillElementOnlyContent now resolves a simple-content base
+		// directly (the base is always finished by the time this runs), so an
+		// extension of such a base keeps SimpleContent and never reaches here
+		// with ElementContent. Retained for completeness.
 		if ec.Particle == nil && !ec.Mixed {
 			ct.Content = &xsd.SimpleContent{Type: bc.Type}
 		} else {

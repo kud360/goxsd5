@@ -112,26 +112,36 @@ deliberate API change — fine pre-1.0, and it makes "derived" un-spoofable. Eac
 removal: replace field with method, update the readers above, delete the build/
 clone-site assignments, re-run the ratchet (must stay at current count), commit.
 
-### Track A — topo-ordered type build, retire finishComplexTypes/pendingAttrs
-IN PROGRESS (2026-06-14, user chose the full shell/finish split). Key finding
-that shaped the design: the kitchen-sink case (a base's content references an
-element typed by a DERIVED type) is a genuine cycle in the dependency graph
-(base content ↔ derived merge), NOT just a build-order quirk — eager recursive
-build handles all FORWARD refs for free but cannot linearize this cycle, which
-is exactly why the merge was deferred. Two further hazards: buildElementDecl
-reads its type's INTERNALS (checkNotationEnum, cos-valid-default value space +
-mixed, substitution-group derivation) so element refs cannot resolve to mere
-shells while those checks run inline. PLAN of attack (each commit ratchet-green):
- - [x] STEP 1 (done, prep): extract the three type-internal-reading element
-   checks out of buildElementDecl into a post-pass checkElementDecls
-   (buildterms.go), driven off the b.elements map. Wired BEFORE finishComplexTypes
-   in buildSchemas/buildSchema to preserve pre-merge timing exactly. Pure refactor,
-   5672 held. This lets element refs resolve to type SHELLS safely in step 2.
- - [ ] STEP 2 (the big one): split buildComplexType into a shell pass + a
-   topo-ordered finish pass; resolveType returns shells during content build;
-   merge attrs + extension particle INLINE in finishType (base guaranteed
-   finished); delete pendingAttrs + the merge half of finishComplexTypes. Then
-   move checkElementDecls AFTER the topo finish (it now reads merged ec.Mixed).
+### Track A — topo-ordered type build, retire finishComplexTypes/pendingAttrs — DONE (2026-06-14)
+Full shell/finish split landed; 5672 held throughout. Key finding that shaped
+the design: the kitchen-sink case (a base's content references an element typed
+by a DERIVED type) is a genuine cycle in the dependency graph (base content ↔
+derived merge), NOT just a build-order quirk — eager recursive build handled all
+FORWARD refs for free but could not linearize this cycle, which is exactly why
+the merge was deferred. The split breaks the cycle by decoupling content from
+derivation: content references resolve to SHELLS, so the finish recursion follows
+derivation edges ONLY and terminates even when a base reaches back into a derived
+type. Two commits:
+ - STEP 1 (commit 2989597): extracted the three type-internal-reading element
+   checks (checkNotationEnum, cos-valid-default value space + mixed,
+   substitution-group derivation) out of buildElementDecl into a post-pass
+   checkElementDecls (buildterms.go, driven off the b.elements map). This lets
+   element refs resolve to type SHELLS without forcing a full type build.
+ - STEP 2: buildComplexType now returns a SHELL (header + resolveCTBase: base +
+   derivation method + final/src-ct.1 checks), enqueued on b.ctOrder. resolveType
+   returns shells. finishComplexTypes drains b.ctOrder by index (anon types are
+   discovered as content fills), each via finishComplexType which finishes its
+   base FIRST then fills content (fillSimpleContent/fillComplexContent/
+   fillElementOnlyContent) and merges INLINE (mergeComplexType: extension particle
+   + attr merge, base guaranteed finished). pendingAttrs (the side-table) is gone,
+   replaced by a per-type local attrMaterial. The old finishComplexTypes merge
+   half is gone; its cross-type STATIC checks (EDC/UPA/restrict/open-content/
+   type-alternatives) moved verbatim into runStaticTypeChecks, now called at the
+   tail of finishComplexTypes after the drain (checkElementDecls runs there too,
+   so cos-valid-default reads MERGED ec.Mixed — no conformance change observed).
+   finishExtensionParticle's SimpleContent branch is now dead/defensive (the base
+   is always finished, so fillElementOnlyContent resolves simple-content bases
+   directly). NEXT: Track B (unify restrict.go).
 PLAN.md M6 step 2 SAID "topologically sort types by derivation edges, build so
 each base is fully built before its derivatives." The implementation instead did
 per-node memo + checkTypeCycles + a finishComplexTypes post-pass, parking each

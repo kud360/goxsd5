@@ -12,6 +12,13 @@ import (
 	"github.com/kud360/goxsd5/xsd"
 )
 
+// buildComplexType returns the SHELL of a complex type: its header properties
+// (name, abstract, final, block) and its derivation (base type and method),
+// resolved eagerly so derivation edges are known for cycle detection and the
+// topological finish pass. The content model and attribute uses are filled
+// later by finishComplexType, base-first — a base's own content may legally
+// reach back into a type derived from it, a cycle no ordering of derivation
+// edges linearizes, so content construction is decoupled from derivation.
 func (b *builder) buildComplexType(n *xmltree.Node, doc *schemaDoc, name xsd.QName) *xsd.ComplexType {
 	if t, ok := b.types[n]; ok {
 		if ct, ok := t.(*xsd.ComplexType); ok {
@@ -27,48 +34,150 @@ func (b *builder) buildComplexType(n *xmltree.Node, doc *schemaDoc, name xsd.QNa
 		Annotation: annotationOf(n, doc),
 		Extensions: extensionsOf(n),
 	}
-	// Memoize the shell before building content so content references back
-	// into this type (legal) resolve to the same component instead of
-	// looking like cycles.
+	// Memoize the shell before resolving the base so a cyclic derivation (or a
+	// content reference, once content is filled) resolves to this same
+	// component instead of looking like an unbounded recursion.
 	b.types[n] = ct
-	// Attribute uses are merged with the base's in finishComplexTypes; the
-	// content builders below fill in the declared material.
-	b.pendingAttrs[ct] = &pendingAttrs{pos: n.Pos, node: n, doc: doc}
-
-	switch {
-	case firstChild(n, doc, "simpleContent") != nil:
-		b.buildSimpleContent(ct, firstChild(n, doc, "simpleContent"), doc)
-	case firstChild(n, doc, "complexContent") != nil:
-		b.buildComplexContent(ct, n, firstChild(n, doc, "complexContent"), doc)
-	default:
-		// Abbreviated form: an implicit restriction of xs:anyType whose
-		// content sits directly under <complexType>.
-		b.buildElementOnlyContent(ct, n, n, doc, builtin.AnyType, xsd.DeriveRestriction, boolAttr(n, "mixed", false))
-	}
-
+	ct.BaseType, ct.DerivationMethod = b.resolveCTBase(n, doc)
+	// Enqueue for the base-first content/attribute finish pass.
+	b.ctFinish[ct] = &ctFinishEntry{n: n, doc: doc}
+	b.ctOrder = append(b.ctOrder, ct)
 	return ct
 }
 
-func (b *builder) buildSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc *schemaDoc) {
+// resolveCTBase determines a complex type's {base type definition} and
+// {derivation method} from its content node and reports the base-related
+// structural constraints (final-for-derivation, complexContent simple base).
+// It resolves the base to its shell only; the base's content is not needed
+// until the finish pass.
+func (b *builder) resolveCTBase(n *xmltree.Node, doc *schemaDoc) (xsd.Type, xsd.Derivation) {
+	derive := func(sub *xmltree.Node) (xsd.Type, xsd.Derivation, bool) {
+		r := firstChild(sub, doc, "restriction", "extension")
+		if r == nil {
+			return builtin.AnyType, xsd.DeriveRestriction, false
+		}
+		method := xsd.DeriveRestriction
+		if r.Name.Local == "extension" {
+			method = xsd.DeriveExtension
+		}
+		base := xsd.Type(builtin.AnyType)
+		if q, ok := qnameAttr(r, doc, "base"); ok {
+			base = b.resolveType(q, r.Pos, doc)
+		}
+		return base, method, true
+	}
+	if sc := firstChild(n, doc, "simpleContent"); sc != nil {
+		base, method, ok := derive(sc)
+		if ok {
+			b.checkFinalAllows(base, method, firstChild(sc, doc, "restriction", "extension").Pos)
+		}
+		return base, method
+	}
+	if cc := firstChild(n, doc, "complexContent"); cc != nil {
+		base, method, ok := derive(cc)
+		if ok {
+			r := firstChild(cc, doc, "restriction", "extension")
+			if _, isST := base.(*xsd.SimpleType); isST {
+				// spec: src-ct.1 — complexContent requires a complex base type.
+				b.errf(xsd.SpecSrcCT, r.Pos, "complexContent requires a complex base type, not the simple type %s", base.TypeName())
+				base = builtin.AnyType
+			}
+			b.checkFinalAllows(base, method, r.Pos)
+		}
+		return base, method
+	}
+	// Abbreviated form: an implicit restriction of xs:anyType.
+	return builtin.AnyType, xsd.DeriveRestriction
+}
+
+// finishComplexTypes fills every complex type's content model and attribute
+// uses, base-first. The worklist grows as anonymous types are discovered while
+// filling content, so it is drained by index.
+func (b *builder) finishComplexTypes() {
+	for i := 0; i < len(b.ctOrder); i++ {
+		b.finishComplexType(b.ctOrder[i])
+	}
+	b.runStaticTypeChecks()
+}
+
+// finishComplexType fills ct's content model and attribute uses, ensuring its
+// base type is finished first so extension-particle assembly and attribute-use
+// merging read complete base properties. Filling content references other
+// types only through their shells, so this recursion follows derivation edges
+// alone and terminates even when a base's content reaches back into ct.
+func (b *builder) finishComplexType(ct *xsd.ComplexType) {
+	if b.ctDone[ct] {
+		return
+	}
+	b.ctDone[ct] = true
+	if bct, ok := ct.BaseType.(*xsd.ComplexType); ok {
+		b.finishComplexType(bct)
+	}
+	ent := b.ctFinish[ct]
+	if ent == nil {
+		return // a builtin (xs:anyType / xs:error): already complete
+	}
+	n, doc := ent.n, ent.doc
+	am := &attrMaterial{node: n, doc: doc, pos: n.Pos}
+	switch {
+	case firstChild(n, doc, "simpleContent") != nil:
+		b.fillSimpleContent(ct, firstChild(n, doc, "simpleContent"), doc, am)
+	case firstChild(n, doc, "complexContent") != nil:
+		b.fillComplexContent(ct, n, firstChild(n, doc, "complexContent"), doc, am)
+	default:
+		// Abbreviated form: an implicit restriction of xs:anyType whose content
+		// sits directly under <complexType>.
+		b.fillElementOnlyContent(ct, n, n, doc, ct.BaseType, ct.DerivationMethod, boolAttr(n, "mixed", false), am)
+	}
+	b.mergeComplexType(ct, am)
+}
+
+// mergeComplexType assembles ct's base-dependent properties once its content
+// and own attribute material are in hand and its base is finished: the
+// effective particle of an extension, then the merged attribute uses.
+func (b *builder) mergeComplexType(ct *xsd.ComplexType, am *attrMaterial) {
+	bct, _ := ct.BaseType.(*xsd.ComplexType)
+	if bct != nil && ct.DerivationMethod == xsd.DeriveExtension {
+		b.finishExtensionParticle(ct, bct)
+	}
+	var baseUses []*xsd.AttributeUse
+	var baseWC *xsd.Wildcard
+	if bct != nil {
+		baseUses = bct.AttributeUses
+		baseWC = bct.AttributeWildcard
+	}
+	prohibited := am.prohibited
+	if !am.override {
+		prohibited = nil
+	}
+	ct.AttributeUses = b.mergeBaseAttrUses(am.own, baseUses, prohibited, am.override, am.pos)
+	ct.AttributeWildcard = am.wc
+	if am.wc == nil && am.wcFallback {
+		// Wildcard union (cos-aw-union) is deferred; the base's wildcard stands
+		// in when the type declares none.
+		ct.AttributeWildcard = baseWC
+	}
+	if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil {
+		if am.wc != nil {
+			b.checkAttrWildcardRestriction(ct, am.wc, baseWC)
+		}
+		b.checkAttrRestriction(am.own, baseUses)
+	}
+	if ct.DerivationMethod == xsd.DeriveExtension && bct != nil {
+		b.checkExtensionOpenContent(ct, bct, am.contentNode, am.doc)
+	}
+	b.applyDefaultAttributes(ct, am.node, am.doc)
+	b.checkAttrUses(ct)
+}
+
+func (b *builder) fillSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc *schemaDoc, am *attrMaterial) {
 	r := firstChild(sc, doc, "restriction", "extension")
 	if r == nil {
-		ct.BaseType = builtin.AnyType
 		ct.Content = &xsd.SimpleContent{Type: builtin.AnySimpleType}
 		return
 	}
 	isExtension := r.Name.Local == "extension"
-	if isExtension {
-		ct.DerivationMethod = xsd.DeriveExtension
-	} else {
-		ct.DerivationMethod = xsd.DeriveRestriction
-	}
-
-	base := xsd.Type(builtin.AnyType)
-	if q, ok := qnameAttr(r, doc, "base"); ok {
-		base = b.resolveType(q, r.Pos, doc)
-	}
-	ct.BaseType = base
-	b.checkFinalAllows(base, ct.DerivationMethod, r.Pos)
+	base := ct.BaseType
 
 	var contentST *xsd.SimpleType
 	switch base := base.(type) {
@@ -117,16 +226,19 @@ func (b *builder) buildSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc 
 	}
 
 	// Attribute uses: own plus the base's (restriction overrides by name),
-	// merged in finishComplexTypes.
-	p := b.pendingAttrs[ct]
-	p.own, p.wc, p.prohibited = b.buildAttrUses(r, doc)
-	p.override = !isExtension
-	p.wcFallback = true
-	p.pos = r.Pos
+	// merged by mergeComplexType once the base is finished.
+	am.own, am.wc, am.prohibited = b.buildAttrUses(r, doc)
+	am.override = !isExtension
+	am.wcFallback = true
+	am.pos = r.Pos
 	ct.Assertions = b.buildAsserts(r, doc)
 }
 
-func (b *builder) buildComplexContent(ct *xsd.ComplexType, n, cc *xmltree.Node, doc *schemaDoc) {
+// fillComplexContent fills ct's element-only content from its <complexContent>
+// child. The base type and derivation method were resolved into ct by
+// resolveCTBase; this pass reads only the content (particle, attributes, open
+// content).
+func (b *builder) fillComplexContent(ct *xsd.ComplexType, n, cc *xmltree.Node, doc *schemaDoc, am *attrMaterial) {
 	mixed := boolAttr(n, "mixed", false)
 	if v, ok := cc.Attr("mixed"); ok {
 		ccMixed, err := parseBool(v)
@@ -140,27 +252,11 @@ func (b *builder) buildComplexContent(ct *xsd.ComplexType, n, cc *xmltree.Node, 
 		}
 	}
 
-	r := firstChild(cc, doc, "restriction", "extension")
-	if r == nil {
-		b.buildElementOnlyContent(ct, n, n, doc, builtin.AnyType, xsd.DeriveRestriction, mixed)
-		return
+	content := n
+	if r := firstChild(cc, doc, "restriction", "extension"); r != nil {
+		content = r
 	}
-	method := xsd.DeriveRestriction
-	if r.Name.Local == "extension" {
-		method = xsd.DeriveExtension
-	}
-
-	base := xsd.Type(builtin.AnyType)
-	if q, ok := qnameAttr(r, doc, "base"); ok {
-		base = b.resolveType(q, r.Pos, doc)
-	}
-	if _, isST := base.(*xsd.SimpleType); isST {
-		// spec: src-ct.1 — complexContent requires a complex base type.
-		b.errf(xsd.SpecSrcCT, r.Pos, "complexContent requires a complex base type, not the simple type %s", base.TypeName())
-		base = builtin.AnyType
-	}
-	b.checkFinalAllows(base, method, r.Pos)
-	b.buildElementOnlyContent(ct, n, r, doc, base, method, mixed)
+	b.fillElementOnlyContent(ct, n, content, doc, ct.BaseType, ct.DerivationMethod, mixed, am)
 }
 
 // checkFinalAllows reports an error when base's {final} set blocks deriving a
@@ -191,13 +287,11 @@ func (b *builder) checkFinalAllows(base xsd.Type, method xsd.Derivation, pos xsd
 	b.errf(ref, pos, "%s is final for %s; it cannot be the base of a %s", name, verb, verb)
 }
 
-// buildElementOnlyContent fills ct with element (or empty) content read
-// from the children of content (= the restriction/extension element, or the
-// complexType itself in the abbreviated form).
-func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltree.Node, doc *schemaDoc, base xsd.Type, method xsd.Derivation, mixed bool) {
-	ct.BaseType = base
-	ct.DerivationMethod = method
-
+// fillElementOnlyContent fills ct with element (or empty) content read from
+// the children of content (= the restriction/extension element, or the
+// complexType itself in the abbreviated form). The base is already finished,
+// so a simple-content base extension is resolved here directly.
+func (b *builder) fillElementOnlyContent(ct *xsd.ComplexType, n, content *xmltree.Node, doc *schemaDoc, base xsd.Type, method xsd.Derivation, mixed bool, am *attrMaterial) {
 	var particle *xsd.Particle
 	if pn := firstChild(content, doc, "group", "all", "choice", "sequence"); pn != nil {
 		particle = b.buildParticle(pn, doc)
@@ -210,7 +304,7 @@ func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltr
 				// Extending a simple-content type without adding element
 				// content keeps the simple content.
 				ct.Content = &xsd.SimpleContent{Type: sc.Type}
-				b.deferAttrs(ct, content, doc, false, n.Pos)
+				b.collectAttrs(am, content, doc, false, n.Pos)
 				ct.Assertions = b.buildAsserts(content, doc)
 				return
 			}
@@ -218,9 +312,8 @@ func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltr
 			// simple-content type cannot add element content.
 			b.errf(xsd.SpecCosCTExtends, content.Pos, "cannot extend %s with element content: its content is simple", bct.Name)
 		}
-		// The effective particle (base particle followed by the extension's)
-		// is combined by finishExtensions: the base may still be mid-build
-		// here when its own content reaches back into this type.
+		// Otherwise the effective particle (base particle followed by the
+		// extension's) is assembled by finishExtensionParticle from the merge.
 	}
 
 	ec := &xsd.ElementContent{Mixed: mixed, Particle: particle}
@@ -233,21 +326,20 @@ func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltr
 	}
 	ct.Content = ec
 
-	b.deferAttrs(ct, content, doc, method != xsd.DeriveExtension, content.Pos)
+	b.collectAttrs(am, content, doc, method != xsd.DeriveExtension, content.Pos)
 	ct.Assertions = b.buildAsserts(content, doc)
 }
 
-// deferAttrs records the attribute material declared on content for the
-// finishComplexTypes merge. Extensions unite with the base's uses and fall
+// collectAttrs records the attribute material declared on content into am for
+// the mergeComplexType pass. Extensions unite with the base's uses and fall
 // back to its wildcard (full wildcard union, cos-aw-union, is deferred);
 // restrictions override by name and keep only their own wildcard.
-func (b *builder) deferAttrs(ct *xsd.ComplexType, content *xmltree.Node, doc *schemaDoc, override bool, pos xsd.Pos) {
-	p := b.pendingAttrs[ct]
-	p.own, p.wc, p.prohibited = b.buildAttrUses(content, doc)
-	p.override = override
-	p.wcFallback = !override
-	p.pos = pos
-	p.contentNode = content
+func (b *builder) collectAttrs(am *attrMaterial, content *xmltree.Node, doc *schemaDoc, override bool, pos xsd.Pos) {
+	am.own, am.wc, am.prohibited = b.buildAttrUses(content, doc)
+	am.override = override
+	am.wcFallback = !override
+	am.pos = pos
+	am.contentNode = content
 }
 
 // mergeBaseAttrUses combines declared uses with inherited ones. For
