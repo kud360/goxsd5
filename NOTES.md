@@ -44,7 +44,29 @@ gate for C and A; B is a behavior-changing rewrite guarded by differential
 testing — see Track B). Do them in C → A → B order: C is the cheapest and
 de-risks A; B goes last so it reasons over already-deduplicated state.
 
-### Track C — minimize duplicate / derivable state (DO FIRST)
+### Track C — minimize duplicate / derivable state — DONE (2026-06-13)
+All five inventory items landed behind the ratchet (5672 held throughout); each
+field→method conversion is its own commit. Summary of what shipped:
+ - item 5: ComplexType.Mixed → (*ComplexType).IsMixed() (ElementContent.Mixed is
+   now the single canonical source; the finishExtensionParticle drift is gone).
+ - item 2: SimpleType.Primitive → (*SimpleType).PrimitiveType() (walks BaseType;
+   the primitive = nearest atomic builtin directly restricting xs:anyAtomicType).
+ - item 1: SimpleType.MemberTypes → (*SimpleType).BasicMembers() (flattens the
+   canonical DirectMembers on demand).
+ - item 3 (highest value): the four fundamental facets → (*SimpleType).
+   Fundamentals(). Deleted the stored Ordered/Bounded/Cardinality/Numeric fields
+   and BOTH copies of the bounded/cardinality derivation (buildsimple + mutate).
+   {ordered}/{numeric} now come from a §F.1 table in xsd (sole authored source,
+   keyed off PrimitiveType()); {bounded}/{cardinality} compute from the effective
+   facets. Nothing read the fields for logic, so conformance was unaffected;
+   values are now more correct (xs:byte is {bounded}=true). +TestFundamentalsDerivation.
+ - item 4: SimpleType.Facets (effective) left as an explicitly-named memoized
+   cache (hot path), now DOCUMENTED as derived-not-authored with DeclaredFacets
+   canonical. Per plan, a deeper rework waits for Track A.
+NEXT: Track A (topo build, retire finishComplexTypes/pendingAttrs), then B
+(unify restrict.go). Both still pending; see blocks below.
+
+### Track C (original plan) — minimize duplicate / derivable state
 PRINCIPLE: store a fact ONCE at its canonical source; compute every derivable
 view on demand. Every stored-derived field is currently copied by hand at each
 clone/build site (proof: the fundamental-facet derivation is duplicated verbatim

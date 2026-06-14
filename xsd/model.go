@@ -141,11 +141,15 @@ type SimpleType struct {
 
 	Final DerivationSet
 
-	// Facets are the effective facets: this type's declared facets merged
-	// over every ancestor's, already validated for narrowing.
-	Facets Facets
-	// DeclaredFacets are only the facets declared on this derivation step.
+	// DeclaredFacets are only the facets declared on this derivation step —
+	// the canonical, authored facet state.
 	DeclaredFacets Facets
+	// Facets are the effective facets: DeclaredFacets merged over every
+	// ancestor's, already validated for narrowing. This is DERIVED state, kept
+	// as an explicitly-named memoized cache (read via EffectiveFacets()) because
+	// it sits on the value-validation hot path; it is not authored. It must stay
+	// in sync with DeclaredFacets + the base chain at every build/clone site.
+	Facets Facets
 
 	// Parse overrides lexical→value mapping; if nil, resolution walks to
 	// the nearest ancestor that defines one (ultimately the primitive).
