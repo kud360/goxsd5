@@ -7,6 +7,29 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-14 — primitiveFundamentals map → authored on the type <<<
+Same anti-pattern the package-factoring refactor already killed for the parser's
+name-keyed primitiveFacetMask, but it had survived in core xsd: a `map[string]
+Fundamentals` keyed by primitive local name ("string"/"decimal"/"dateTime"/…),
+hard-coding XSD datatype identity inside the supposed-to-be datatype-agnostic
+PURE LEAF, and silently handing a custom primitive the zero value
+{OrderedFalse,false}. Removed it. The authored base case now lives as a single
+field xsd.SimpleType.FundamentalBase *Fundamentals, set ONLY on primitives in
+builtin (next to Applicable) via the fund* presets (fundUnordered/fundDecimal/
+fundFloating/fundTemporal, shared *xsd.Fundamentals); the primitive() ctor takes
+it. WHY the full Fundamentals struct and not just {ordered}/{numeric}: a zero
+Fundamentals{} is exactly a string-like primitive, and EVERY primitive is
+unbounded + countably infinite, so the stored {bounded}=false /
+{cardinality}=CountablyInfinite are TRUE of the primitive itself (not stale
+derived state) — it's the more complete, self-consistent description.
+Fundamentals() now does `f = *prim.FundamentalBase` off PrimitiveType() then
+recomputes {bounded}/{cardinality} from the effective facets (up-the-chain
+derivation already there). Shared preset pointers are safe: Fundamentals() copies
+by value, nothing mutates through them. Field is named FundamentalBase (not
+Fundamentals) to avoid colliding with the method. nil for list/union + atomic
+ur-types (no primitive) → §F defaults. Conformance held 5672 / 26; build + vet +
+full suite + gofmt clean.
+
 ## >>> DONE 2026-06-14 — derived-state cleanup: 4 redundant fields removed <<<
 Follow-on to the package-factoring refactor: stripped stored state that was
 either dead or derivable from the authored source of truth, so divergence

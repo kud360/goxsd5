@@ -77,14 +77,16 @@ func parseAsString(s string, _ xsd.ValueContext) (xsd.Value, error) { return xsd
 // primitive ancestor. applic is the primitive's applicable-facet set
 // (cos-applicable-facets); it is the authored source of truth that
 // xsd.SimpleType.ApplicableFacets reads for this primitive and everything
-// derived from it.
-func primitive(local string, ws xsd.WhiteSpace, applic xsd.FacetSet, parse xsd.ParseFunc) *xsd.SimpleType {
+// derived from it. fund carries the authored fundamental-facet base case (Part 2
+// §F.1) that xsd.SimpleType.Fundamentals reads the same way.
+func primitive(local string, ws xsd.WhiteSpace, applic xsd.FacetSet, fund *xsd.Fundamentals, parse xsd.ParseFunc) *xsd.SimpleType {
 	t := &xsd.SimpleType{
-		Name:       qn(local),
-		BaseType:   AnyAtomicType,
-		Variety:    xsd.VarietyAtomic,
-		Parse:      parse,
-		Applicable: applic,
+		Name:            qn(local),
+		BaseType:        AnyAtomicType,
+		Variety:         xsd.VarietyAtomic,
+		Parse:           parse,
+		Applicable:      applic,
+		FundamentalBase: fund,
 	}
 	t.DeclaredFacets.WhiteSpace = ws
 	t.DeclaredFacets.WhiteSpaceFixed = local != "string" && local != "anyURI"
@@ -286,8 +288,9 @@ func isNCName(s string) bool {
 
 // ---- primitives ----
 
-// The {ordered}/{numeric} fundamental facets of these primitives live in
-// xsd.primitiveFundamentals (Part 2 §F.1); SimpleType.Fundamentals() reads them.
+// The fundamental-facet base case of each primitive is authored below as a
+// *xsd.Fundamentals (the fund* presets, Part 2 §F.1); SimpleType.Fundamentals()
+// reads it off the primitive.
 // Applicable-facet sets per primitive (cos-applicable-facets, Part 2 §4.1.6).
 const (
 	facetsStringy   = xsd.FacetsCommon | xsd.FacetsLength
@@ -297,28 +300,40 @@ const (
 	facetsBoolean   = xsd.FacetPattern | xsd.FacetWhiteSpace | xsd.FacetAssertion
 )
 
+// The authored fundamental-facet base case of each primitive (Part 2 §F.1). Only
+// {ordered}/{numeric} vary; {bounded}/{cardinality} are left at their zero value
+// (false / CardinalityCountablyInfinite), which is correct — every primitive is
+// unbounded and countably infinite. SimpleType.Fundamentals copies these by
+// value, so sharing one preset across primitives is safe.
 var (
-	String  = primitive("string", xsd.WSPreserve, facetsStringy, parseAsString)
-	Boolean = primitive("boolean", xsd.WSCollapse, facetsBoolean, parseBoolean)
-	Decimal = primitive("decimal", xsd.WSCollapse, facetsDecimal, parseDecimalV)
-	Float   = primitive("float", xsd.WSCollapse, facetsNumeric, parseFloat)
-	Double  = primitive("double", xsd.WSCollapse, facetsNumeric, parseDouble)
+	fundUnordered = &xsd.Fundamentals{Ordered: xsd.OrderedFalse, Numeric: false}  // string/boolean/binary/anyURI/QName/NOTATION
+	fundDecimal   = &xsd.Fundamentals{Ordered: xsd.OrderedTotal, Numeric: true}   // decimal and its derivations
+	fundFloating  = &xsd.Fundamentals{Ordered: xsd.OrderedPartial, Numeric: true} // float/double
+	fundTemporal  = &xsd.Fundamentals{Ordered: xsd.OrderedPartial}                // duration + the date/time family
+)
 
-	Duration   = primitive("duration", xsd.WSCollapse, facetsNumeric, parseDurationV)
-	DateTime   = primitive("dateTime", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindDateTime))
-	Time       = primitive("time", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindTime))
-	Date       = primitive("date", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindDate))
-	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGYearMonth))
-	GYear      = primitive("gYear", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGYear))
-	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGMonthDay))
-	GDay       = primitive("gDay", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGDay))
-	GMonth     = primitive("gMonth", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGMonth))
+var (
+	String  = primitive("string", xsd.WSPreserve, facetsStringy, fundUnordered, parseAsString)
+	Boolean = primitive("boolean", xsd.WSCollapse, facetsBoolean, fundUnordered, parseBoolean)
+	Decimal = primitive("decimal", xsd.WSCollapse, facetsDecimal, fundDecimal, parseDecimalV)
+	Float   = primitive("float", xsd.WSCollapse, facetsNumeric, fundFloating, parseFloat)
+	Double  = primitive("double", xsd.WSCollapse, facetsNumeric, fundFloating, parseDouble)
 
-	HexBinary    = primitive("hexBinary", xsd.WSCollapse, facetsStringy, parseHexBinary)
-	Base64Binary = primitive("base64Binary", xsd.WSCollapse, facetsStringy, parseBase64Binary)
-	AnyURI       = primitive("anyURI", xsd.WSCollapse, facetsStringy, parseAnyURI)
-	QName        = primitive("QName", xsd.WSCollapse, facetsStringy, parseQName)
-	NOTATION     = primitive("NOTATION", xsd.WSCollapse, facetsStringy, parseQName)
+	Duration   = primitive("duration", xsd.WSCollapse, facetsNumeric, fundTemporal, parseDurationV)
+	DateTime   = primitive("dateTime", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindDateTime))
+	Time       = primitive("time", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindTime))
+	Date       = primitive("date", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindDate))
+	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGYearMonth))
+	GYear      = primitive("gYear", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGYear))
+	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGMonthDay))
+	GDay       = primitive("gDay", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGDay))
+	GMonth     = primitive("gMonth", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGMonth))
+
+	HexBinary    = primitive("hexBinary", xsd.WSCollapse, facetsStringy, fundUnordered, parseHexBinary)
+	Base64Binary = primitive("base64Binary", xsd.WSCollapse, facetsStringy, fundUnordered, parseBase64Binary)
+	AnyURI       = primitive("anyURI", xsd.WSCollapse, facetsStringy, fundUnordered, parseAnyURI)
+	QName        = primitive("QName", xsd.WSCollapse, facetsStringy, fundUnordered, parseQName)
+	NOTATION     = primitive("NOTATION", xsd.WSCollapse, facetsStringy, fundUnordered, parseQName)
 )
 
 // ---- derived numeric ladder ----

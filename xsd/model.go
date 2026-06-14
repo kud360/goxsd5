@@ -157,6 +157,18 @@ type SimpleType struct {
 	// a type as the primitive in its chain — PrimitiveType() detects it this way.
 	Applicable FacetSet
 
+	// FundamentalBase is the authored base case of the fundamental facets (Part 2
+	// §F.1) — the primitive's own {ordered}/{bounded}/{cardinality}/{numeric}.
+	// Like Applicable it is authored only on primitives (in builtin) and is nil
+	// elsewhere; Fundamentals() copies it off PrimitiveType() and then recomputes
+	// {bounded}/{cardinality} from the effective facets. Every primitive is
+	// unbounded and countably infinite, so a primitive's stored {bounded}=false /
+	// {cardinality}=CountablyInfinite are true of the primitive itself, not stale
+	// derived state. Treated as immutable: Fundamentals() copies by value, so one
+	// preset may be shared across primitives. list/union and the atomic ur-types
+	// (no primitive) leave it nil and fall back to the §F defaults.
+	FundamentalBase *Fundamentals
+
 	// The fundamental facets (Part 2 §F) are not stored: they are derived on
 	// demand by Fundamentals() from the variety, the primitive base case, and
 	// the effective facets.
@@ -254,45 +266,17 @@ type Fundamentals struct {
 	Numeric     bool
 }
 
-// primitiveFundamentals holds the authored {ordered}/{numeric} of the XSD
-// primitive datatypes (Part 2 §F.1, keyed by local name; all in the XSD
-// namespace). This is the base case from which the fundamental facets of every
-// derived type are computed. {bounded} is false and {cardinality} is countably
-// infinite for every primitive, so they need no entry — they are the defaults
-// the derivation already produces.
-var primitiveFundamentals = map[string]Fundamentals{
-	"string":       {Ordered: OrderedFalse, Numeric: false},
-	"boolean":      {Ordered: OrderedFalse, Numeric: false},
-	"decimal":      {Ordered: OrderedTotal, Numeric: true},
-	"float":        {Ordered: OrderedPartial, Numeric: true},
-	"double":       {Ordered: OrderedPartial, Numeric: true},
-	"duration":     {Ordered: OrderedPartial, Numeric: false},
-	"dateTime":     {Ordered: OrderedPartial, Numeric: false},
-	"time":         {Ordered: OrderedPartial, Numeric: false},
-	"date":         {Ordered: OrderedPartial, Numeric: false},
-	"gYearMonth":   {Ordered: OrderedPartial, Numeric: false},
-	"gYear":        {Ordered: OrderedPartial, Numeric: false},
-	"gMonthDay":    {Ordered: OrderedPartial, Numeric: false},
-	"gDay":         {Ordered: OrderedPartial, Numeric: false},
-	"gMonth":       {Ordered: OrderedPartial, Numeric: false},
-	"hexBinary":    {Ordered: OrderedFalse, Numeric: false},
-	"base64Binary": {Ordered: OrderedFalse, Numeric: false},
-	"anyURI":       {Ordered: OrderedFalse, Numeric: false},
-	"QName":        {Ordered: OrderedFalse, Numeric: false},
-	"NOTATION":     {Ordered: OrderedFalse, Numeric: false},
-}
-
 // Fundamentals derives the four fundamental facets (Part 2 §F) on demand,
 // replacing what were stored, hand-copied fields. {ordered} and {numeric} come
-// from the primitive base case (false for list/union and the atomic ur-types,
-// which have no primitive); {bounded} and {cardinality} fall out of the
+// from the primitive's authored FundamentalBase (the §F defaults — false /
+// unbounded / countably infinite — for list/union and the atomic ur-types, which
+// have no primitive); {bounded} and {cardinality} are then recomputed from the
 // effective facets. The values accumulate down a restriction chain because the
 // effective facets are the merged set, so no recursion into the base is needed.
 func (t *SimpleType) Fundamentals() Fundamentals {
 	f := Fundamentals{Cardinality: CardinalityCountablyInfinite}
-	if prim := t.PrimitiveType(); prim != nil {
-		pf := primitiveFundamentals[prim.Name.Local]
-		f.Ordered, f.Numeric = pf.Ordered, pf.Numeric
+	if prim := t.PrimitiveType(); prim != nil && prim.FundamentalBase != nil {
+		f = *prim.FundamentalBase
 	}
 	ef := t.EffectiveFacets()
 	// spec: §F — {bounded} is true iff a lower and an upper bound both apply.
