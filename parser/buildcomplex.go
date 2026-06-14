@@ -197,7 +197,6 @@ func (b *builder) checkFinalAllows(base xsd.Type, method xsd.Derivation, pos xsd
 func (b *builder) buildElementOnlyContent(ct *xsd.ComplexType, n, content *xmltree.Node, doc *schemaDoc, base xsd.Type, method xsd.Derivation, mixed bool) {
 	ct.BaseType = base
 	ct.DerivationMethod = method
-	ct.Mixed = mixed
 
 	var particle *xsd.Particle
 	if pn := firstChild(content, doc, "group", "all", "choice", "sequence"); pn != nil {

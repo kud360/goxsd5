@@ -779,7 +779,7 @@ func openContentModeAttr(n *xmltree.Node) xsd.OpenContentMode {
 // contentEmpty reports whether ct's content type has {variety} empty: no
 // character content (not mixed) and no particle that can match an element.
 func contentEmpty(ct *xsd.ComplexType) bool {
-	if ct.Mixed {
+	if ct.IsMixed() {
 		return false
 	}
 	ec, ok := ct.Content.(*xsd.ElementContent)

@@ -23,8 +23,7 @@ func qn(local string) xsd.QName { return xsd.QName{Namespace: xsd.XSDNS, Local: 
 // AnyType is xs:anyType, the root of the type hierarchy (a complex type
 // with unconstrained content). Its base type is itself, represented as nil.
 var AnyType = &xsd.ComplexType{
-	Name:  qn("anyType"),
-	Mixed: true,
+	Name: qn("anyType"),
 	Content: &xsd.ElementContent{
 		Mixed: true,
 		Particle: &xsd.Particle{

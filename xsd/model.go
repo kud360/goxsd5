@@ -202,7 +202,6 @@ type ComplexType struct {
 	Abstract bool
 	Final    DerivationSet
 	Block    DerivationSet // prohibitedSubstitutions
-	Mixed    bool
 
 	// Content is the content type: *SimpleContent, *ElementContent (with
 	// possibly empty particle), or EmptyContent (nil Particle).
@@ -222,6 +221,14 @@ func (t *ComplexType) TypeName() QName { return t.Name }
 func (t *ComplexType) TypePos() Pos    { return t.Pos }
 func (t *ComplexType) Base() Type      { return t.BaseType }
 func (t *ComplexType) isType()         {}
+
+// IsMixed reports whether t has mixed {content type}. This is a derived view of
+// the canonical ElementContent.Mixed: only element content can be mixed
+// (SimpleContent and empty/non-ElementContent are never mixed).
+func (t *ComplexType) IsMixed() bool {
+	ec, ok := t.Content.(*ElementContent)
+	return ok && ec.Mixed
+}
 
 // Content is the content type of a complex type.
 type Content interface{ isContent() }
