@@ -61,6 +61,9 @@ func TestBuilderNegatives(t *testing.T) {
 		{"attributeGroup ref undeclared",
 			`<xs:complexType name="c"><xs:attributeGroup ref="tns:nope"/></xs:complexType>`,
 			[]string{"src-resolve"}},
+		{"attribute group definition declares an attribute twice",
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/><xs:attribute name="a" type="xs:string"/></xs:attributeGroup>`,
+			[]string{"ag-props-correct"}},
 		{"substitutionGroup head undeclared",
 			`<xs:element name="e" type="xs:int" substitutionGroup="tns:nope"/>`,
 			[]string{"src-resolve"}},
@@ -594,6 +597,23 @@ func TestBuilderNegatives(t *testing.T) {
 			wantIDs(t, errs, tc.ids...)
 		})
 	}
+}
+
+// An attribute group definition with distinct attribute names is valid, even
+// when never referenced (ag-props-correct clause 2 only forbids a collision).
+// A nested group ref that happens to repeat a name is checked where it
+// resolves, not at the definition, so it must not trip the definition-level pass.
+func TestBuildAttributeGroupDefValid(t *testing.T) {
+	_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
+		<xs:attribute name="a" type="xs:int"/>
+		<xs:attributeGroup name="base"><xs:attribute name="a" type="xs:int"/></xs:attributeGroup>
+		<xs:attributeGroup name="ag">
+			<xs:attribute name="x" type="xs:int"/>
+			<xs:attribute name="y" type="xs:int"/>
+			<xs:attributeGroup ref="tns:base"/>
+		</xs:attributeGroup>
+	</xs:schema>`)
+	wantClean(t, errs)
 }
 
 // A derived bound may equal the corresponding base bound, even when that

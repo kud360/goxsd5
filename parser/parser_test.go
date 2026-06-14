@@ -278,6 +278,7 @@ func TestRedefine(t *testing.T) {
   <xs:simpleType name="st"><xs:restriction base="xs:string"><xs:maxLength value="10"/></xs:restriction></xs:simpleType>
   <xs:element name="e" type="tns:st"/>
   <xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:group>
+  <xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/></xs:attributeGroup>
 </xs:schema>`,
 		}
 	}
@@ -324,6 +325,46 @@ func TestRedefine(t *testing.T) {
 		if ref == nil || ref.Ref == g {
 			t.Error("group self-reference did not resolve to the original definition")
 		}
+	})
+
+	t.Run("group redefinition without a self-reference is allowed", func(t *testing.T) {
+		// No self-reference is the restriction case (src-redefine 6.2); its
+		// subset check is deferred, so the redefinition is accepted.
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantNoErr(t, err)
+	})
+
+	t.Run("group redefinition with two self-references fails", func(t *testing.T) {
+		// src-redefine 6.1.1: at most one self-reference.
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:group ref="tns:g"/><xs:group ref="tns:g"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
+	})
+
+	t.Run("group self-reference with maxOccurs > 1 fails", func(t *testing.T) {
+		// src-redefine 6.1.2: the self-reference must have minOccurs = maxOccurs = 1.
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:group ref="tns:g" maxOccurs="2"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
+	})
+
+	t.Run("attributeGroup redefinition with one self-reference is allowed", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:attributeGroup name="ag"><xs:attributeGroup ref="tns:ag"/><xs:attribute name="b" type="xs:int"/></xs:attributeGroup>`,
+		), "main.xsd")
+		wantNoErr(t, err)
+	})
+
+	t.Run("attributeGroup redefinition with two self-references fails", func(t *testing.T) {
+		// src-redefine 7.1: at most one self-reference.
+		_, err := parseMap(t, files(
+			`<xs:attributeGroup name="ag"><xs:attributeGroup ref="tns:ag"/><xs:attributeGroup ref="tns:ag"/></xs:attributeGroup>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
 	})
 
 	t.Run("redefining an undeclared component fails", func(t *testing.T) {

@@ -33,6 +33,109 @@ regex compiles and the schema builds → validity=valid as expected.
  - DONE phase 8 (cos-particle-restrict, wildcard shadows named in <all>):
    wild069. See phase-8 block below.
 
+## >>> DONE 2026-06-14 — deferred-SpecRef triage items A + B implemented <<<
+Both genuine-but-unexercised static holes (A: redefine group/attributeGroup
+self-reference occurrence; B: ag-props-correct clause 2 at the attribute-group
+definition level) are now wired, zero-ratchet as predicted (5672 held). NONE of
+the umbrella/N-A/vacuous refs below were touched — they remain correctly deferred.
+ - [A] parser/loader.go checkRedefineSelfBase now dispatches group →
+   checkRedefineGroupSelfRef and attributeGroup → checkRedefineAttrGroupSelfRef
+   (the old default:return TODO is gone). Group: recursive descendant scan for
+   <group ref=self> with NO <element> ancestor (clause 6.1 gate); >1 ⇒ SpecSrcRedefine
+   (6.1.1), each must have occurs()==(1,1) (6.1.2). attributeGroup: direct-child
+   scan for <attributeGroup ref=self>; >1 ⇒ SpecSrcRedefine (7.1). IMPORTANT
+   correction to the original plan text: count==0 is VALID (the 6.2/7.2 restriction
+   case), so we do NOT "require count==1" — only count>=2 and bad occurrence are
+   errors; the no-self-ref existence requirement is already covered by the orig==nil
+   check in registerReplacement. Stays appealed to src-redefine (SpecSrcExpredef
+   unchanged / umbrella). Tests: TestRedefine +5 (2 valid: no-self-ref restriction,
+   one attrGroup self-ref; 3 invalid: two group self-refs, group self-ref
+   maxOccurs=2, two attrGroup self-refs).
+ - [B] parser/buildterms.go buildAttributeGroup now calls checkAttrGroupDefDups
+   (emits SpecAGPropsCorrect) — a pass over the definition's DIRECT <attribute>
+   children only (nested <attributeGroup ref> checked where resolved; prohibited
+   uses skipped), using attrUseName so the expanded names match the real
+   {attribute uses}. Covers the never-referenced-definition case the post-merge
+   ct-props-correct.4 check misses. Tests: TestBuilderNegatives +1 (dup name) +
+   TestBuildAttributeGroupDefValid (distinct names + ref repeating a name = clean).
+CONFORMANCE.md: src-redefine row updated (occurrence checks done; restriction-
+subset still deferred); ag-props-correct deferred → wip.
+
+## >>> FUTURE WORK — deferred-SpecRef triage (the 7 never-emitted refs) <<<
+INVESTIGATION 2026-06-14. The conformance test classes the registry's
+never-referenced constants into "deferred/N-A" (allowed unreferenced, see
+xsd/conformance_test.go TestSpecRefConstantsReferenced). Seven Spec* constants
+register but no call site emits them: SpecCosCTRestricts, SpecCosCTDerivedOK,
+SpecAGPropsCorrect, SpecMGDPropsCorrect, SpecSTRestrictsFacets, SpecSrcExpredef,
+SpecAssertionsValid. Investigated each for real, un-implemented static work.
+HEADLINE: conformance is EXHAUSTED (5672, only 2 spec bugs remain), so NONE of
+these has a failing suite case — enforcing ANY of them moves the ratchet ZERO.
+This is robustness/attribution work, not conformance work. Most need NOTHING.
+
+OUT OF SCOPE — do NOT schedule (instance-validation rule, not schema-time):
+ - cvc-assertions-valid (N/A): xs:assert/xs:assertion are STORED UNEVALUATED
+   (xsd/model.go:317-318, 580-584; parser/attrcheck.go:234). cvc-* are instance
+   Validation Rules; this is a schema-only validator. Becomes live only if a
+   future M10+ adds instance validation. The constant exists so the matrix row
+   stays complete. Leave N/A.
+
+UMBRELLA refs — every ENFORCEABLE sub-clause already emits under a more specific
+ref; wiring the umbrella too would only risk double-reporting. Annotate & leave:
+ - cos-ct-derived-ok (§3.4.6): the Type Derivation OK (Complex) relation. Its
+   decisions already emit — extension validity → cos-ct-extends; restriction →
+   derivation-ok-restriction / cos-particle-restrict; substitutability gating →
+   e-props-correct / cos-equiv-class paths (validlySubstitutable,
+   derivationMethods in restrict.go). No distinct error site of its own.
+ - cos-ct-restricts (§3.4.6): same shape — attribute-use-subset + content-type
+   restriction conditions emit under derivation-ok-restriction (restrict.go) +
+   cos-particle-restrict. Umbrella over already-wired checks.
+ - st-restrict-facets (§3.16.6): facet-restriction recursion companion to
+   cos-st-restricts; facet-restriction validity already emits under the specific
+   *-valid-restriction facet refs (length-valid-restriction, … in
+   xsd/facets_check.go) and cos-st-restricts. Umbrella.
+ - src-expredef (§4.2.4): its one ENFORCEABLE clause ("in all cases there must
+   be a top-level definition of the appropriate name+kind in the redefined
+   document") ALREADY emits under src-redefine at parser/loader.go:327. The
+   self-reference occurrence rule everyone associates with it is actually
+   src-redefine clauses 6.1.1/6.1.2/7.1 (see item A). Nothing distinct to wire.
+
+GENUINE but UNEXERCISED static holes — real missing checks, but ZERO suite cases
+exercise them (so unit-test-only; LOW priority; success gate is "5672 holds +
+new unit negatives pass", NOT a ratchet bump):
+ - [A] Redefined <group>/<attributeGroup> self-reference OCCURRENCE constraint
+   (src-redefine 6.1.1/6.1.2 group: exactly one self-ref, its minOccurs ==
+   maxOccurs == 1; 7.1 attributeGroup: exactly one self-ref). This is the
+   explicit TODO at parser/loader.go:361 (checkRedefineSelfBase bails on the
+   group/attributeGroup case). SCOPE: extend checkRedefineSelfBase — for a
+   redefined <group>/<attributeGroup>, scan its descendants for a ref= whose
+   resolved QName == the redefined name+tns; require count==1 and (group only)
+   minOccurs/maxOccurs both 1-or-absent; emit SpecSrcRedefine. Necessary
+   condition ⇒ no false positive. Add TestOverride/redefine negatives (zero/two
+   self-refs; group self-ref with maxOccurs=2). Note: appealed to src-redefine,
+   so this does NOT clear SpecSrcExpredef — that one stays umbrella.
+ - [B] ag-props-correct clause 2 at the attribute-group DEFINITION level (no two
+   {attribute uses} share an expanded name). Today duplicate-attribute detection
+   runs only AFTER merge into a complex type (parser/buildcomplex.go:370/417 →
+   ct-props-correct; au-props-correct on uses), so a standalone <attributeGroup>
+   that itself declares two same-named attributes and is NEVER referenced escapes
+   unflagged. SCOPE: a small pass over each attribute-group definition's direct
+   attribute children (NOT its nested group refs — those are checked where
+   resolved) emitting SpecAGPropsCorrect on a same-expanded-name collision.
+   Marginal: any USED group already trips the post-merge check; this only covers
+   the unused-definition case. Lowest value of the three actionable items.
+
+NOT actionable: mgd-props-correct (§3.7.6) is near-vacuous ({name} NCName,
+{model group} present) — structurally guaranteed by pass-1; the only real
+constraint, circular model groups, already emits under mg-props-correct
+(parser/buildschema.go:696-726). No work; leave deferred.
+
+RECOMMENDATION: items A and B are the only genuine code work and both are
+zero-ratchet robustness with unit tests only; do them as one small commit if/
+when touching the redefine + attribute-group paths, else leave. Everything else
+is correctly deferred/umbrella and should be annotated, not enforced. If A/B are
+declined, this block can be deleted — the registry+matrix are already self-
+consistent and the tests pass.
+
 ## >>> FUTURE WORK — architecture refactor + duplicate-state removal <<<
 Conformance is exhausted (only 2 tolerated spec bugs remain), so the next body
 of work is structural, NOT new spec features. Retro (2026-06-13) identified that

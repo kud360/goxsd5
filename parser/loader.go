@@ -357,10 +357,73 @@ func (l *loader) checkRedefineSelfBase(c *xmltree.Node, doc *schemaDoc, q xsd.QN
 				base, found = qnameAttr(r, doc, "base")
 			}
 		}
+	case "group":
+		l.checkRedefineGroupSelfRef(c, doc, q)
+		return
+	case "attributeGroup":
+		l.checkRedefineAttrGroupSelfRef(c, doc, q)
+		return
 	default:
-		return // group/attributeGroup self-reference occurrence checks deferred
+		return
 	}
 	if !found || base != q {
 		l.errs.Addf(xsd.SpecSrcRedefine, c.Pos, "redefined type %s must derive from itself", q)
+	}
+}
+
+// checkRedefineGroupSelfRef enforces src-redefine clause 6.1: a redefined
+// <group> that references itself does so exactly once (6.1.1) and that
+// self-reference's minOccurs and maxOccurs are both 1 or absent (6.1.2).
+// A self-reference inside an <element> ancestor does not count (clause 6.1).
+// The no-self-reference case (6.2, restriction) needs the model-group subset
+// relation and is left deferred; its existence requirement is already covered
+// by the orig==nil check in registerReplacement.
+// spec: src-redefine — XSD 1.1 Part 1 §4.2.4 (src-redefine clause 6)
+func (l *loader) checkRedefineGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xsd.QName) {
+	var refs []*xmltree.Node
+	var walk func(n *xmltree.Node, inElement bool)
+	walk = func(n *xmltree.Node, inElement bool) {
+		for _, ch := range xsdElems(n, doc) {
+			switch ch.Name.Local {
+			case "element":
+				walk(ch, true)
+			case "group":
+				if r, ok := qnameAttr(ch, doc, "ref"); ok && r == q && !inElement {
+					refs = append(refs, ch)
+				}
+				walk(ch, inElement)
+			default:
+				walk(ch, inElement)
+			}
+		}
+	}
+	walk(c, false)
+	if len(refs) > 1 {
+		l.errs.Addf(xsd.SpecSrcRedefine, refs[1].Pos, "redefined group %s has %d self-references; exactly one is allowed", q, len(refs))
+	}
+	for _, r := range refs {
+		if min, max := occurs(r); min != 1 || max != 1 {
+			l.errs.Addf(xsd.SpecSrcRedefine, r.Pos, "the self-reference in redefined group %s must have minOccurs = maxOccurs = 1", q)
+		}
+	}
+}
+
+// checkRedefineAttrGroupSelfRef enforces src-redefine clause 7.1: a redefined
+// <attributeGroup> that references itself does so exactly once. The
+// no-self-reference restriction case (7.2) is left deferred; its existence
+// requirement is already covered by the orig==nil check in registerReplacement.
+// spec: src-redefine — XSD 1.1 Part 1 §4.2.4 (src-redefine clause 7)
+func (l *loader) checkRedefineAttrGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xsd.QName) {
+	var refs []*xmltree.Node
+	for _, ch := range xsdElems(c, doc) {
+		if ch.Name.Local != "attributeGroup" {
+			continue
+		}
+		if r, ok := qnameAttr(ch, doc, "ref"); ok && r == q {
+			refs = append(refs, ch)
+		}
+	}
+	if len(refs) > 1 {
+		l.errs.Addf(xsd.SpecSrcRedefine, refs[1].Pos, "redefined attribute group %s has %d self-references; exactly one is allowed", q, len(refs))
 	}
 }

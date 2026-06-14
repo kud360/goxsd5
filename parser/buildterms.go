@@ -419,7 +419,37 @@ func (b *builder) buildAttributeGroup(d *decl) *xsd.AttributeGroup {
 	}
 	g.Uses, g.Wildcard, _ = b.buildAttrUses(d.node, d.doc)
 	b.attrGroups[d.node] = g
+	b.checkAttrGroupDefDups(d)
 	return g
+}
+
+// checkAttrGroupDefDups enforces ag-props-correct clause 2 at the attribute
+// group definition level: no two <attribute> children of the definition share
+// an expanded name. A *referenced* group's collisions are already caught after
+// merge into a complex type (ct-props-correct.4); this covers a never-
+// referenced definition, whose direct attributes are otherwise never compared.
+// Nested <attributeGroup ref>s are checked where they resolve, so only the
+// direct <attribute> children are considered here.
+// spec: ag-props-correct — XSD 1.1 Part 1 §3.6.6 (clause 2)
+func (b *builder) checkAttrGroupDefDups(d *decl) {
+	seen := map[xsd.QName]bool{}
+	for _, c := range xsdElems(d.node, d.doc) {
+		if c.Name.Local != "attribute" {
+			continue
+		}
+		if use, _ := c.Attr("use"); strings.TrimSpace(use) == "prohibited" {
+			continue
+		}
+		q := b.attrUseName(c, d.doc)
+		if q.IsZero() {
+			continue
+		}
+		if seen[q] {
+			b.errf(xsd.SpecAGPropsCorrect, c.Pos, "attribute %s is declared twice in attribute group %s", q, d.name)
+			continue
+		}
+		seen[q] = true
+	}
 }
 
 // --- particles and model groups -------------------------------------

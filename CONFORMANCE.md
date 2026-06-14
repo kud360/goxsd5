@@ -52,7 +52,7 @@ constant name in code.
 | src-import | §4.2.6.2 | M5/M7 | done (1.1/1.2 same-ns + no-ns, 3 imported-doc ns match; unresolvable location tolerated) | parser/elemtable.go:136 |
 | src-include | §4.2.3 | M5/M7 | done (2.1 ns match, unresolvable location errors) | parser/loader.go:213 |
 | src-include.2 (chameleon) | §4.2.3 | M7 | done (absorbed ns + unqualified-reference remapping) | |
-| src-redefine | §4.2.5 | M5/M7 | wip (pervasive replacement, existence check, type self-derivation; group/attrGroup occurrence checks deferred) | parser/loader.go:337 |
+| src-redefine | §4.2.5 | M5/M7 | wip (pervasive replacement, existence check, type self-derivation, group/attrGroup self-reference occurrence checks; restriction-subset of no-self-ref redefine deferred) | parser/loader.go:337 |
 | src-override | §4.2.4 | M5/M7 | done (pervasive transitive replacement, unmatched children ignored) | |
 | src-resolve | §3.15.3 | M6/M7 | done (cross-document via global registry; 4.2 namespace-not-imported check) | parser/builder.go:101 |
 
@@ -183,7 +183,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset relation implemented in parser/wildcard.go; violations reported under derivation-ok-restriction) | |
 | cos-all-limited | §3.8.6 | post-M9 | done (clause 2 + 1.3 nested model groups; clause 1 for all-vs-sequence extension; full top-level placement 1.1/1.2 partial) | parser/buildterms.go:480 |
 | cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
-| ag-props-correct | §3.6.6 | M9+ | deferred (attribute group definition properties) | |
+| ag-props-correct | §3.6.6 | M9+ | wip (clause 2: no duplicate attribute name in an attribute group definition) | parser/buildterms.go:434 |
 | w-props-correct | §3.10.6 | post-M9 | done (rule 4: notQName namespaces must be allowed; intersection/union rules deferred) | parser/buildterms.go:567 |
 | mgd-props-correct | §3.7.6 | M9+ | deferred (model group definition properties) | |
 | st-restrict-facets | §4.1.6 | M9+ | deferred (companion to cos-st-restricts facet recursion) | |
