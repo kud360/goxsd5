@@ -1,9 +1,11 @@
-package xsd
+package xsdtype
 
 import (
 	"fmt"
 	"math/big"
 	"strings"
+
+	"github.com/kud360/goxsd5/xsd"
 )
 
 // DateTimeKind says which of the seven date/time primitives a DateTime
@@ -38,7 +40,9 @@ type DateTime struct {
 	TZ    int // offset in minutes, range ±840
 }
 
-func (*DateTime) isValue() {}
+// HasTimezone implements xsd.TimezoneAware: it reports whether this value
+// carries a timezone offset (drives the explicitTimezone facet).
+func (dt *DateTime) HasTimezone() bool { return dt.HasTZ }
 
 func (dt *DateTime) sec() *big.Rat {
 	if dt.Second == nil {
@@ -127,16 +131,16 @@ func (dt *DateTime) timeline(tzShift int) *big.Rat {
 // (Part 2 §3.3.7.2): values with timezones compare on the timeline; a
 // timezoned and an untimezoned value compare only if the order is the same
 // with the untimezoned one shifted to both +14:00 and -14:00.
-func (dt *DateTime) Compare(o *DateTime) (Order, bool) {
+func (dt *DateTime) Compare(o *DateTime) (xsd.Order, bool) {
 	if dt.Kind != o.Kind {
 		return 0, false
 	}
 	if dt.HasTZ == o.HasTZ {
-		return Order(dt.timeline(0).Cmp(o.timeline(0))), true
+		return xsd.Order(dt.timeline(0).Cmp(o.timeline(0))), true
 	}
-	lo := Order(dt.timeline(-840).Cmp(o.timeline(-840)))
-	hi := Order(dt.timeline(840).Cmp(o.timeline(840)))
-	if lo == hi && lo != OrderEqual {
+	lo := xsd.Order(dt.timeline(-840).Cmp(o.timeline(-840)))
+	hi := xsd.Order(dt.timeline(840).Cmp(o.timeline(840)))
+	if lo == hi && lo != xsd.OrderEqual {
 		return lo, true
 	}
 	return 0, false

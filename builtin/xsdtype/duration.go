@@ -1,9 +1,11 @@
-package xsd
+package xsdtype
 
 import (
 	"fmt"
 	"math/big"
 	"strings"
+
+	"github.com/kud360/goxsd5/xsd"
 )
 
 // Duration is the value space of xs:duration: a months part and an exact
@@ -13,8 +15,6 @@ type Duration struct {
 	Months  int64
 	Seconds *big.Rat
 }
-
-func (*Duration) isValue() {}
 
 // ParseDuration parses the xs:duration lexical form
 // -?PnYnMnDTnHnMnS (each component optional, at least one present,
@@ -134,19 +134,19 @@ var durationRefs = []*DateTime{
 
 // Compare implements the duration partial order: d < o iff ref+d < ref+o
 // for all four reference dateTimes.
-func (d *Duration) Compare(o *Duration) (Order, bool) {
+func (d *Duration) Compare(o *Duration) (xsd.Order, bool) {
 	if d.Months == o.Months {
-		return Order(d.Seconds.Cmp(o.Seconds)), true
+		return xsd.Order(d.Seconds.Cmp(o.Seconds)), true
 	}
 	if d.Seconds.Cmp(o.Seconds) == 0 {
 		switch {
 		case d.Months < o.Months:
-			return OrderLess, true
+			return xsd.OrderLess, true
 		default:
-			return OrderGreater, true
+			return xsd.OrderGreater, true
 		}
 	}
-	var first Order
+	var first xsd.Order
 	for i, ref := range durationRefs {
 		a := ref.AddDuration(d)
 		b := ref.AddDuration(o)
@@ -162,7 +162,7 @@ func (d *Duration) Compare(o *Duration) (Order, bool) {
 			return 0, false
 		}
 	}
-	if first == OrderEqual {
+	if first == xsd.OrderEqual {
 		return 0, false // equal under all refs but different components: incomparable
 	}
 	return first, true

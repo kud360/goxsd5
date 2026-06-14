@@ -4,7 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kud360/goxsd5/builtin/xsdtype"
 	"github.com/kud360/goxsd5/xsd"
+	"github.com/kud360/goxsd5/xsdregex"
 )
 
 type testCtx map[string]string
@@ -66,7 +68,7 @@ func TestParseValueAcceptReject(t *testing.T) {
 
 func TestQNameContext(t *testing.T) {
 	// Without context: typed error.
-	if _, err := QName.ParseValue("tns:foo", nil); !errors.Is(err, xsd.ErrNeedContext) {
+	if _, err := QName.ParseValue("tns:foo", nil); !errors.Is(err, xsdtype.ErrNeedContext) {
 		t.Errorf("QName without context: %v", err)
 	}
 	ctx := testCtx{"tns": "http://tns", "": "http://default"}
@@ -74,7 +76,7 @@ func TestQNameContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QName with context: %v", err)
 	}
-	qv := v.(xsd.QNameValue)
+	qv := v.(xsdtype.QNameValue)
 	if qv.Name != (xsd.QName{Namespace: "http://tns", Local: "foo"}) || qv.Lexical != "tns:foo" {
 		t.Errorf("QName value = %+v", qv)
 	}
@@ -89,17 +91,17 @@ func TestQNameContext(t *testing.T) {
 func TestWhitespaceHandling(t *testing.T) {
 	// string preserves whitespace.
 	v, _ := String.ParseValue("  a  b ", nil)
-	if v != xsd.String("  a  b ") {
+	if v != xsdtype.String("  a  b ") {
 		t.Errorf("string ws: %q", v)
 	}
 	// normalizedString replaces tabs/newlines.
 	v, _ = NormalizedString.ParseValue("a\tb\nc", nil)
-	if v != xsd.String("a b c") {
+	if v != xsdtype.String("a b c") {
 		t.Errorf("normalizedString ws: %q", v)
 	}
 	// token collapses.
 	v, _ = Token.ParseValue("  a \t b  ", nil)
-	if v != xsd.String("a b") {
+	if v != xsdtype.String("a b") {
 		t.Errorf("token ws: %q", v)
 	}
 }
@@ -110,7 +112,7 @@ func TestListParsing(t *testing.T) {
 		t.Fatal(err)
 	}
 	lv := v.(xsd.ListValue)
-	if len(lv) != 2 || lv[0] != xsd.String("alpha") {
+	if len(lv) != 2 || lv[0] != xsdtype.String("alpha") {
 		t.Errorf("NMTOKENS = %v", lv)
 	}
 }
@@ -139,7 +141,7 @@ func TestPatternANDAcrossSteps(t *testing.T) {
 	mk := func(base *xsd.SimpleType, sources ...string) *xsd.SimpleType {
 		var group xsd.PatternGroup
 		for _, src := range sources {
-			re, err := xsd.CompileRegex(src)
+			re, err := xsdregex.CompileRegex(src)
 			if err != nil {
 				t.Fatal(err)
 			}

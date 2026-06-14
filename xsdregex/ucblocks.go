@@ -1,4 +1,4 @@
-package xsd
+package xsdregex
 
 // unicodeBlocks maps normalized Unicode block names (spaces removed,
 // hyphens kept, per Part 2 Appendix G) to their code point ranges. The list

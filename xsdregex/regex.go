@@ -1,4 +1,4 @@
-package xsd
+package xsdregex
 
 import (
 	"fmt"

@@ -138,6 +138,37 @@ type Facets struct {
 	WhiteSpacePos         Pos
 }
 
+// FacetSet is a set of constraining-facet categories. It expresses facet
+// applicability (cos-applicable-facets, Part 2 §4.1.6 / the per-facet
+// applicability lists): which facets a given value space admits. A primitive
+// declares its set in SimpleType.Applicable; restrictions inherit it and
+// list/union varieties have fixed sets (see ApplicableFacets).
+type FacetSet uint
+
+const (
+	FacetLength FacetSet = 1 << iota
+	FacetMinLength
+	FacetMaxLength
+	FacetPattern
+	FacetEnumeration
+	FacetWhiteSpace
+	FacetBounds // the four min/max inclusive/exclusive facets
+	FacetTotalDigits
+	FacetFractionDigits
+	FacetAssertion
+	FacetExplicitTimezone
+)
+
+// Convenience groupings.
+const (
+	FacetsLength = FacetLength | FacetMinLength | FacetMaxLength
+	FacetsCommon = FacetPattern | FacetEnumeration | FacetWhiteSpace | FacetAssertion
+	AllFacets    = ^FacetSet(0)
+)
+
+// Has reports whether every facet in want is present in s.
+func (s FacetSet) Has(want FacetSet) bool { return s&want == want }
+
 // MergeFacets computes the effective facets of a restriction step: declared
 // facets overlay the base's effective facets; pattern groups and assertions
 // accumulate. Declaring either min (resp. max) bound clears both inherited
@@ -205,13 +236,21 @@ func (t *SimpleType) parseFunc() ParseFunc {
 	return nil
 }
 
+// EffectiveFacets returns the type's effective (merged, validated) facet set.
+// The pointer aliases the type's internal facets; treat it as read-only (use
+// the xsdedit mutation helpers to change them).
+func (t *SimpleType) EffectiveFacets() *Facets { return &t.Facets }
+
 // EffectiveCompare returns the comparison function in effect for t (its
 // own or the nearest ancestor's override, defaulting to CompareValues).
 // The parser uses it to drive ValidateFacetSet/CheckFacetRestriction.
 func (t *SimpleType) EffectiveCompare() CompareFunc { return t.compareFunc() }
 
-// compareFunc resolves value comparison the same way, defaulting to
-// CompareValues.
+// compareFunc resolves value comparison the same way. The default comparator
+// over the built-in value spaces is wired onto xs:anySimpleType by the
+// builtin layer, so the chain walk reaches it for every real type; the
+// incomparable fallback applies only to a detached type with no comparator
+// anywhere in its chain.
 func (t *SimpleType) compareFunc() CompareFunc {
 	for st := t; st != nil; {
 		if st.Compare != nil {
@@ -219,8 +258,12 @@ func (t *SimpleType) compareFunc() CompareFunc {
 		}
 		st, _ = st.BaseType.(*SimpleType)
 	}
-	return CompareValues
+	return incomparable
 }
+
+// incomparable is the fallback CompareFunc: it reports every pair as
+// incomparable. Order-based facets against such a value space fail closed.
+func incomparable(a, b Value) (Order, bool) { return 0, false }
 
 // ParseValue runs the full lexical→value facet pipeline:
 //
@@ -326,7 +369,7 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 		}
 	}
 	if f.TotalDigits != nil || f.FractionDigits != nil {
-		if d, ok := v.(*Decimal); ok {
+		if d, ok := v.(DigitCounted); ok {
 			// spec: cvc-totalDigits-valid — XSD 1.1 Part 2 §4.3.11.4 (xmlschema11-2.md#cvc-totalDigits-valid)
 			if f.TotalDigits != nil && d.TotalDigits() > f.TotalDigits.Value {
 				return nil, NewError(SpecTotalDigitsValid, Pos{}, "value %q has %d digits, totalDigits is %d", norm, d.TotalDigits(), f.TotalDigits.Value)
@@ -338,11 +381,13 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 		}
 	}
 
-	// Stage 6: enumeration (value-space membership).
+	// Stage 6: enumeration (value-space membership). Use the type's effective
+	// comparator so a custom value space's own equality is honored, not just
+	// the default value comparison.
 	if f.HasEnumeration {
 		ok := false
 		for i := range f.Enumeration {
-			if Equal(v, f.Enumeration[i].Value) {
+			if o, c := cmp(v, f.Enumeration[i].Value); c && o == OrderEqual {
 				ok = true
 				break
 			}
@@ -355,12 +400,12 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 
 	// Stage 7: explicitTimezone (XSD 1.1).
 	if f.ExplicitTimezone == ETZRequired || f.ExplicitTimezone == ETZProhibited {
-		if dt, ok := v.(*DateTime); ok {
+		if tz, ok := v.(TimezoneAware); ok {
 			// spec: cvc-explicitTimezone-valid — XSD 1.1 Part 2 §4.3.14.4 (xmlschema11-2.md#cvc-explicitTimezone-valid)
-			if f.ExplicitTimezone == ETZRequired && !dt.HasTZ {
+			if f.ExplicitTimezone == ETZRequired && !tz.HasTimezone() {
 				return nil, NewError(SpecExplicitTimezoneValid, Pos{}, "value %q must carry a timezone", norm)
 			}
-			if f.ExplicitTimezone == ETZProhibited && dt.HasTZ {
+			if f.ExplicitTimezone == ETZProhibited && tz.HasTimezone() {
 				return nil, NewError(SpecExplicitTimezoneValid, Pos{}, "value %q must not carry a timezone", norm)
 			}
 		}
@@ -409,9 +454,11 @@ func (t *SimpleType) buildValue(norm, raw string, ctx ValueContext) (Value, erro
 	default:
 		pf := t.parseFunc()
 		if pf == nil {
-			// No mapping anywhere in the chain (anySimpleType
-			// descendants get one from the builtin package).
-			return String(norm), nil
+			// No lexical→value mapping anywhere in the chain. Every real
+			// atomic type resolves one (xs:anySimpleType carries an
+			// identity parser installed by the builtin layer), so this is
+			// only reached by a malformed, detached type.
+			return nil, NewError(SpecDatatypeValid, t.Pos, "atomic type %s has no lexical mapping", t.describe())
 		}
 		return pf(norm, ctx)
 	}

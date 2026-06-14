@@ -9,8 +9,10 @@ import (
 	"strings"
 
 	"github.com/kud360/goxsd5/builtin"
+	"github.com/kud360/goxsd5/builtin/xsdtype"
 	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
+	"github.com/kud360/goxsd5/xsdregex"
 )
 
 func (b *builder) buildSimpleType(n *xmltree.Node, doc *schemaDoc, name xsd.QName) *xsd.SimpleType {
@@ -172,73 +174,17 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 	st.DirectMembers = members
 }
 
-// facetMask says which constraining facets a type admits
-// (cos-applicable-facets, Part 2 §4.1.6 / the per-facet applicability lists).
-type facetMask uint
-
-const (
-	fLength facetMask = 1 << iota
-	fMinLength
-	fMaxLength
-	fPattern
-	fEnumeration
-	fWhiteSpace
-	fBounds // the four min/max facets
-	fTotalDigits
-	fFractionDigits
-	fAssertion
-	fExplicitTimezone
-)
-
-const (
-	lengthFacets = fLength | fMinLength | fMaxLength
-	commonFacets = fPattern | fEnumeration | fWhiteSpace | fAssertion
-	allFacets    = ^facetMask(0)
-)
-
-var facetNameMask = map[string]facetMask{
-	"length": fLength, "minLength": fMinLength, "maxLength": fMaxLength,
-	"pattern": fPattern, "enumeration": fEnumeration, "whiteSpace": fWhiteSpace,
-	"minInclusive": fBounds, "maxInclusive": fBounds,
-	"minExclusive": fBounds, "maxExclusive": fBounds,
-	"totalDigits": fTotalDigits, "fractionDigits": fFractionDigits,
-	"assertion": fAssertion, "explicitTimezone": fExplicitTimezone,
-}
-
-var primitiveFacetMask = map[string]facetMask{
-	"string": commonFacets | lengthFacets, "anyURI": commonFacets | lengthFacets,
-	"hexBinary": commonFacets | lengthFacets, "base64Binary": commonFacets | lengthFacets,
-	"QName": commonFacets | lengthFacets, "NOTATION": commonFacets | lengthFacets,
-	"boolean": fPattern | fWhiteSpace | fAssertion,
-	"decimal": commonFacets | fBounds | fTotalDigits | fFractionDigits,
-	"float":   commonFacets | fBounds, "double": commonFacets | fBounds,
-	"duration":   commonFacets | fBounds,
-	"dateTime":   commonFacets | fBounds | fExplicitTimezone,
-	"time":       commonFacets | fBounds | fExplicitTimezone,
-	"date":       commonFacets | fBounds | fExplicitTimezone,
-	"gYearMonth": commonFacets | fBounds | fExplicitTimezone,
-	"gYear":      commonFacets | fBounds | fExplicitTimezone,
-	"gMonthDay":  commonFacets | fBounds | fExplicitTimezone,
-	"gDay":       commonFacets | fBounds | fExplicitTimezone,
-	"gMonth":     commonFacets | fBounds | fExplicitTimezone,
-}
-
-func applicableFacets(base *xsd.SimpleType) facetMask {
-	switch base.Variety {
-	case xsd.VarietyList:
-		return commonFacets | lengthFacets
-	case xsd.VarietyUnion:
-		return fPattern | fEnumeration | fAssertion
-	}
-	prim := base.PrimitiveType()
-	if prim == nil {
-		// anySimpleType fallback after an earlier error: don't cascade.
-		return allFacets
-	}
-	if m, ok := primitiveFacetMask[prim.Name.Local]; ok {
-		return m
-	}
-	return allFacets
+// facetNameMask maps an xs:facet element's local name to its applicability
+// category (cos-applicable-facets). The applicable set itself is a property of
+// the base type's value space, computed by xsd.SimpleType.ApplicableFacets;
+// primitives (including custom ones) declare their own set there.
+var facetNameMask = map[string]xsd.FacetSet{
+	"length": xsd.FacetLength, "minLength": xsd.FacetMinLength, "maxLength": xsd.FacetMaxLength,
+	"pattern": xsd.FacetPattern, "enumeration": xsd.FacetEnumeration, "whiteSpace": xsd.FacetWhiteSpace,
+	"minInclusive": xsd.FacetBounds, "maxInclusive": xsd.FacetBounds,
+	"minExclusive": xsd.FacetBounds, "maxExclusive": xsd.FacetBounds,
+	"totalDigits": xsd.FacetTotalDigits, "fractionDigits": xsd.FacetFractionDigits,
+	"assertion": xsd.FacetAssertion, "explicitTimezone": xsd.FacetExplicitTimezone,
 }
 
 // buildFacets collects the facets declared on one restriction step. Facet
@@ -246,7 +192,7 @@ func applicableFacets(base *xsd.SimpleType) facetMask {
 // surface here.
 func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleType) *xsd.Facets {
 	var f xsd.Facets
-	applic := applicableFacets(base)
+	applic := base.ApplicableFacets()
 	seen := map[string]xsd.Pos{}
 	var enums []xsd.Enum
 	var patterns xsd.PatternGroup
@@ -278,7 +224,7 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 		if !isFacet {
 			continue // annotation, inline simpleType, attribute uses, assert
 		}
-		if applic&mask == 0 {
+		if !applic.Has(mask) {
 			// spec: cos-applicable-facets — XSD 1.1 Part 1 §4.1.6
 			b.errf(xsd.SpecCosApplicableFacets, c.Pos, "facet %s is not applicable to a type derived from %s", local, base.TypeName())
 			continue
@@ -337,7 +283,7 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 			f.ExplicitTimezonePos = c.Pos
 		case "pattern":
 			src, _ := c.Attr("value")
-			re, err := xsd.CompileRegex(src)
+			re, err := xsdregex.CompileRegex(src)
 			if err != nil {
 				// spec: regex-valid — XSD 1.1 Part 2 Appendix G
 				b.errf(xsd.SpecRegexValid, c.Pos, "invalid pattern: %v", err)
@@ -357,7 +303,7 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 			// For a NOTATION-derived type, an enumeration value must name a
 			// NOTATION declared in the schema (enumeration-required-notation).
 			if prim := base.PrimitiveType(); prim != nil && prim.Name.Local == "NOTATION" && prim.Name.Namespace == xsd.XSDNS {
-				if qv, ok := v.(xsd.QNameValue); ok && b.registryFor(doc).lookup(spaceNotation, qv.Name) == nil {
+				if qv, ok := v.(xsdtype.QNameValue); ok && b.registryFor(doc).lookup(spaceNotation, qv.Name) == nil {
 					b.errf(xsd.SpecEnumNotation, c.Pos, "enumeration value %q does not name a declared notation", lex)
 				}
 			}

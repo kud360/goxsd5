@@ -157,6 +157,12 @@ type SimpleType struct {
 	// Compare overrides value comparison, with the same inheritance rule.
 	Compare CompareFunc
 
+	// Applicable is the set of constraining facets this type's value space
+	// admits (cos-applicable-facets). It is authored only on primitive types
+	// (including custom ones registered through the API); derived, list, and
+	// union types compute their applicable set from it via ApplicableFacets.
+	Applicable FacetSet
+
 	// The fundamental facets (Part 2 §F) are not stored: they are derived on
 	// demand by Fundamentals() from the variety, the primitive base case, and
 	// the effective facets.
@@ -194,6 +200,26 @@ func (t *SimpleType) PrimitiveType() *SimpleType {
 		}
 		cur = base
 	}
+}
+
+// ApplicableFacets returns the set of constraining facets that may appear in a
+// restriction of t (cos-applicable-facets, Part 2 §4.1.6). List and union
+// varieties have fixed sets; an atomic type delegates to its primitive's
+// authored Applicable set. The atomic ur-types (anySimpleType/anyAtomicType,
+// no primitive) admit everything, deferring the real check to their concrete
+// descendants.
+func (t *SimpleType) ApplicableFacets() FacetSet {
+	switch t.Variety {
+	case VarietyList:
+		return FacetsCommon | FacetsLength
+	case VarietyUnion:
+		return FacetPattern | FacetEnumeration | FacetAssertion
+	}
+	prim := t.PrimitiveType()
+	if prim == nil {
+		return AllFacets
+	}
+	return prim.Applicable
 }
 
 // BasicMembers returns the *basic members* of a union (Part 2 §4.1.6): the

@@ -61,6 +61,57 @@ the umbrella/N-A/vacuous refs below were touched — they remain correctly defer
 CONFORMANCE.md: src-redefine row updated (occurrence checks done; restriction-
 subset still deferred); ag-props-correct deferred → wip.
 
+## >>> DONE 2026-06-14 — package re-factoring: model made datatype-agnostic <<<
+Decoupled the built-in datatype value-spaces (and the regex engine, and the
+mutation API) from the core `xsd` package so the model no longer hard-codes any
+specific datatype. `xsd` is now a PURE LEAF (go list -deps shows no internal
+deps). Conformance held at 5672 / 26 skips at every step; full suite + vet clean.
+
+NEW PACKAGE LAYOUT:
+ - xsd (core)          — model + facet engine + value abstractions only. 7 files.
+ - builtin/xsdtype  → xsd     — concrete value spaces (String/Boolean/Decimal/
+     DateTime/Duration/…), CompareValues/Equal, ParseDecimal/ParseDateTime/etc.
+ - xsdregex (leaf)            — CompileRegex/TranslateRegex + ucblocks (pure, zero deps).
+ - xsdedit → xsd, xsdregex    — RestrictWith/AddEnumeration/AddPattern/AddElement/Validate.
+ - builtin → xsd, xsdtype, xsdregex ; parser → +builtin.
+
+WHAT CHANGED & WHY:
+ 1. Value is now `type Value any` (was sealed `interface{ isValue() }`). The seal
+    made user-defined value spaces impossible; opening it is the enabler for
+    custom primitives. The facet engine no longer type-switches on concrete
+    value types — it discovers capabilities through interfaces in xsd/value.go:
+      Lengthed{ Len() int }  (stdlib-style; presence == "length applies"),
+      DigitCounted{ TotalDigits()/FractionDigits() }, TimezoneAware{ HasTimezone() }.
+    The 4 old switch sites in facets.go (length/digits/timezone) now use these;
+    enumeration now compares with t.compareFunc() not the global Equal (lets a
+    custom value space's own equality drive enumeration — also a latent fix).
+ 2. Applicability of constraining facets is now a first-class model property:
+    SimpleType.Applicable (FacetSet, authored ONLY on primitives in builtin) +
+    SimpleType.ApplicableFacets() method. Replaces parser's name-keyed
+    primitiveFacetMask (which gave unknown/custom primitives a wrong allFacets
+    pass). NOTE: Applicable ≠ DeclaredFacets — Applicable is which facet KINDS
+    may be declared (a uint bitset); DeclaredFacets is the facet VALUES set.
+ 3. Default comparator: CompareValues moved to xsdtype, wired onto
+    xs:anySimpleType.Compare in builtin; every type roots there, so compareFunc()
+    resolves it through the chain. Core's compareFunc() default is `incomparable`
+    (0,false). buildValue's old `String(norm)` fallback is gone (returns an error;
+    anySimpleType's identity Parse covers every real atomic type).
+ 4. regex KEPT IN CORE INITIALLY then moved out: the only core→regex caller was
+    mutate.AddPattern, so moving the mutation API out first freed regex to become
+    the leaf xsdregex package with no cycle. xsd no longer references regex at all.
+ 5. Mutation API: methods → FREE FUNCTIONS in xsdedit (Go can't define methods on
+    xsd types from another pkg). API CHANGE: t.RestrictWith(f) → xsdedit.RestrictWith(t,f),
+    ct.AddElement(...) → xsdedit.AddElement(ct,...), t.Validate() → xsdedit.Validate(t).
+    EffectiveFacets() stayed a method on xsd.SimpleType (core Fundamentals() uses it).
+    The two old private deps (parseFunc/describe) are inlined over the exported surface.
+ 6. NEW: xsdedit.Validate(t) — registration-time intrinsic checks for
+    programmatically-built types (which skip the parser's schema-level checks):
+    atomic ⇒ Parse resolvable; order/enum facets ⇒ a Compare resolvable; declared
+    facets ⊆ base.ApplicableFacets(); list/union structural sanity. Tests in
+    xsdedit/edit_test.go (TestValidate*).
+FUTURE (xsdtype/gotype): a sibling builtin/gotype package was discussed for
+Go-native (lax) value semantics vs xsdtype's strict ones — not built yet.
+
 ## >>> FUTURE WORK — deferred-SpecRef triage (the 7 never-emitted refs) <<<
 INVESTIGATION 2026-06-14. The conformance test classes the registry's
 never-referenced constants into "deferred/N-A" (allowed unreferenced, see

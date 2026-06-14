@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/kud360/goxsd5/builtin"
+	"github.com/kud360/goxsd5/builtin/xsdtype"
 	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 )
@@ -201,7 +202,7 @@ func (w *walker) prunedByConditionalInclusion(n *xmltree.Node) bool {
 		}
 		switch a.Name.Local {
 		case "minVersion", "maxVersion":
-			if _, err := xsd.ParseDecimal(a.Value); err != nil {
+			if _, err := xsdtype.ParseDecimal(a.Value); err != nil {
 				// spec: cip — XSD 1.1 Part 1 §4.2.2: the value must be a valid xs:decimal.
 				w.errf(xsd.SpecCIP, a.Pos, "vc:%s value %q is not a valid xs:decimal", a.Name.Local, a.Value)
 				continue

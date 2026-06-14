@@ -1,9 +1,11 @@
-package xsd
+package xsdtype
 
 import (
 	"fmt"
 	"math/big"
 	"strings"
+
+	"github.com/kud360/goxsd5/xsd"
 )
 
 // Decimal is the value space of xs:decimal: an arbitrary-precision decimal
@@ -15,7 +17,8 @@ type Decimal struct {
 	Scale    int
 }
 
-func (*Decimal) isValue() {}
+// Decimal already exposes TotalDigits()/FractionDigits() below, so it
+// satisfies xsd.DigitCounted (the totalDigits/fractionDigits facets).
 
 // ParseDecimal parses an xs:decimal lexical form.
 func ParseDecimal(s string) (*Decimal, error) {
@@ -71,14 +74,14 @@ func (d *Decimal) normalize() {
 }
 
 // Cmp compares two decimals numerically.
-func (d *Decimal) Cmp(o *Decimal) Order {
+func (d *Decimal) Cmp(o *Decimal) xsd.Order {
 	a, b := d.Unscaled, o.Unscaled
 	if d.Scale < o.Scale {
 		a = new(big.Int).Mul(a, pow10(o.Scale-d.Scale))
 	} else if o.Scale < d.Scale {
 		b = new(big.Int).Mul(b, pow10(d.Scale-o.Scale))
 	}
-	return Order(a.Cmp(b))
+	return xsd.Order(a.Cmp(b))
 }
 
 func pow10(n int) *big.Int {

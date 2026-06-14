@@ -1,7 +1,9 @@
-package xsd
+package xsdtype
 
 import (
 	"testing"
+
+	"github.com/kud360/goxsd5/xsd"
 )
 
 func TestDecimal(t *testing.T) {
@@ -50,11 +52,11 @@ func TestDecimal(t *testing.T) {
 
 	a, _ := ParseDecimal("1.50")
 	b, _ := ParseDecimal("1.5")
-	if a.Cmp(b) != OrderEqual {
+	if a.Cmp(b) != xsd.OrderEqual {
 		t.Error("1.50 != 1.5")
 	}
 	c, _ := ParseDecimal("-2")
-	if c.Cmp(b) != OrderLess {
+	if c.Cmp(b) != xsd.OrderLess {
 		t.Error("-2 should be < 1.5")
 	}
 }
@@ -127,19 +129,19 @@ func mustDT(t *testing.T, kind DateTimeKind, s string) *DateTime {
 }
 
 func TestDateTimeCompare(t *testing.T) {
-	cmpDT := func(a, b string) (Order, bool) {
+	cmpDT := func(a, b string) (xsd.Order, bool) {
 		return mustDT(t, KindDateTime, a).Compare(mustDT(t, KindDateTime, b))
 	}
 	// Same timezone presence: timeline order.
-	if o, ok := cmpDT("2002-10-10T12:00:00Z", "2002-10-10T13:00:00Z"); !ok || o != OrderLess {
+	if o, ok := cmpDT("2002-10-10T12:00:00Z", "2002-10-10T13:00:00Z"); !ok || o != xsd.OrderLess {
 		t.Error("Z vs Z ordering")
 	}
 	// Cross-zone normalization: 12:00-05:00 == 17:00Z.
-	if o, ok := cmpDT("2002-10-10T12:00:00-05:00", "2002-10-10T17:00:00Z"); !ok || o != OrderEqual {
+	if o, ok := cmpDT("2002-10-10T12:00:00-05:00", "2002-10-10T17:00:00Z"); !ok || o != xsd.OrderEqual {
 		t.Error("12:00-05:00 should equal 17:00Z")
 	}
 	// 24:00 rollover.
-	if o, ok := cmpDT("2002-10-09T24:00:00Z", "2002-10-10T00:00:00Z"); !ok || o != OrderEqual {
+	if o, ok := cmpDT("2002-10-09T24:00:00Z", "2002-10-10T00:00:00Z"); !ok || o != xsd.OrderEqual {
 		t.Error("24:00 should roll to next midnight")
 	}
 	// TZ vs no-TZ: incomparable when within ±14h.
@@ -147,7 +149,7 @@ func TestDateTimeCompare(t *testing.T) {
 		t.Error("should be incomparable")
 	}
 	// TZ vs no-TZ: comparable when beyond ±14h.
-	if o, ok := cmpDT("2002-10-10T00:00:00Z", "2002-10-11T15:00:00"); !ok || o != OrderLess {
+	if o, ok := cmpDT("2002-10-10T00:00:00Z", "2002-10-11T15:00:00"); !ok || o != xsd.OrderLess {
 		t.Error("should be comparable: more than 14h apart")
 	}
 }
@@ -166,28 +168,28 @@ func TestDurationParseAndCompare(t *testing.T) {
 		}
 	}
 
-	cmpDur := func(a, b string) (Order, bool) {
+	cmpDur := func(a, b string) (xsd.Order, bool) {
 		da, _ := ParseDuration(a)
 		db, _ := ParseDuration(b)
 		return da.Compare(db)
 	}
-	if o, ok := cmpDur("P1Y", "P12M"); !ok || o != OrderEqual {
+	if o, ok := cmpDur("P1Y", "P12M"); !ok || o != xsd.OrderEqual {
 		t.Error("P1Y == P12M")
 	}
-	if o, ok := cmpDur("PT24H", "P1D"); !ok || o != OrderEqual {
+	if o, ok := cmpDur("PT24H", "P1D"); !ok || o != xsd.OrderEqual {
 		t.Error("PT24H == P1D")
 	}
-	if o, ok := cmpDur("P1Y", "P380D"); !ok || o != OrderLess {
+	if o, ok := cmpDur("P1Y", "P380D"); !ok || o != xsd.OrderLess {
 		t.Error("P1Y < P380D")
 	}
 	// The canonical indeterminate pair.
 	if _, ok := cmpDur("P1M", "P30D"); ok {
 		t.Error("P1M vs P30D should be indeterminate")
 	}
-	if o, ok := cmpDur("P1M", "P27D"); !ok || o != OrderGreater {
+	if o, ok := cmpDur("P1M", "P27D"); !ok || o != xsd.OrderGreater {
 		t.Error("P1M > P27D")
 	}
-	if o, ok := cmpDur("P1M", "P32D"); !ok || o != OrderLess {
+	if o, ok := cmpDur("P1M", "P32D"); !ok || o != xsd.OrderLess {
 		t.Error("P1M < P32D")
 	}
 }

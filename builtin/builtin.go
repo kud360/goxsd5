@@ -15,7 +15,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kud360/goxsd5/builtin/xsdtype"
 	"github.com/kud360/goxsd5/xsd"
+	"github.com/kud360/goxsd5/xsdregex"
 )
 
 func qn(local string) xsd.QName { return xsd.QName{Namespace: xsd.XSDNS, Local: local} }
@@ -35,12 +37,17 @@ var AnyType = &xsd.ComplexType{
 }
 
 // AnySimpleType is xs:anySimpleType (Part 2 §4.1.6): no constraining
-// facets, lexical space = all strings.
+// facets, lexical space = all strings. It carries the identity string parser
+// and the default value comparator (xsdtype.CompareValues); since every
+// simple type roots here, both resolve through the SimpleType chain for any
+// type that does not override them — this is how the core engine reaches the
+// built-in value spaces without naming them.
 var AnySimpleType = &xsd.SimpleType{
 	Name:      qn("anySimpleType"),
 	BaseType:  AnyType,
 	Variety:   xsd.VarietyAtomic,
 	Parse:     parseAsString,
+	Compare:   xsdtype.CompareValues,
 	IsBuiltin: true,
 }
 
@@ -67,17 +74,21 @@ var ErrorType = &xsd.SimpleType{
 	IsBuiltin: true,
 }
 
-func parseAsString(s string, _ xsd.ValueContext) (xsd.Value, error) { return xsd.String(s), nil }
+func parseAsString(s string, _ xsd.ValueContext) (xsd.Value, error) { return xsdtype.String(s), nil }
 
 // primitive constructs a primitive type: based on anyAtomicType, its own
-// primitive ancestor.
-func primitive(local string, ws xsd.WhiteSpace, parse xsd.ParseFunc) *xsd.SimpleType {
+// primitive ancestor. applic is the primitive's applicable-facet set
+// (cos-applicable-facets); it is the authored source of truth that
+// xsd.SimpleType.ApplicableFacets reads for this primitive and everything
+// derived from it.
+func primitive(local string, ws xsd.WhiteSpace, applic xsd.FacetSet, parse xsd.ParseFunc) *xsd.SimpleType {
 	t := &xsd.SimpleType{
-		Name:      qn(local),
-		BaseType:  AnyAtomicType,
-		Variety:   xsd.VarietyAtomic,
-		Parse:     parse,
-		IsBuiltin: true,
+		Name:       qn(local),
+		BaseType:   AnyAtomicType,
+		Variety:    xsd.VarietyAtomic,
+		Parse:      parse,
+		Applicable: applic,
+		IsBuiltin:  true,
 	}
 	t.Facets.WhiteSpace = ws
 	t.Facets.WhiteSpaceFixed = local != "string" && local != "anyURI"
@@ -129,7 +140,7 @@ func list(local string, item *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.Simp
 func pattern(f *xsd.Facets, sources ...string) {
 	var group xsd.PatternGroup
 	for _, src := range sources {
-		re, err := xsd.CompileRegex(src)
+		re, err := xsdregex.CompileRegex(src)
 		if err != nil {
 			panic(fmt.Sprintf("builtin pattern %q: %v", src, err))
 		}
@@ -141,7 +152,7 @@ func pattern(f *xsd.Facets, sources ...string) {
 // mustDecimal panics on a bad literal for the same reason as pattern:
 // package-init only, compile-time constant inputs.
 func mustDecimal(s string) xsd.Value {
-	d, err := xsd.ParseDecimal(s)
+	d, err := xsdtype.ParseDecimal(s)
 	if err != nil {
 		panic(fmt.Sprintf("builtin decimal bound %q: %v", s, err))
 	}
@@ -159,15 +170,15 @@ func intFacet(v int, fixed bool) *xsd.IntFacet { return &xsd.IntFacet{Value: v, 
 func parseBoolean(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	switch s {
 	case "true", "1":
-		return xsd.Boolean(true), nil
+		return xsdtype.Boolean(true), nil
 	case "false", "0":
-		return xsd.Boolean(false), nil
+		return xsdtype.Boolean(false), nil
 	}
 	return nil, fmt.Errorf("invalid boolean %q", s)
 }
 
 func parseDecimalV(s string, _ xsd.ValueContext) (xsd.Value, error) {
-	return xsd.ParseDecimal(s)
+	return xsdtype.ParseDecimal(s)
 }
 
 var floatLexical = regexp.MustCompile(`\A[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?\z`)
@@ -200,7 +211,7 @@ func parseDouble(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	return xsd.Double(v), nil
+	return xsdtype.Double(v), nil
 }
 
 func parseFloat(s string, _ xsd.ValueContext) (xsd.Value, error) {
@@ -208,16 +219,16 @@ func parseFloat(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	return xsd.Float(float32(v)), nil
+	return xsdtype.Float(float32(v)), nil
 }
 
 func parseDurationV(s string, _ xsd.ValueContext) (xsd.Value, error) {
-	return xsd.ParseDuration(s)
+	return xsdtype.ParseDuration(s)
 }
 
-func dtParser(kind xsd.DateTimeKind) xsd.ParseFunc {
+func dtParser(kind xsdtype.DateTimeKind) xsd.ParseFunc {
 	return func(s string, _ xsd.ValueContext) (xsd.Value, error) {
-		return xsd.ParseDateTime(kind, s)
+		return xsdtype.ParseDateTime(kind, s)
 	}
 }
 
@@ -229,7 +240,7 @@ func parseHexBinary(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid hexBinary %q: %w", s, err)
 	}
-	return xsd.Bytes(b), nil
+	return xsdtype.Bytes(b), nil
 }
 
 // base64Lexical is the lexical space of Part 2 §3.3.5: RFC 2045 alphabet
@@ -244,13 +255,13 @@ func parseBase64Binary(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid base64Binary %q: %w", s, err)
 	}
-	return xsd.Bytes(b), nil
+	return xsdtype.Bytes(b), nil
 }
 
 func parseAnyURI(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	// Part 2 §3.3.17: the lexical space is intentionally lax (any string
 	// can be %-escaped into a legal IRI); no structural validation.
-	return xsd.String(s), nil
+	return xsdtype.String(s), nil
 }
 
 func parseQName(s string, ctx xsd.ValueContext) (xsd.Value, error) {
@@ -266,13 +277,13 @@ func parseQName(s string, ctx xsd.ValueContext) (xsd.Value, error) {
 		return nil, fmt.Errorf("invalid QName %q", s)
 	}
 	if ctx == nil {
-		return nil, fmt.Errorf("cannot resolve QName %q: %w", s, xsd.ErrNeedContext)
+		return nil, fmt.Errorf("cannot resolve QName %q: %w", s, xsdtype.ErrNeedContext)
 	}
 	name, ok := ctx.ResolveQName(prefix, local)
 	if !ok {
 		return nil, fmt.Errorf("undefined namespace prefix %q in QName %q", prefix, s)
 	}
-	return xsd.QNameValue{Name: name, Lexical: s}, nil
+	return xsdtype.QNameValue{Name: name, Lexical: s}, nil
 }
 
 var ncNamePattern = regexp.MustCompile(`\A[\p{L}_][\p{L}\p{N}\p{M}_.\x{B7}-]*\z`)
@@ -288,28 +299,37 @@ func isNCName(s string) bool {
 
 // The {ordered}/{numeric} fundamental facets of these primitives live in
 // xsd.primitiveFundamentals (Part 2 §F.1); SimpleType.Fundamentals() reads them.
+// Applicable-facet sets per primitive (cos-applicable-facets, Part 2 §4.1.6).
+const (
+	facetsStringy   = xsd.FacetsCommon | xsd.FacetsLength
+	facetsNumeric   = xsd.FacetsCommon | xsd.FacetBounds
+	facetsDecimal   = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetFractionDigits
+	facetsDateTimey = facetsNumeric | xsd.FacetExplicitTimezone
+	facetsBoolean   = xsd.FacetPattern | xsd.FacetWhiteSpace | xsd.FacetAssertion
+)
+
 var (
-	String  = primitive("string", xsd.WSPreserve, parseAsString)
-	Boolean = primitive("boolean", xsd.WSCollapse, parseBoolean)
-	Decimal = primitive("decimal", xsd.WSCollapse, parseDecimalV)
-	Float   = primitive("float", xsd.WSCollapse, parseFloat)
-	Double  = primitive("double", xsd.WSCollapse, parseDouble)
+	String  = primitive("string", xsd.WSPreserve, facetsStringy, parseAsString)
+	Boolean = primitive("boolean", xsd.WSCollapse, facetsBoolean, parseBoolean)
+	Decimal = primitive("decimal", xsd.WSCollapse, facetsDecimal, parseDecimalV)
+	Float   = primitive("float", xsd.WSCollapse, facetsNumeric, parseFloat)
+	Double  = primitive("double", xsd.WSCollapse, facetsNumeric, parseDouble)
 
-	Duration   = primitive("duration", xsd.WSCollapse, parseDurationV)
-	DateTime   = primitive("dateTime", xsd.WSCollapse, dtParser(xsd.KindDateTime))
-	Time       = primitive("time", xsd.WSCollapse, dtParser(xsd.KindTime))
-	Date       = primitive("date", xsd.WSCollapse, dtParser(xsd.KindDate))
-	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, dtParser(xsd.KindGYearMonth))
-	GYear      = primitive("gYear", xsd.WSCollapse, dtParser(xsd.KindGYear))
-	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, dtParser(xsd.KindGMonthDay))
-	GDay       = primitive("gDay", xsd.WSCollapse, dtParser(xsd.KindGDay))
-	GMonth     = primitive("gMonth", xsd.WSCollapse, dtParser(xsd.KindGMonth))
+	Duration   = primitive("duration", xsd.WSCollapse, facetsNumeric, parseDurationV)
+	DateTime   = primitive("dateTime", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindDateTime))
+	Time       = primitive("time", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindTime))
+	Date       = primitive("date", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindDate))
+	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGYearMonth))
+	GYear      = primitive("gYear", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGYear))
+	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGMonthDay))
+	GDay       = primitive("gDay", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGDay))
+	GMonth     = primitive("gMonth", xsd.WSCollapse, facetsDateTimey, dtParser(xsdtype.KindGMonth))
 
-	HexBinary    = primitive("hexBinary", xsd.WSCollapse, parseHexBinary)
-	Base64Binary = primitive("base64Binary", xsd.WSCollapse, parseBase64Binary)
-	AnyURI       = primitive("anyURI", xsd.WSCollapse, parseAnyURI)
-	QName        = primitive("QName", xsd.WSCollapse, parseQName)
-	NOTATION     = primitive("NOTATION", xsd.WSCollapse, parseQName)
+	HexBinary    = primitive("hexBinary", xsd.WSCollapse, facetsStringy, parseHexBinary)
+	Base64Binary = primitive("base64Binary", xsd.WSCollapse, facetsStringy, parseBase64Binary)
+	AnyURI       = primitive("anyURI", xsd.WSCollapse, facetsStringy, parseAnyURI)
+	QName        = primitive("QName", xsd.WSCollapse, facetsStringy, parseQName)
+	NOTATION     = primitive("NOTATION", xsd.WSCollapse, facetsStringy, parseQName)
 )
 
 // ---- derived numeric ladder ----
