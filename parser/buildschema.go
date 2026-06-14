@@ -39,6 +39,7 @@ func buildSchemas(reg *registry, l *loader, errs *xsd.ErrorList) []*xsd.Schema {
 			b.addReplacementComponents(s, rep)
 		}
 	}
+	b.checkElementDecls()
 	for _, s := range schemas {
 		b.checkTypeCycles(s)
 		b.checkGroupCycles(s)
@@ -58,6 +59,7 @@ func buildSchema(reg *registry, doc *schemaDoc, errs *xsd.ErrorList) *xsd.Schema
 		}
 	}
 	b.addDocComponents(s, doc)
+	b.checkElementDecls()
 	b.checkTypeCycles(s)
 	b.checkGroupCycles(s)
 	b.finishComplexTypes()

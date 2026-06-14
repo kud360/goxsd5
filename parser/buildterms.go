@@ -93,47 +93,10 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 			e.Type = builtin.AnyType
 		}
 	}
-	b.checkNotationEnum(e.Type, n.Pos)
-
-	// Value constraints.
-	// spec: e-props-correct.2 / cos-valid-default — XSD 1.1 Part 1 §3.3.6
-	if vc := valueConstraint(e.Default, e.Fixed); vc != nil {
-		if st := contentSimpleType(e.Type); st != nil {
-			// Note: XSD 1.1 dropped the 1.0 rule (old e-props-correct.5)
-			// forbidding value constraints on ID-derived element types; it is
-			// now only a non-normative "should avoid" note, so we no longer
-			// reject it.
-			if _, err := st.ParseValue(*vc, nsContext{n}); err != nil {
-				b.errf(xsd.SpecCosValidDefault, n.Pos, "default/fixed value %q is not valid for the type of element %s: %v", *vc, e.Name, err)
-			}
-		} else if ct, ok := e.Type.(*xsd.ComplexType); ok {
-			if ec, ok := ct.Content.(*xsd.ElementContent); ok && !ec.Mixed {
-				// spec: cos-valid-default.2.2 — element-only content admits
-				// no value constraint (mixed-emptiable check deferred).
-				b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
-			}
-		}
-	}
-
-	// Substitution-group exclusions: if the member's type is derived from a
-	// head's type by a method the head's final excludes, membership is
-	// invalid. Unreachable chains are left to the deferred derivation-ok
-	// checks rather than guessed at.
-	for _, head := range e.SubstitutionGroups {
-		if head.Type == nil || e.Type == nil {
-			continue
-		}
-		// spec: e-props-correct.4 — XSD 1.1 Part 1 §3.3.6 — the member's type
-		// must be validly derived from the head's type, and the derivation
-		// methods used must not be among the head's {substitution group
-		// exclusions} ({final}).
-		methods, ok := derivationMethods(e.Type, head.Type)
-		if !ok {
-			b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: its type is not validly derived from the head's type", e.Name, head.Name)
-		} else if methods&head.Final != 0 {
-			b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: the head excludes this derivation", e.Name, head.Name)
-		}
-	}
+	// Type-dependent validation (NOTATION enumeration, value constraints,
+	// substitution-group derivation) reads the element's type internals and so
+	// is deferred to checkElementDecls, a post-pass that runs once every type
+	// is fully built (see the type shell/finish split in buildComplexType).
 
 	for _, c := range xsdElems(n, doc) {
 		switch c.Name.Local {
@@ -155,6 +118,57 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 		}
 	}
 	return e
+}
+
+// checkElementDecls runs the per-element validation that reads each element's
+// type internals (and so must run after every type is fully built). It walks
+// the built element declarations and reports NOTATION-enumeration, value
+// constraint, and substitution-group derivation violations. The node key
+// supplies positions and the namespace context for value parsing.
+func (b *builder) checkElementDecls() {
+	for n, e := range b.elements {
+		b.checkNotationEnum(e.Type, n.Pos)
+
+		// Value constraints.
+		// spec: e-props-correct.2 / cos-valid-default — XSD 1.1 Part 1 §3.3.6
+		if vc := valueConstraint(e.Default, e.Fixed); vc != nil {
+			if st := contentSimpleType(e.Type); st != nil {
+				// Note: XSD 1.1 dropped the 1.0 rule (old e-props-correct.5)
+				// forbidding value constraints on ID-derived element types; it is
+				// now only a non-normative "should avoid" note, so we no longer
+				// reject it.
+				if _, err := st.ParseValue(*vc, nsContext{n}); err != nil {
+					b.errf(xsd.SpecCosValidDefault, n.Pos, "default/fixed value %q is not valid for the type of element %s: %v", *vc, e.Name, err)
+				}
+			} else if ct, ok := e.Type.(*xsd.ComplexType); ok {
+				if ec, ok := ct.Content.(*xsd.ElementContent); ok && !ec.Mixed {
+					// spec: cos-valid-default.2.2 — element-only content admits
+					// no value constraint (mixed-emptiable check deferred).
+					b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
+				}
+			}
+		}
+
+		// Substitution-group exclusions: if the member's type is derived from a
+		// head's type by a method the head's final excludes, membership is
+		// invalid. Unreachable chains are left to the deferred derivation-ok
+		// checks rather than guessed at.
+		for _, head := range e.SubstitutionGroups {
+			if head.Type == nil || e.Type == nil {
+				continue
+			}
+			// spec: e-props-correct.4 — XSD 1.1 Part 1 §3.3.6 — the member's type
+			// must be validly derived from the head's type, and the derivation
+			// methods used must not be among the head's {substitution group
+			// exclusions} ({final}).
+			methods, ok := derivationMethods(e.Type, head.Type)
+			if !ok {
+				b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: its type is not validly derived from the head's type", e.Name, head.Name)
+			} else if methods&head.Final != 0 {
+				b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: the head excludes this derivation", e.Name, head.Name)
+			}
+		}
+	}
 }
 
 // valueConstraint returns default or fixed, whichever is present.

@@ -113,6 +113,25 @@ removal: replace field with method, update the readers above, delete the build/
 clone-site assignments, re-run the ratchet (must stay at current count), commit.
 
 ### Track A — topo-ordered type build, retire finishComplexTypes/pendingAttrs
+IN PROGRESS (2026-06-14, user chose the full shell/finish split). Key finding
+that shaped the design: the kitchen-sink case (a base's content references an
+element typed by a DERIVED type) is a genuine cycle in the dependency graph
+(base content ↔ derived merge), NOT just a build-order quirk — eager recursive
+build handles all FORWARD refs for free but cannot linearize this cycle, which
+is exactly why the merge was deferred. Two further hazards: buildElementDecl
+reads its type's INTERNALS (checkNotationEnum, cos-valid-default value space +
+mixed, substitution-group derivation) so element refs cannot resolve to mere
+shells while those checks run inline. PLAN of attack (each commit ratchet-green):
+ - [x] STEP 1 (done, prep): extract the three type-internal-reading element
+   checks out of buildElementDecl into a post-pass checkElementDecls
+   (buildterms.go), driven off the b.elements map. Wired BEFORE finishComplexTypes
+   in buildSchemas/buildSchema to preserve pre-merge timing exactly. Pure refactor,
+   5672 held. This lets element refs resolve to type SHELLS safely in step 2.
+ - [ ] STEP 2 (the big one): split buildComplexType into a shell pass + a
+   topo-ordered finish pass; resolveType returns shells during content build;
+   merge attrs + extension particle INLINE in finishType (base guaranteed
+   finished); delete pendingAttrs + the merge half of finishComplexTypes. Then
+   move checkElementDecls AFTER the topo finish (it now reads merged ec.Mixed).
 PLAN.md M6 step 2 SAID "topologically sort types by derivation edges, build so
 each base is fully built before its derivatives." The implementation instead did
 per-node memo + checkTypeCycles + a finishComplexTypes post-pass, parking each
