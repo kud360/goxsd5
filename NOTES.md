@@ -7,32 +7,50 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-7 cos-st-derived-ok 2.2.4 pushed 5667 → 5670 (+3). Remainder below <<<
-REMAINING 4 GAPS after phase 7 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
-tail is nearly exhausted — what is left is 2 spec bugs (correctly tolerated),
-1 encoding limitation (out of scope), and 1 genuinely-hard narrow case:
- - DONE phase 7 (cos-st-derived-ok clause 2.2.4): simple011/014/015 — union
-   derived-by-restriction. See phase-7 block below.
+## >>> NEXT SESSION — phase-8 wild069 pushed 5670 → 5671 (+1). Remainder below <<<
+REMAINING 3 GAPS after phase 8 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
+tail is now EXHAUSTED — what is left is 2 spec bugs (correctly tolerated) and
+1 encoding limitation (out of scope). No more genuinely-fixable gaps known:
  - OUT OF SCOPE — encoding/xml limitation: wg IRI iri-001 (custom DTD entities
    &URI; — Go's encoding/xml won't expand them). skip candidate.
  - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
    content, bug 6202); saxon complex018 (open content restriction subset, bug
    16786).
- - GENUINELY HARD, deferred (need bigger structural work):
-   * wild069 — an xs:all restriction whose ##local lax wildcard binds a GLOBAL
-     element (e: duration) that the base's like-named NAMED particle (e:
-     union(date,time)) would type differently, so zang accepts <e>duration</e>
-     that zing rejects. Needs wildcard-binds-global vs named-element type
-     reasoning inside the all-restriction solver. SOUNDNESS is the hard part:
-     a lax wildcard legitimately binds globals in many VALID restrictions, so a
-     naive check regresses the wild* corpus. The precise sound condition: R has
-     a wildcard W_R matching a name N for which (a) R has no named particle (so
-     N routes to W_R), (b) B HAS a named element particle for N of type T_B
-     (UPA gives the named particle precedence in B, so B never routes N to its
-     own wildcard), and (c) W_R's effective type for N (strict/lax → the global
-     N decl's type, or unconstrained if lax+no-global) is not validly derived
-     from T_B. Only then is there an instance valid in R but not B. Deferred:
-     one narrow case, real false-positive risk; separate subsystem from phase 7.
+ - DONE phase 8 (cos-particle-restrict, wildcard shadows named in <all>):
+   wild069. See phase-8 block below.
+
+SESSION 2026-06-13 phase 8 (5670 → 5671, +1): cos-particle-restrict — the
+WILDCARD-SHADOWS-NAMED case in an <all> base (saxon wild069). In an xs:all
+group matching is order-independent, so a named element particle for N
+unconditionally takes UPA precedence over an overlapping wildcard: B always
+types an <N> by that named declaration. wild069's base zing = all{ e:union(date,
+time)?, f:integer, any ##local lax }, with a GLOBAL e:xs:duration; the
+restriction zang = all{ f:integer, any ##local lax } drops the named e, so it
+routes <e> to its lax wildcard, which binds the global e (duration). duration is
+not derived from union(date,time), so <e>P1Y</e> is valid in zang but not zing →
+invalid restriction. The plain NSSubset wildcard-vs-wildcard check (W_R ⊆ W_B)
+misses this entirely because the wildcards are identical. ELEGANT FIX, no new
+subsystem: a focused pass checkWildcardShadowsNamed (parser/restrict.go) run
+right after the existing checkRestrictRun, GATED to <all> bases (baseIsAll).
+For each base NAMED slot N that the restriction run drops (no R element particle
+accepts N — over-counted via accepted() so it only ever suppresses, never
+invents) yet some R wildcard matches: it computes the wildcard's effective bound
+type via wildcardBoundType (skip → unconstrained; lax → global N's type or
+unconstrained if no global; strict → global N's type, or NO valid instance if no
+global) and reuses the SAME validlyDerivedByRestriction relation the named-vs-
+named branch uses. Unconstrained binding errors unless the base named type is
+xs:anyType. SOUNDNESS — the gate is the whole game: the shadowing-precedence
+reasoning holds ONLY for <all> (order-independent). In a SEQUENCE the precedence
+is positional, so an <e> past the named slot legitimately routes to the wildcard
+in BOTH base and restriction — that is exactly saxon wild068 (the sequence twin,
+VALID), which regressed on the first un-gated attempt and is now a positive
+guard in TestBuildParticleRestrictValidModels. derivationFailureRef still picks
+the appealed id: cos-st-derived-ok when the base named type is a union (wild069),
+else cos-particle-restrict (the skip-unconstrained negative). Tests: +2
+TestBuilderNegatives (union-base duration bind → cos-st-derived-ok; skip
+unconstrained → cos-particle-restrict) and +3 valid-models (wild068 sequence
+twin; <all> with a wildcard binding a VALIDLY-derived global xs:date; <all>
+shadowing an anyType base element). Zero conformance regressions.
 
 SESSION 2026-06-13 phase 7 (5667 → 5670, +3): cos-st-derived-ok CLAUSE 2.2.4
 (§3.16.6.3) — UNION derived-by-restriction substitutability, the simple01x

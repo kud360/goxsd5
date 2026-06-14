@@ -281,6 +281,23 @@ func TestBuilderNegatives(t *testing.T) {
 			 <xs:simpleType name="chap"><xs:union memberTypes="tns:dt xs:time"/></xs:simpleType>
 			 <xs:simpleType name="dt"><xs:restriction><xs:simpleType><xs:union memberTypes="xs:date xs:dateTime"/></xs:simpleType><xs:pattern value=".*Z"/></xs:restriction></xs:simpleType>`,
 			[]string{"cos-st-derived-ok"}},
+		{"all restriction drops a named element whose wildcard binds a global of an underived type (saxon wild069)",
+			// In the <all> base, the named e (union(date,time)) shadows the lax
+			// wildcard, so B always types <e> by the union. The restriction omits
+			// the named e, routing <e> to its lax wildcard, which binds the global
+			// e (xs:duration) — not derived from union(date,time), so <e>P1Y</e> is
+			// valid in r but not b. Order-independence of <all> makes this unsound,
+			// unlike the sequence case (wild068, in the valid-models test).
+			`<xs:complexType name="b"><xs:all><xs:element name="e" form="qualified" minOccurs="0"><xs:simpleType><xs:union memberTypes="xs:date xs:time"/></xs:simpleType></xs:element><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>
+			 <xs:element name="e" type="xs:duration"/>`,
+			[]string{"cos-st-derived-ok"}},
+		{"all restriction drops a named element whose skip wildcard leaves it unconstrained",
+			// The restriction's skip wildcard accepts any content for <e>, which the
+			// base's union-typed named e forbids — unsound regardless of any global.
+			`<xs:complexType name="b"><xs:all><xs:element name="e" form="qualified" minOccurs="0"><xs:simpleType><xs:union memberTypes="xs:date xs:time"/></xs:simpleType></xs:element><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="skip"/></xs:all></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="skip"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+			[]string{"cos-particle-restrict"}},
 		{"extension narrows interleave open content to suffix (explicit)",
 			`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
@@ -1001,6 +1018,24 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		// the summed counts stay within both regions (multi-wildcard packing).
 		`<xs:complexType name="b"><xs:all><xs:any namespace="urn:x urn:y" minOccurs="0" maxOccurs="4"/><xs:any namespace="urn:z" minOccurs="0" maxOccurs="4"/></xs:all></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:any namespace="urn:x" minOccurs="0" maxOccurs="2"/><xs:any namespace="urn:y urn:z" minOccurs="0" maxOccurs="2"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Sequence analog of wild069 (saxon wild068, VALID): the named e sits
+		// before f, so a later <e> routes to the lax wildcard in BOTH base and
+		// restriction — precedence in a sequence is positional, not global, so
+		// dropping the named e is a sound restriction. The shadow check must not
+		// fire here (it is gated to <all> bases).
+		`<xs:complexType name="b"><xs:sequence><xs:element name="e" form="qualified" minOccurs="0"><xs:simpleType><xs:union memberTypes="xs:date xs:time"/></xs:simpleType></xs:element><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>
+		 <xs:element name="e" type="xs:duration"/>`,
+		// All-group analog where the wildcard binds a global VALIDLY derived from
+		// the base named type (xs:date restricts the union(date,time)), so dropping
+		// the named e stays sound — the shadow check accepts it.
+		`<xs:complexType name="b"><xs:all><xs:element name="e" form="qualified" minOccurs="0"><xs:simpleType><xs:union memberTypes="xs:date xs:time"/></xs:simpleType></xs:element><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="lax"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>
+		 <xs:element name="e" type="xs:date"/>`,
+		// All-group where the shadowed base element is anyType: even an
+		// unconstrained (skip) wildcard binding cannot exceed it, so it stays valid.
+		`<xs:complexType name="b"><xs:all><xs:element name="e" form="qualified" type="xs:anyType" minOccurs="0"/><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="skip"/></xs:all></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element name="f" type="xs:integer"/><xs:any namespace="##targetNamespace" processContents="skip"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
 		// A base wildcard overlaps the base element beside it (legal in an <all>),
 		// so the regions are not disjoint and only the always-sound outside-name
 		// check runs; the restriction wildcard excludes more than the base's, so

@@ -57,7 +57,7 @@ type baseSlot struct {
 // which case each branch is checked independently: an instance matching the
 // choice matches exactly one branch, so every branch must on its own be a valid
 // restriction of the base.
-func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool) {
+func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) {
 	if ct.DerivationMethod != xsd.DeriveRestriction {
 		return
 	}
@@ -78,6 +78,13 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 	if !bOK {
 		return // base is not a flat all/sequence: give up safely
 	}
+	// A base named element unconditionally shadows an overlapping wildcard only
+	// in an xs:all group, where particle matching is order-independent. In a
+	// sequence the precedence is positional, so an element appearing past the
+	// named particle's slot legitimately routes to the wildcard in both base and
+	// restriction (saxon wild068) — there the shadow check below must not fire.
+	bmg, _ := bec.Particle.Term.(*xsd.ModelGroup)
+	baseIsAll := bmg != nil && bmg.Compositor == xsd.CompositorAll
 
 	// With two or more base wildcards a single per-base-particle slot cannot say
 	// which one a restriction particle maps to (a restriction wildcard may even
@@ -113,6 +120,9 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 
 	if rParts, rTop, rOK := flatGroup(rec.Particle); rOK {
 		b.checkRestrictRun(ct, slots, baseWC, rParts, rTop)
+		if baseIsAll {
+			b.checkWildcardShadowsNamed(ct, slots, rParts, accepted, globalsByName)
+		}
 		return
 	}
 	// A choice restriction: validate every branch on its own. A branch term that
@@ -125,6 +135,9 @@ func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.
 	unitTop := &xsd.Particle{MinOccurs: 1, MaxOccurs: 1}
 	for _, br := range branches {
 		b.checkRestrictRun(ct, slots, baseWC, br, unitTop)
+		if baseIsAll {
+			b.checkWildcardShadowsNamed(ct, slots, br, accepted, globalsByName)
+		}
 	}
 }
 
@@ -226,6 +239,102 @@ func (b *builder) checkRestrictRun(ct *xsd.ComplexType, slots []*baseSlot, baseW
 		if !occLE(sumMax[i], s.max) {
 			b.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), slotName(s.decl))
 		}
+	}
+}
+
+// checkWildcardShadowsNamed reports the cos-particle-restrict / NameAndTypeOK
+// violation the plain NSSubset wildcard check misses. The caller invokes this
+// only for an xs:all base: there matching is order-independent, so a base named
+// element particle for N unconditionally takes UPA precedence over an
+// overlapping wildcard (XSD 1.1 lets element declarations shadow it) and B
+// always types an <N> child by that named declaration. (In a sequence the
+// precedence is positional, so an <N> past the named slot routes to the
+// wildcard in both base and restriction — wild068 — which is why the caller
+// gates on the all compositor.) If this restriction run drops the named
+// particle for N — no
+// element particle in the run accepts N — yet a wildcard in the run matches N,
+// then R instead routes <N> to that wildcard, whose effective type for N must
+// be validly derived from B's named type. Otherwise there is a concrete <N>
+// (content suiting the wildcard's binding but not the base type) valid in R and
+// invalid in B, so reporting the failure never rejects a valid schema. This is
+// exactly the standard NameAndTypeOK obligation, applied across the
+// element-shadows-wildcard routing the per-particle NSSubset check cannot see.
+// spec: cos-particle-restrict — XSD 1.1 Part 1 §3.4.6.4 clause 2 (catches
+// saxon wild069: an xs:all restriction whose ##local lax wildcard binds a global
+// e:xs:duration where the base's named e is union(date,time)).
+func (b *builder) checkWildcardShadowsNamed(ct *xsd.ComplexType, slots []*baseSlot, rParts []*xsd.Particle, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) {
+	// Names this run still routes to a named particle (each element's own name
+	// plus every substitutable member): they keep the named-vs-named type check
+	// and are never re-routed to a wildcard. Over-counting here only suppresses
+	// reports, so it cannot introduce a false positive.
+	rNamed := map[xsd.QName]bool{}
+	var rWild []*xsd.Particle
+	for _, rp := range rParts {
+		switch term := rp.Term.(type) {
+		case *xsd.ElementDecl:
+			for n := range accepted(term) {
+				rNamed[n] = true
+			}
+		case *xsd.Wildcard:
+			rWild = append(rWild, rp)
+		}
+	}
+	if len(rWild) == 0 {
+		return
+	}
+	for _, s := range slots {
+		if s.decl == nil {
+			continue // only base named particles shadow a wildcard
+		}
+		n := s.decl.Name
+		if rNamed[n] {
+			continue // R keeps a named particle for N: the type check covers it
+		}
+		// UPA makes R route <N> to at most one wildcard; find it.
+		for _, rp := range rWild {
+			w := rp.Term.(*xsd.Wildcard)
+			if !wildcardAllowsName(w, n) {
+				continue
+			}
+			t, unconstrained, hasInstance := b.wildcardBoundType(w, n, globalsByName)
+			switch {
+			case !hasInstance:
+				// A strict wildcard with no global declaration admits no valid
+				// <N>, so R has no instance to be unsound about.
+			case unconstrained:
+				// A skip wildcard (or lax with no global) accepts any content for
+				// <N>; only an anyType base named particle is that permissive.
+				if s.decl.Type != builtin.AnyType {
+					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s is bound by a wildcard that accepts content the base element's type forbids", n, describeCT(ct))
+				}
+			case !validlyDerivedByRestriction(t, s.decl.Type):
+				b.errf(derivationFailureRef(s.decl.Type), rp.Pos, "element %s in the restriction of %s is bound by a wildcard to a type that is not derived from the base element's type", n, describeCT(ct))
+			}
+			break
+		}
+	}
+}
+
+// wildcardBoundType gives the effective type a wildcard assigns to an element
+// named n when it binds it: the matched global declaration's type under
+// strict/lax assessment, or an unconstrained binding (skip, or lax with no
+// global, which is laxly assessed to no declaration and so accepts any content).
+// A strict wildcard with no global declaration admits no valid element of that
+// name, reported by hasInstance == false.
+func (b *builder) wildcardBoundType(w *xsd.Wildcard, n xsd.QName, globalsByName map[xsd.QName]*xsd.ElementDecl) (t xsd.Type, unconstrained, hasInstance bool) {
+	switch w.ProcessContents {
+	case xsd.ProcessSkip:
+		return nil, true, true
+	case xsd.ProcessLax:
+		if g := globalsByName[n]; g != nil {
+			return g.Type, false, true
+		}
+		return nil, true, true
+	default: // strict
+		if g := globalsByName[n]; g != nil {
+			return g.Type, false, true
+		}
+		return nil, false, false
 	}
 }
 

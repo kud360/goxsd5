@@ -258,7 +258,7 @@ func (b *builder) finishComplexTypes() {
 			b.checkElementConsistent(ct, subMembers, globalsByName)
 			b.checkAllUPA(ct, accepted)
 			b.checkSeqChoiceUPA(ct, accepted)
-			b.checkParticleRestrict(ct, accepted)
+			b.checkParticleRestrict(ct, accepted, globalsByName)
 			b.checkOpenContentRestrict(ct)
 		}
 	}
