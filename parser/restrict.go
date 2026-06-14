@@ -1036,7 +1036,7 @@ func validlySubstitutable(s, t xsd.Type, block xsd.DerivationSet) bool {
 	// member of a union base. Member-union flattening means the members are
 	// tested directly.
 	if st, ok := t.(*xsd.SimpleType); ok && st.Variety == xsd.VarietyUnion {
-		for _, m := range st.MemberTypes {
+		for _, m := range st.BasicMembers() {
 			if validlySubstitutable(s, m, block) {
 				return true
 			}

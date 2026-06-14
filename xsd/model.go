@@ -194,6 +194,25 @@ func (t *SimpleType) PrimitiveType() *SimpleType {
 	}
 }
 
+// BasicMembers returns the *basic members* of a union (Part 2 §4.1.6): the
+// member types with every member-union flattened away, so each entry is a
+// non-union type. It is a derived view of the canonical DirectMembers (the
+// un-flattened {member type definitions}); a non-union type has none.
+func (t *SimpleType) BasicMembers() []*SimpleType {
+	if t.Variety != VarietyUnion {
+		return nil
+	}
+	var flat []*SimpleType
+	for _, m := range t.DirectMembers {
+		if m.Variety == VarietyUnion {
+			flat = append(flat, m.BasicMembers()...)
+		} else {
+			flat = append(flat, m)
+		}
+	}
+	return flat
+}
+
 // OrderedFacet is the HFP `ordered` fundamental facet.
 type OrderedFacet int
 

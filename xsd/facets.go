@@ -392,7 +392,7 @@ func (t *SimpleType) buildValue(norm, raw string, ctx ValueContext) (Value, erro
 		return list, nil
 	case VarietyUnion:
 		var firstErr error
-		for _, m := range t.MemberTypes {
+		for _, m := range t.BasicMembers() {
 			v, err := m.ParseValue(raw, ctx)
 			if err == nil {
 				return v, nil

@@ -72,9 +72,9 @@ func (b *builder) applyRestriction(st *xsd.SimpleType, base *xsd.SimpleType, r *
 	st.BaseType = base
 	st.Variety = base.Variety
 	st.ItemType = base.ItemType
-	st.MemberTypes = base.MemberTypes
 	// A restriction's {member type definitions} are its base's (Part 2 §4.1.1
-	// case 2): restriction adds facets, it does not change membership.
+	// case 2): restriction adds facets, it does not change membership. The
+	// flattened basic members follow from these via BasicMembers().
 	st.DirectMembers = base.DirectMembers
 
 	declared := b.buildFacets(r, doc, base)
@@ -117,7 +117,7 @@ func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDo
 	case xsd.VarietyList:
 		b.errf(xsd.SpecCosSTRestricts, l.Pos, "item type of a list must not itself be a list")
 	case xsd.VarietyUnion:
-		for _, m := range item.MemberTypes {
+		for _, m := range item.BasicMembers() {
 			if m.Variety != xsd.VarietyAtomic {
 				b.errf(xsd.SpecCosSTRestricts, l.Pos, "item type of a list must be a union of atomic types; member %s is not atomic", m.TypeName())
 			}
@@ -159,9 +159,6 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 		}
 	}
 
-	// Union members of union variety are replaced by their own members
-	// (transitively, since members were built the same way).
-	var flat []*xsd.SimpleType
 	for _, m := range members {
 		if m.Final.Has(xsd.DeriveUnion) {
 			// spec: st-props-correct.3 — final of a member forbids union.
@@ -175,19 +172,13 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 		// A NOTATION union member is a use of NOTATION to validate, so it
 		// must carry an enumeration (enumeration-required-notation).
 		b.checkNotationEnum(m, u.Pos)
-		if m.Variety == xsd.VarietyUnion {
-			flat = append(flat, m.MemberTypes...)
-		} else {
-			flat = append(flat, m)
-		}
 	}
 
 	st.BaseType = builtin.AnySimpleType
 	st.Variety = xsd.VarietyUnion
-	st.MemberTypes = flat
 	// DirectMembers keeps the declared members un-flattened (member unions
 	// retained) for cos-st-derived-ok clause 2.2.4 transitive-membership and
-	// intervening-union reasoning; MemberTypes above is the flattened basic set.
+	// intervening-union reasoning; the flattened basic set is BasicMembers().
 	st.DirectMembers = members
 	st.Cardinality = xsd.CardinalityCountablyInfinite
 }

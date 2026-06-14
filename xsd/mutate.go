@@ -33,7 +33,7 @@ func (t *SimpleType) RestrictWith(declared *Facets) (*SimpleType, error) {
 		BaseType:       t,
 		Variety:        t.Variety,
 		ItemType:       t.ItemType,
-		MemberTypes:    t.MemberTypes,
+		DirectMembers:  t.DirectMembers, // BasicMembers() derives from these
 		DeclaredFacets: *declared,
 		Facets:         eff,
 		// Fundamental facets (Part 2 §F): ordering and numericness follow the

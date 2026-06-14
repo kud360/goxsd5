@@ -666,13 +666,13 @@ func TestBuildSimpleTypeModels(t *testing.T) {
 	}
 
 	union := st("sizeOrInt")
-	if union.Variety != xsd.VarietyUnion || len(union.MemberTypes) != 2 || union.MemberTypes[0] != size {
-		t.Errorf("sizeOrInt members = %v", union.MemberTypes)
+	if union.Variety != xsd.VarietyUnion || len(union.BasicMembers()) != 2 || union.BasicMembers()[0] != size {
+		t.Errorf("sizeOrInt members = %v", union.BasicMembers())
 	}
 	// A union member of union variety is flattened into its own members.
 	ext := st("extended")
-	if len(ext.MemberTypes) != 3 || ext.MemberTypes[0] != size {
-		t.Errorf("extended members = %v, want [size int date]", ext.MemberTypes)
+	if len(ext.BasicMembers()) != 3 || ext.BasicMembers()[0] != size {
+		t.Errorf("extended members = %v, want [size int date]", ext.BasicMembers())
 	}
 }
 
