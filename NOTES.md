@@ -7,32 +7,6 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-9 iri-001 pushed 5671 → 5672 (+1). Remainder below <<<
-REMAINING 2 GAPS after phase 9 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
-tail is now EXHAUSTED — what is left is 2 spec bugs (correctly tolerated). No
-more genuinely-fixable gaps known:
- - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
-   content, bug 6202); saxon complex018 (open content restriction subset, bug
-   16786).
-
-SESSION 2026-06-13 phase 9 (5671 → 5672, +1): the former "encoding/xml
-limitation" (wg IRI iri-001) is FIXED, not out of scope. The schema uses an
-internal DTD subset (`<!DOCTYPE xs:schema [ <!ENTITY URI "…"> … ]>`) and
-references those custom general entities inside xs:pattern values (`&URI;`).
-Go's encoding/xml does not process the internal subset, so the references were
-hard errors. FIX (parser/xmltree/xmltree.go): pre-scan the internal subset in
-Parse, collect `<!ENTITY name "value">` decls (first-wins; skip parameter/
-external entities and comments via a quote-aware markup-decl scanner), fully
-resolve each replacement text (char refs, the 5 predefined entities, nested
-general-entity refs, with a cycle guard), and hand the map to
-xml.Decoder.Entity — the decoder then substitutes &name; literally wherever
-referenced. Verified encoding/xml substitutes the map value verbatim (an `&`
-in the value is NOT re-parsed), so resolving `&amp;`→`&` etc. up front is
-correct. Each type also carries an equivalent literal pattern, so the expanded
-regex compiles and the schema builds → validity=valid as expected.
- - DONE phase 8 (cos-particle-restrict, wildcard shadows named in <all>):
-   wild069. See phase-8 block below.
-
 ## >>> DONE 2026-06-14 — derived-state cleanup: 4 redundant fields removed <<<
 Follow-on to the package-factoring refactor: stripped stored state that was
 either dead or derivable from the authored source of truth, so divergence
@@ -151,6 +125,32 @@ WHAT CHANGED & WHY:
     xsdedit/edit_test.go (TestValidate*).
 FUTURE (xsdtype/gotype): a sibling builtin/gotype package was discussed for
 Go-native (lax) value semantics vs xsdtype's strict ones — not built yet.
+
+## >>> NEXT SESSION — phase-9 iri-001 pushed 5671 → 5672 (+1). Remainder below <<<
+REMAINING 2 GAPS after phase 9 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
+tail is now EXHAUSTED — what is left is 2 spec bugs (correctly tolerated). No
+more genuinely-fixable gaps known:
+ - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
+   content, bug 6202); saxon complex018 (open content restriction subset, bug
+   16786).
+
+SESSION 2026-06-13 phase 9 (5671 → 5672, +1): the former "encoding/xml
+limitation" (wg IRI iri-001) is FIXED, not out of scope. The schema uses an
+internal DTD subset (`<!DOCTYPE xs:schema [ <!ENTITY URI "…"> … ]>`) and
+references those custom general entities inside xs:pattern values (`&URI;`).
+Go's encoding/xml does not process the internal subset, so the references were
+hard errors. FIX (parser/xmltree/xmltree.go): pre-scan the internal subset in
+Parse, collect `<!ENTITY name "value">` decls (first-wins; skip parameter/
+external entities and comments via a quote-aware markup-decl scanner), fully
+resolve each replacement text (char refs, the 5 predefined entities, nested
+general-entity refs, with a cycle guard), and hand the map to
+xml.Decoder.Entity — the decoder then substitutes &name; literally wherever
+referenced. Verified encoding/xml substitutes the map value verbatim (an `&`
+in the value is NOT re-parsed), so resolving `&amp;`→`&` etc. up front is
+correct. Each type also carries an equivalent literal pattern, so the expanded
+regex compiles and the schema builds → validity=valid as expected.
+ - DONE phase 8 (cos-particle-restrict, wildcard shadows named in <all>):
+   wild069. See phase-8 block below.
 
 ## >>> FUTURE WORK — deferred-SpecRef triage (the 7 never-emitted refs) <<<
 INVESTIGATION 2026-06-14. The conformance test classes the registry's
