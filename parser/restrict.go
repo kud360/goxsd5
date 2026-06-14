@@ -555,8 +555,8 @@ func stDerivedFromUnion(d xsd.Type, u *xsd.SimpleType) bool {
 // intervening union. (whiteSpace does not apply to unions, so only the
 // value-constraining facets are relevant.)
 func unionFacetsEmpty(st *xsd.SimpleType) bool {
-	f := &st.Facets
-	return len(f.PatternGroups) == 0 && !f.HasEnumeration && len(f.Assertions) == 0 &&
+	f := st.EffectiveFacets()
+	return len(f.PatternGroups) == 0 && !f.HasEnumeration() && len(f.Assertions) == 0 &&
 		f.Length == nil && f.MinLength == nil && f.MaxLength == nil &&
 		f.MinInclusive == nil && f.MaxInclusive == nil &&
 		f.MinExclusive == nil && f.MaxExclusive == nil &&

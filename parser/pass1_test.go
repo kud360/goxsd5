@@ -599,7 +599,7 @@ func TestBuildSmoke(t *testing.T) {
 		t.Errorf("doc has %d identity constraints, want 3", len(doc2.IdentityConstraints))
 	}
 	size, ok := s.Types[xsd.QName{Namespace: "urn:test", Local: "size"}].(*xsd.SimpleType)
-	if !ok || !size.Facets.HasEnumeration || len(size.Facets.Enumeration) != 2 {
+	if !ok || !size.EffectiveFacets().HasEnumeration() || len(size.EffectiveFacets().Enumeration) != 2 {
 		t.Fatalf("size type facets not built: %+v", size)
 	}
 	if p := size.PrimitiveType(); p == nil || p.Name.Local != "string" {

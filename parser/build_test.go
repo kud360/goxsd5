@@ -662,26 +662,29 @@ func TestBuildSimpleTypeModels(t *testing.T) {
 	}
 
 	size := st("size")
-	if !size.Facets.HasEnumeration || len(size.Facets.Enumeration) != 2 || size.Facets.Enumeration[0].Lexical != "small" {
-		t.Errorf("size enumeration not built: %+v", size.Facets.Enumeration)
+	sf := size.EffectiveFacets()
+	if !sf.HasEnumeration() || len(sf.Enumeration) != 2 || sf.Enumeration[0].Lexical != "small" {
+		t.Errorf("size enumeration not built: %+v", sf.Enumeration)
 	}
 
 	sizes := st("sizes")
 	if sizes.Variety != xsd.VarietyList || sizes.ItemType != size {
 		t.Errorf("sizes: variety=%v itemType=%v, want list of size", sizes.Variety, sizes.ItemType)
 	}
-	if sizes.Facets.WhiteSpace != xsd.WSCollapse || !sizes.Facets.WhiteSpaceFixed {
-		t.Errorf("list whiteSpace = %v (fixed=%v), want fixed collapse", sizes.Facets.WhiteSpace, sizes.Facets.WhiteSpaceFixed)
+	szf := sizes.EffectiveFacets()
+	if szf.WhiteSpace != xsd.WSCollapse || !szf.WhiteSpaceFixed {
+		t.Errorf("list whiteSpace = %v (fixed=%v), want fixed collapse", szf.WhiteSpace, szf.WhiteSpaceFixed)
 	}
 
 	short := st("shortSizes")
 	if short.Variety != xsd.VarietyList || short.ItemType != size {
 		t.Errorf("shortSizes did not inherit the list variety/item type")
 	}
-	if short.Facets.MaxLength == nil || short.Facets.MaxLength.Value != 3 {
-		t.Errorf("shortSizes maxLength = %+v, want 3", short.Facets.MaxLength)
+	shf := short.EffectiveFacets()
+	if shf.MaxLength == nil || shf.MaxLength.Value != 3 {
+		t.Errorf("shortSizes maxLength = %+v, want 3", shf.MaxLength)
 	}
-	if short.Facets.WhiteSpace != xsd.WSCollapse {
+	if shf.WhiteSpace != xsd.WSCollapse {
 		t.Errorf("shortSizes lost the inherited whiteSpace facet")
 	}
 
@@ -711,7 +714,7 @@ func TestBuildSimpleContentRestrictionFacets(t *testing.T) {
 	}
 	// Effective facets: totalDigits from the inline effective base, plus the
 	// declared minInclusive/fractionDigits.
-	f := sc.Type.Facets
+	f := sc.Type.EffectiveFacets()
 	if f.TotalDigits == nil || f.TotalDigits.Value != 5 {
 		t.Errorf("totalDigits = %+v, want 5 (from the inline simpleType)", f.TotalDigits)
 	}

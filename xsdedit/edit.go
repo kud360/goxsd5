@@ -38,11 +38,21 @@ func RestrictWith(t *xsd.SimpleType, declared *xsd.Facets) (*xsd.SimpleType, err
 		ItemType:       t.ItemType,
 		DirectMembers:  t.DirectMembers, // BasicMembers() derives from these
 		DeclaredFacets: *declared,
-		Facets:         eff,
-		// Fundamental facets (Part 2 §F) are derived from these effective facets
-		// by Fundamentals(); nothing to copy from the base.
+		// The effective facets and the fundamental facets (Part 2 §F) are derived
+		// on demand from DeclaredFacets and the base chain by EffectiveFacets()
+		// and Fundamentals(); nothing to copy from the base.
 	}
 	return st, nil
+}
+
+// reservedType reports whether t belongs to a spec-reserved namespace — the XSD
+// built-ins (XSDNS) or the XSI attribute types (XSINS). Those types are shared,
+// immutable singletons owned by the library: mutating one in place would corrupt
+// it for every schema in the process, so the in-place mutators refuse it. A
+// user's own type, including a future custom primitive, lives in the user's
+// namespace and is freely mutable.
+func reservedType(t *xsd.SimpleType) bool {
+	return t.Name.Namespace == xsd.XSDNS || t.Name.Namespace == xsd.XSINS
 }
 
 // AddEnumeration adds enumeration members to t in place. Each lexical must be
@@ -54,7 +64,7 @@ func RestrictWith(t *xsd.SimpleType, declared *xsd.Facets) (*xsd.SimpleType, err
 // Built-in types are shared and never mutated in place; derive a subtype with
 // RestrictWith and add enumerations to that instead.
 func AddEnumeration(t *xsd.SimpleType, lexicals ...string) error {
-	if t.IsBuiltin {
+	if reservedType(t) {
 		return xsd.NewError(xsd.SpecEnumerationValidRestriction, t.Pos, "cannot mutate the built-in type %s in place; use RestrictWith to derive a subtype", t.Name)
 	}
 	base, ok := t.BaseType.(*xsd.SimpleType)
@@ -74,16 +84,15 @@ func AddEnumeration(t *xsd.SimpleType, lexicals ...string) error {
 	// Copy-on-write: build the candidate declared facets, re-derive and
 	// validate, and commit only if the result is sound.
 	declared := t.DeclaredFacets
-	declared.HasEnumeration = true
 	declared.Enumeration = append(append([]xsd.Enum{}, t.DeclaredFacets.Enumeration...), add...)
-	eff := xsd.MergeFacets(&base.Facets, &declared)
+	eff := xsd.MergeFacets(base.EffectiveFacets(), &declared)
 	if err := xsd.ValidateFacetSet(&eff, t.EffectiveCompare()); err != nil {
 		return err
 	}
 	t.DeclaredFacets = declared
-	t.Facets = eff
-	// {cardinality} becomes finite by virtue of the enumeration now in
-	// t.Facets; Fundamentals() reflects it without a stored field.
+	// EffectiveFacets() now derives the enumeration from DeclaredFacets, and
+	// {cardinality} becomes finite by virtue of it; Fundamentals() reflects that
+	// without a stored field.
 	return nil
 }
 
@@ -92,7 +101,7 @@ func AddEnumeration(t *xsd.SimpleType, lexicals ...string) error {
 // pattern is compiled with the XSD regex translator; a malformed pattern is
 // rejected and t is unchanged. Built-ins may not be mutated in place.
 func AddPattern(t *xsd.SimpleType, pattern string) error {
-	if t.IsBuiltin {
+	if reservedType(t) {
 		return xsd.NewError(xsd.SpecRegexValid, t.Pos, "cannot mutate the built-in type %s in place; use RestrictWith to derive a subtype", t.Name)
 	}
 	re, err := xsdregex.CompileRegex(pattern)
@@ -102,7 +111,6 @@ func AddPattern(t *xsd.SimpleType, pattern string) error {
 	}
 	g := xsd.PatternGroup{{Source: pattern, Re: re}}
 	t.DeclaredFacets.PatternGroups = append(t.DeclaredFacets.PatternGroups, g)
-	t.Facets.PatternGroups = append(t.Facets.PatternGroups, g)
 	return nil
 }
 
@@ -178,7 +186,7 @@ func Validate(t *xsd.SimpleType) error {
 
 	// Order/enumeration facets need a real comparator.
 	f := t.EffectiveFacets()
-	if f.HasEnumeration || f.MinInclusive != nil || f.MaxInclusive != nil ||
+	if f.HasEnumeration() || f.MinInclusive != nil || f.MaxInclusive != nil ||
 		f.MinExclusive != nil || f.MaxExclusive != nil {
 		if !hasComparator(t) {
 			errs.Addf(xsd.SpecDatatypeValid, t.Pos, "simple type %s declares order/enumeration facets but has no Compare in its base chain", describe(t))
@@ -254,7 +262,7 @@ func declaredFacetKinds(f *xsd.Facets) []struct {
 	add(f.MinLength != nil, xsd.FacetMinLength, "minLength")
 	add(f.MaxLength != nil, xsd.FacetMaxLength, "maxLength")
 	add(len(f.PatternGroups) > 0, xsd.FacetPattern, "pattern")
-	add(f.HasEnumeration, xsd.FacetEnumeration, "enumeration")
+	add(f.HasEnumeration(), xsd.FacetEnumeration, "enumeration")
 	add(f.WhiteSpace != xsd.WSUnset, xsd.FacetWhiteSpace, "whiteSpace")
 	add(f.MinInclusive != nil, xsd.FacetBounds, "minInclusive")
 	add(f.MaxInclusive != nil, xsd.FacetBounds, "maxInclusive")

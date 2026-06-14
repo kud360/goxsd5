@@ -81,14 +81,13 @@ func (b *builder) applyRestriction(st *xsd.SimpleType, base *xsd.SimpleType, r *
 
 	declared := b.buildFacets(r, doc, base)
 	cmp := base.EffectiveCompare()
-	b.errs.Add(xsd.CheckFacetRestriction(declared, &base.Facets, cmp))
-	eff := xsd.MergeFacets(&base.Facets, declared)
+	b.errs.Add(xsd.CheckFacetRestriction(declared, base.EffectiveFacets(), cmp))
+	eff := xsd.MergeFacets(base.EffectiveFacets(), declared)
 	b.errs.Add(xsd.ValidateFacetSet(&eff, cmp))
 	st.DeclaredFacets = *declared
-	st.Facets = eff
-	// The fundamental facets (Part 2 §F) are derived on demand by
-	// (*SimpleType).Fundamentals() from these effective facets and the
-	// primitive base case; nothing to store here.
+	// The effective facets and the fundamental facets (Part 2 §F) are both
+	// derived on demand — by EffectiveFacets() and Fundamentals() — from these
+	// declared facets and the base chain; nothing to store here.
 }
 
 func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDoc) {
@@ -127,8 +126,8 @@ func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDo
 	st.BaseType = builtin.AnySimpleType
 	st.Variety = xsd.VarietyList
 	st.ItemType = item
-	st.Facets.WhiteSpace = xsd.WSCollapse
-	st.Facets.WhiteSpaceFixed = true
+	// whiteSpace=collapse (fixed) for a list is supplied by EffectiveFacets()
+	// from the list variety; it is not a declared facet.
 }
 
 func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaDoc) {
@@ -316,10 +315,7 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 	if len(patterns) > 0 {
 		f.PatternGroups = []xsd.PatternGroup{patterns}
 	}
-	if firstChild(r, doc, "enumeration") != nil {
-		f.HasEnumeration = true
-		f.Enumeration = enums
-	}
+	f.Enumeration = enums
 	return &f
 }
 

@@ -125,10 +125,7 @@ type Facets struct {
 	TotalDigits    *IntFacet
 	FractionDigits *IntFacet
 
-	// HasEnumeration distinguishes "no enumeration facet" from an
-	// (illegal) empty one.
-	HasEnumeration bool
-	Enumeration    []Enum
+	Enumeration []Enum
 
 	Assertions []Assertion
 
@@ -137,6 +134,13 @@ type Facets struct {
 	ExplicitTimezonePos   Pos
 	WhiteSpacePos         Pos
 }
+
+// HasEnumeration reports whether an enumeration facet constrains the value
+// space. A valid enumeration always carries at least one value, so presence is
+// equivalent to a non-empty value list; an authored enumeration whose values
+// all failed base-type validation is already reported per value and leaves no
+// surviving enumeration here.
+func (f Facets) HasEnumeration() bool { return len(f.Enumeration) > 0 }
 
 // FacetSet is a set of constraining-facet categories. It expresses facet
 // applicability (cos-applicable-facets, Part 2 §4.1.6 / the per-facet
@@ -209,8 +213,7 @@ func MergeFacets(base, declared *Facets) Facets {
 	if declared.FractionDigits != nil {
 		eff.FractionDigits = declared.FractionDigits
 	}
-	if declared.HasEnumeration {
-		eff.HasEnumeration = true
+	if declared.HasEnumeration() {
 		eff.Enumeration = declared.Enumeration
 	}
 	if len(declared.Assertions) > 0 {
@@ -236,10 +239,28 @@ func (t *SimpleType) parseFunc() ParseFunc {
 	return nil
 }
 
-// EffectiveFacets returns the type's effective (merged, validated) facet set.
-// The pointer aliases the type's internal facets; treat it as read-only (use
-// the xsdedit mutation helpers to change them).
-func (t *SimpleType) EffectiveFacets() *Facets { return &t.Facets }
+// EffectiveFacets computes the type's effective facet set: the facets declared
+// on this step overlaid on every ancestor's, in derivation order (the narrowing
+// between steps is validated at build time). It is derived on demand from
+// DeclaredFacets and the base chain — nothing is cached — so it always reflects
+// the current DeclaredFacets. The returned pointer is to a fresh value whose
+// facet slices alias the declared ones; treat it as read-only (use the xsdedit
+// mutation helpers to change facets).
+func (t *SimpleType) EffectiveFacets() *Facets {
+	var eff Facets
+	if base, ok := t.BaseType.(*SimpleType); ok {
+		eff = MergeFacets(base.EffectiveFacets(), &t.DeclaredFacets)
+	} else {
+		eff = t.DeclaredFacets
+	}
+	// A list's lexical space is whiteSpace-collapsed and fixed (Part 2 §4.3.6);
+	// this holds for the list variety itself and every restriction of one.
+	if t.Variety == VarietyList {
+		eff.WhiteSpace = WSCollapse
+		eff.WhiteSpaceFixed = true
+	}
+	return &eff
+}
 
 // EffectiveCompare returns the comparison function in effect for t (its
 // own or the nearest ancestor's override, defaulting to CompareValues).
@@ -294,7 +315,7 @@ func (t *SimpleType) ParseFacetValue(lexical string, ctx ValueContext) (Value, e
 }
 
 func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool) (Value, error) {
-	f := &t.Facets
+	f := t.EffectiveFacets()
 
 	// Stage 1: whiteSpace.
 	norm := f.WhiteSpace.Apply(lexical)
@@ -384,7 +405,7 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 	// Stage 6: enumeration (value-space membership). Use the type's effective
 	// comparator so a custom value space's own equality is honored, not just
 	// the default value comparison.
-	if f.HasEnumeration {
+	if f.HasEnumeration() {
 		ok := false
 		for i := range f.Enumeration {
 			if o, c := cmp(v, f.Enumeration[i].Value); c && o == OrderEqual {

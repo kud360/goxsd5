@@ -102,7 +102,7 @@ func TestAddEnumerationRejectsBuiltinMutation(t *testing.T) {
 		t.Fatal("mutating a built-in type in place was allowed")
 	}
 	// The shared built-in must be unchanged.
-	if builtin.Token.EffectiveFacets().HasEnumeration {
+	if builtin.Token.EffectiveFacets().HasEnumeration() {
 		t.Error("built-in token gained an enumeration facet")
 	}
 }
@@ -212,7 +212,7 @@ func TestValidateMissingComparator(t *testing.T) {
 		Variety: xsd.VarietyAtomic,
 		Parse:   func(s string, _ xsd.ValueContext) (xsd.Value, error) { return nil, nil },
 	}
-	st.Facets.MinInclusive = &xsd.Bound{Lexical: "0"}
+	st.DeclaredFacets.MinInclusive = &xsd.Bound{Lexical: "0"}
 	if err := xsdedit.Validate(st); err == nil {
 		t.Error("Validate accepted order facets with no comparator")
 	}

@@ -43,20 +43,18 @@ var AnyType = &xsd.ComplexType{
 // type that does not override them — this is how the core engine reaches the
 // built-in value spaces without naming them.
 var AnySimpleType = &xsd.SimpleType{
-	Name:      qn("anySimpleType"),
-	BaseType:  AnyType,
-	Variety:   xsd.VarietyAtomic,
-	Parse:     parseAsString,
-	Compare:   xsdtype.CompareValues,
-	IsBuiltin: true,
+	Name:     qn("anySimpleType"),
+	BaseType: AnyType,
+	Variety:  xsd.VarietyAtomic,
+	Parse:    parseAsString,
+	Compare:  xsdtype.CompareValues,
 }
 
 // AnyAtomicType is xs:anyAtomicType (XSD 1.1).
 var AnyAtomicType = &xsd.SimpleType{
-	Name:      qn("anyAtomicType"),
-	BaseType:  AnySimpleType,
-	Variety:   xsd.VarietyAtomic,
-	IsBuiltin: true,
+	Name:     qn("anyAtomicType"),
+	BaseType: AnySimpleType,
+	Variety:  xsd.VarietyAtomic,
 }
 
 // ErrorType is xs:error (XSD 1.1 §3.16.7.3): a special simple type with empty
@@ -71,7 +69,6 @@ var ErrorType = &xsd.SimpleType{
 	Parse: func(lexical string, _ xsd.ValueContext) (xsd.Value, error) {
 		return nil, fmt.Errorf("no value is valid against xs:error")
 	},
-	IsBuiltin: true,
 }
 
 func parseAsString(s string, _ xsd.ValueContext) (xsd.Value, error) { return xsdtype.String(s), nil }
@@ -88,11 +85,9 @@ func primitive(local string, ws xsd.WhiteSpace, applic xsd.FacetSet, parse xsd.P
 		Variety:    xsd.VarietyAtomic,
 		Parse:      parse,
 		Applicable: applic,
-		IsBuiltin:  true,
 	}
-	t.Facets.WhiteSpace = ws
-	t.Facets.WhiteSpaceFixed = local != "string" && local != "anyURI"
-	t.DeclaredFacets = t.Facets
+	t.DeclaredFacets.WhiteSpace = ws
+	t.DeclaredFacets.WhiteSpaceFixed = local != "string" && local != "anyURI"
 	return t
 }
 
@@ -107,9 +102,7 @@ func restrict(local string, base *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.
 		BaseType:       base,
 		Variety:        base.Variety,
 		ItemType:       base.ItemType,
-		Facets:         xsd.MergeFacets(&base.Facets, &declared),
 		DeclaredFacets: declared,
-		IsBuiltin:      true,
 	}
 	return t
 }
@@ -117,19 +110,15 @@ func restrict(local string, base *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.
 // list constructs a built-in list type (whiteSpace collapse, fixed).
 func list(local string, item *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.SimpleType {
 	t := &xsd.SimpleType{
-		Name:      qn(local),
-		BaseType:  AnySimpleType,
-		Variety:   xsd.VarietyList,
-		ItemType:  item,
-		IsBuiltin: true,
+		Name:     qn(local),
+		BaseType: AnySimpleType,
+		Variety:  xsd.VarietyList,
+		ItemType: item,
 	}
-	t.Facets.WhiteSpace = xsd.WSCollapse
-	t.Facets.WhiteSpaceFixed = true
+	// whiteSpace=collapse (fixed) is supplied by EffectiveFacets() from the list
+	// variety; only the explicitly declared facets are stored here.
 	if mod != nil {
-		var declared xsd.Facets
-		mod(&declared)
-		t.Facets = xsd.MergeFacets(&t.Facets, &declared)
-		t.DeclaredFacets = declared
+		mod(&t.DeclaredFacets)
 	}
 	return t
 }
@@ -455,11 +444,10 @@ func AllBuiltins() []*xsd.SimpleType {
 // xsiSchemaLocationType is the anonymous list-of-anyURI type of the built-in
 // xsi:schemaLocation attribute.
 var xsiSchemaLocationType = &xsd.SimpleType{
-	Name:      xsd.QName{Namespace: xsd.XSINS, Local: "schemaLocationType"},
-	BaseType:  AnySimpleType,
-	Variety:   xsd.VarietyList,
-	ItemType:  AnyURI,
-	IsBuiltin: true,
+	Name:     xsd.QName{Namespace: xsd.XSINS, Local: "schemaLocationType"},
+	BaseType: AnySimpleType,
+	Variety:  xsd.VarietyList,
+	ItemType: AnyURI,
 }
 
 func xsiAttr(local string, t *xsd.SimpleType) *xsd.AttributeDecl {

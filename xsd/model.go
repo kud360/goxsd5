@@ -128,10 +128,6 @@ type SimpleType struct {
 
 	// ItemType is the item type for list varieties.
 	ItemType *SimpleType
-	// MemberTypes are the *basic members* of a union variety (Part 2 §4.1.6):
-	// member unions are flattened away, so every entry is a non-union type.
-	// Most callers want this. DirectMembers below keeps the un-flattened form.
-	MemberTypes []*SimpleType
 	// DirectMembers is the spec {member type definitions} property of a union
 	// (Part 2 §4.1.1): the member types exactly as declared, WITHOUT flattening
 	// member unions. A restriction of a union inherits its base's DirectMembers.
@@ -142,14 +138,10 @@ type SimpleType struct {
 	Final DerivationSet
 
 	// DeclaredFacets are only the facets declared on this derivation step —
-	// the canonical, authored facet state.
+	// the canonical, authored facet state. The effective (merged, narrowing-
+	// validated) facets are derived on demand from these plus the base chain by
+	// EffectiveFacets(); they are not stored.
 	DeclaredFacets Facets
-	// Facets are the effective facets: DeclaredFacets merged over every
-	// ancestor's, already validated for narrowing. This is DERIVED state, kept
-	// as an explicitly-named memoized cache (read via EffectiveFacets()) because
-	// it sits on the value-validation hot path; it is not authored. It must stay
-	// in sync with DeclaredFacets + the base chain at every build/clone site.
-	Facets Facets
 
 	// Parse overrides lexical→value mapping; if nil, resolution walks to
 	// the nearest ancestor that defines one (ultimately the primitive).
@@ -161,14 +153,13 @@ type SimpleType struct {
 	// admits (cos-applicable-facets). It is authored only on primitive types
 	// (including custom ones registered through the API); derived, list, and
 	// union types compute their applicable set from it via ApplicableFacets.
+	// Because only primitives carry it, a non-zero Applicable is also what marks
+	// a type as the primitive in its chain — PrimitiveType() detects it this way.
 	Applicable FacetSet
 
 	// The fundamental facets (Part 2 §F) are not stored: they are derived on
 	// demand by Fundamentals() from the variety, the primitive base case, and
 	// the effective facets.
-
-	// IsBuiltin marks the types from the builtin package.
-	IsBuiltin bool
 
 	Annotation *Annotation
 	Extensions Extensions
@@ -182,24 +173,20 @@ func (t *SimpleType) isType()         {}
 // PrimitiveType returns the primitive ancestor for an atomic type (itself for a
 // primitive), or nil for list/union varieties and for the atomic ur-types
 // (anySimpleType/anyAtomicType, which have no primitive). It is a derived view
-// of the BaseType chain: the primitive is the nearest atomic ancestor that is a
-// built-in directly restricting xs:anyAtomicType — the only way the spec admits
-// a primitive (user schemas cannot define one).
+// of the BaseType chain: the primitive is the nearest atomic ancestor that
+// authors an applicable-facet set. Only primitives carry one (see Applicable),
+// so a non-zero Applicable marks the primitive boundary; the atomic ur-types
+// author none and are not primitives.
 func (t *SimpleType) PrimitiveType() *SimpleType {
 	if t.Variety != VarietyAtomic {
 		return nil
 	}
-	anyAtomic := QName{Namespace: XSDNS, Local: "anyAtomicType"}
-	for cur := t; ; {
-		base, ok := cur.BaseType.(*SimpleType)
-		if !ok {
-			return nil // base is xs:anyType (or nil): reached an atomic ur-type
-		}
-		if cur.IsBuiltin && base.Name == anyAtomic {
+	for cur := t; cur != nil; cur, _ = cur.BaseType.(*SimpleType) {
+		if cur.Applicable != 0 {
 			return cur
 		}
-		cur = base
 	}
+	return nil
 }
 
 // ApplicableFacets returns the set of constraining facets that may appear in a
@@ -315,7 +302,7 @@ func (t *SimpleType) Fundamentals() Fundamentals {
 	}
 	// spec: §F — {cardinality} is finite once a value-enumerating, length, or
 	// digit-count facet constrains the value space.
-	if ef.HasEnumeration || ef.Length != nil || ef.MaxLength != nil || ef.TotalDigits != nil {
+	if ef.HasEnumeration() || ef.Length != nil || ef.MaxLength != nil || ef.TotalDigits != nil {
 		f.Cardinality = CardinalityFinite
 	}
 	return f

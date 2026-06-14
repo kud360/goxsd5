@@ -238,7 +238,7 @@ func (b *builder) checkNotationEnum(t xsd.Type, p xsd.Pos) {
 	if prim == nil {
 		return
 	}
-	if prim.Name.Local == "NOTATION" && !st.Facets.HasEnumeration {
+	if prim.Name.Local == "NOTATION" && !st.EffectiveFacets().HasEnumeration() {
 		// spec: enumeration-required-notation — XSD 1.1 Part 2 §3.3.19
 		b.errf(xsd.SpecEnumNotation, p, "a NOTATION-derived type must constrain its values with an enumeration facet")
 	}

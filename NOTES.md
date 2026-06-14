@@ -33,6 +33,46 @@ regex compiles and the schema builds → validity=valid as expected.
  - DONE phase 8 (cos-particle-restrict, wildcard shadows named in <all>):
    wild069. See phase-8 block below.
 
+## >>> DONE 2026-06-14 — derived-state cleanup: 4 redundant fields removed <<<
+Follow-on to the package-factoring refactor: stripped stored state that was
+either dead or derivable from the authored source of truth, so divergence
+between authored and derived data is now structurally impossible. Conformance
+held at 5672 / 26 skips at every step; build + full suite + gofmt clean.
+ 1. xsd.Facets.HasEnumeration (bool field) → method HasEnumeration() returning
+    len(Enumeration) > 0. The field only ever distinguished "present but empty"
+    from "absent", but a present-but-empty enumeration arises ONLY from error
+    recovery (every <enumeration> child either appends a value or emits
+    enumeration-valid-restriction and continues), so by the time it occurs ≥1
+    error is already reported — pure suppression state, deleted. Only behavioral
+    delta: a NOTATION type whose enum values all fail to parse now also gets the
+    "must constrain with enumeration" error (cascade on an already-invalid schema).
+ 2. SimpleType.Facets (the memoized effective-facet cache) DELETED. EffectiveFacets()
+    now derives on demand: MergeFacets(base.EffectiveFacets(), &DeclaredFacets) up
+    the chain, plus whiteSpace=collapse/fixed injected for VarietyList (Part 2
+    §4.3.6) from the variety rather than stored. DeclaredFacets is the sole authored
+    facet state; every build/clone/mutate site stopped writing the cache (parser
+    applyRestriction/buildSTList, builtin primitive/restrict/list, xsdedit
+    RestrictWith/AddEnumeration/AddPattern). parseValue reads t.EffectiveFacets().
+    The old "hot path" justification for the cache is moot: ParseValue is called
+    only during schema construction (validating facet/enum values) and from xsdedit,
+    never in an instance-validation loop, and there are no benchmarks.
+ 3. SimpleType.MemberTypes DELETED — fully dead (declared, never read or written
+    anywhere). The flattened basic members are derived by BasicMembers() from the
+    canonical un-flattened DirectMembers, which every caller already uses.
+ 4. SimpleType.IsBuiltin DELETED + PrimitiveType() reworked. PrimitiveType() now
+    detects the primitive boundary by "nearest atomic ancestor with Applicable != 0"
+    (Applicable is authored ONLY on primitives, single write site builtin.go) instead
+    of the structural "IsBuiltin && base==anyAtomicType" match — cheaper (no per-call
+    QName), principled, and future-correct for custom primitives (they'll carry an
+    authored Applicable without needing to masquerade as builtin). IsBuiltin's other
+    role (mutation protection) moved to xsdedit.reservedType(t) = Name.Namespace is
+    XSDNS || XSINS; NOTE the XSINS arm is load-bearing — xsiSchemaLocationType lives
+    in XSINS, so a bare XSDNS check would have silently stopped protecting it.
+ FUTURE (deferred per decision this session): xsdedit.NewPrimitive(name, base,
+ parse, compare, applicable, ws) constructor + a Validate rule (primitive needs
+ Applicable!=0 and non-nil Parse) — only worth adding when builtin/gotype or another
+ real custom-primitive consumer lands; YAGNI until then.
+
 ## >>> DONE 2026-06-14 — deferred-SpecRef triage items A + B implemented <<<
 Both genuine-but-unexercised static holes (A: redefine group/attributeGroup
 self-reference occurrence; B: ag-props-correct clause 2 at the attribute-group
