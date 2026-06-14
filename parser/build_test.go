@@ -522,6 +522,25 @@ func TestBuilderNegatives(t *testing.T) {
 			   <xs:unique ref="tns:k"/>
 			 </xs:element>`,
 			[]string{"src-identity-constraint"}},
+
+		// Type-alternative {test} XPath validity (src-ta, §3.12.3 clause 1:
+		// no XPath 2.0 static errors).
+		{"alternative test is malformed XPath",
+			`<xs:element name="e" type="xs:string">
+			   <xs:alternative test="12 5 2" type="xs:token"/>
+			 </xs:element>`,
+			[]string{"src-ta"}},
+		{"alternative test uses uppercase AND",
+			`<xs:element name="e" type="xs:string">
+			   <xs:alternative test="@a AND @b" type="xs:token"/>
+			 </xs:element>`,
+			[]string{"src-ta"}},
+		{"alternative test casts to a complex type",
+			`<xs:complexType name="ct"><xs:sequence/></xs:complexType>
+			 <xs:element name="e" type="xs:string">
+			   <xs:alternative test="@x cast as tns:ct = 'y'" type="xs:token"/>
+			 </xs:element>`,
+			[]string{"src-ta"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -866,6 +885,16 @@ func TestBuildTypeAlternativeAndAttrRestrictValid(t *testing.T) {
 		 <xs:element name="e" type="tns:u"><xs:alternative test="@k='i'" type="xs:int"/></xs:element>`,
 		// xs:error is always permitted as an alternative type (clause 7.2).
 		`<xs:element name="e" type="xs:integer"><xs:alternative test="@k='x'" type="xs:error"/></xs:element>`,
+		// Well-formed XPath {test} expressions must not trip src-ta: a cast to a
+		// simple type, an instance-of test, and a function call are all valid.
+		`<xs:element name="e" type="xs:integer">
+		   <xs:alternative test="@k cast as xs:int gt 0" type="xs:nonNegativeInteger"/>
+		   <xs:alternative test="@k instance of xs:int and count(.//x) eq 1" type="xs:int"/>
+		 </xs:element>`,
+		// A cast to a user-declared SIMPLE type is fine (only a complex target
+		// is a src-ta violation).
+		`<xs:simpleType name="st"><xs:restriction base="xs:int"/></xs:simpleType>
+		 <xs:element name="e" type="xs:integer"><xs:alternative test="@k cast as tns:st = 1" type="xs:int"/></xs:element>`,
 		// Restriction redeclares an attribute keeping the same inheritability.
 		`<xs:complexType name="b"><xs:sequence/><xs:attribute name="a" type="xs:string" inheritable="true"/></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence/><xs:attribute name="a" type="xs:token" inheritable="true"/></xs:restriction></xs:complexContent></xs:complexType>`,

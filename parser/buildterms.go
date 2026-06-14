@@ -144,6 +144,7 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 		case "alternative":
 			alt := &xsd.TypeAlternative{Pos: c.Pos}
 			alt.Test, _ = c.Attr("test")
+			b.checkXPathTest(alt.Test, c, doc, xsd.SpecSrcTA)
 			alt.Type = b.buildAnonType(c, doc, nil)
 			if alt.Type == nil {
 				if q, ok := qnameAttr(c, doc, "type"); ok {

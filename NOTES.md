@@ -7,14 +7,13 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-5 conformance pushed 5651 → 5663 (+12). Remainder below <<<
-REMAINING 11 GAPS after phase 5 (GOXSD5_CONFORMANCE_GAPS=1 to list), all the
+## >>> NEXT SESSION — phase-6 XPath package pushed 5663 → 5667 (+4). Remainder below <<<
+REMAINING 7 GAPS after phase 6 (GOXSD5_CONFORMANCE_GAPS=1 to list), all the
 hard tail:
- - OUT OF SCOPE — need an XPath PARSER (the <alternative>/<assert> test/select
-   subset): ibm typeAlternatives s3_12si04 (malformed XPath), s3_12si05 (AND vs
-   and case), s3_12si06 (bad cast QName prefix xs1::), s3_12ii06 (cast to a
-   complex type). 4 cases. Candidates for skip: lines unless an XPath grammar
-   gets built.
+ - DONE phase 6 (XPath 2.0 PARSER built): the 4 <alternative> test cases that
+   needed real XPath — ibm typeAlternatives s3_12si04 (malformed XPath),
+   s3_12si05 (AND vs and case), s3_12si06 (bad cast QName prefix xs1::), and
+   s3_12ii06 (cast to a complex type). See phase-6 block below.
  - OUT OF SCOPE — encoding/xml limitation: wg IRI iri-001 (custom DTD entities
    &URI; — Go's encoding/xml won't expand them). skip candidate.
  - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
@@ -30,6 +29,49 @@ hard tail:
      union(date,time)) would type differently, so zang accepts <e>duration</e>
      that zing rejects. Needs wildcard-binds-global vs named-element type
      reasoning inside the all-restriction solver.
+
+SESSION 2026-06-13 phase 6 (5663 → 5667, +4): XPath 2.0 PARSER. New top-level
+package `xpath` (xpath/lexer.go, xpath.go, parse.go, kindtest.go) — a faithful
+recursive-descent parser for the FULL XPath 2.0 grammar (REC-xpath20-20101214
+Appendix A, spec downloaded to docs/raw/xpath20.html, cleaned to
+docs/clean/xpath20.md via docscleaner). Clean, xsd-decoupled API:
+`xpath.Parse(src) (*Expr, error)` returns a typed *xpath.Error on any static
+syntax error, and Expr.TypeRefs lists every cast/castable/treat/instance-of
+ATOMIC type target (prefix+local, unresolved) so callers apply schema checks.
+KEY DESIGN: the operator-keyword vs name-test ambiguity (and/or/div/eq/… vs an
+element named "and") is resolved purely by GRAMMAR POSITION in the recursive
+descent — the lexer emits bare tokName for all names and never pre-classifies
+keywords; a binary level only tests for its keyword AFTER parsing a left
+operand, and operand parsing (down to StepExpr) stops at any non-/ token, so the
+keyword is never swallowed as a name test. Lexer greedily absorbs '-'/'.' into
+names (XML NCName chars) per A.2.4.1; tokenises the whole input up front for
+free lookahead (function-call vs kind-test vs name-test; leading-lone-slash;
+for/some/every disambiguation). Type names inside KindTests (element(*, T),
+attribute(*, T)) are NOT collected as TypeRefs — they are element/attribute type
+annotations, not atomic cast targets, so a valid `instance of element(*,
+xs:untyped)` is never mistaken for a non-atomic cast.
+INTEGRATION (parser/xpathcheck.go, checkXPathTest, wired at the <alternative>
+build site in buildterms.go): reports src-ta (§3.12.3 clause 1: the {test} must
+contain no XPath 2.0 static errors) when (a) the test does not PARSE — catches
+si04 (malformed: "12 5 2", "((7>=6)", "3 cast as 3", ")(", ">", …), si05 ("AND"
+is not the lowercase operator "and" ⇒ leftover token), si06 ("xs1::double" ⇒
+"::" is not valid inside a cast-target QName); or (b) a cast/instance-of/etc.
+target resolves (quiet registry lookup, prefix via node NS scope, unprefixed via
+xpathDefaultNS) to a COMPLEX type — catches ii06 ("cast as messageTypeString",
+messageTypeString being a complexType). SOUNDNESS: parse-failure and
+cast-to-complex are both necessary static errors ⇒ never a false positive;
+anything unresolvable (unbound prefix, unknown type) is left alone per the
+give-up discipline. Only <alternative> is wired, NOT <assert> — no assert
+conformance case needs it, so wiring it would be pure regression risk; the xpath
+package itself is proven against the FULL suite corpus regardless.
+REGRESSION GUARD: xpath/xpath_test.go embeds a representative valid set (one per
+production) + the complete malformed set; before integration the parser was run
+against ALL 224 distinct suite <alternative>/<assert> test exprs (206 valid all
+PARSE, 18 malformed all ERROR). Builder unit tests: TestBuilderNegatives +3
+(malformed, uppercase-AND, cast-to-complex) and TestBuildTypeAlternativeAndAttr
+RestrictValid +2 (well-formed cast/instance-of; cast to a user SIMPLE type is
+fine). Zero conformance regressions; the 7 remaining gaps are unchanged (the
+old tolerated tail: all308, complex018, simple011/014/015, wild069, iri-001).
 
 SESSION 2026-06-13 phase 5e (5662 → 5663, +1): PARTICLE-RESTRICTION type-table
 equivalence (cta0043). derivation-ok-restriction §3.4.6.3 clause 3 "subsumes"
@@ -451,8 +493,10 @@ large features. UPA is DONE (part 2); cos-particle-restrict is PARTLY done
   type-table cases wild069/078/079/081) + wild041 (xsi: in notQName).
 - Open content extension/restriction subset (open030/046 extension,
   remaining ibm openContent si05/06 extension).
-- CTA / assertions XPath (saxon CTA 6, ibm typeAlternatives 5): needs an XPath
-  engine — effectively out of scope; candidates for skip: lines.
+- CTA / assertions XPath: the STATIC-error subset (malformed XPath, bad cast
+  QName, cast-to-complex) is now caught by the `xpath` package on <alternative>
+  (phase 6, ibm typeAlternatives s3_12si04/05/06/ii06 DONE). What remains needs
+  XPath EVALUATION (a runtime engine over an instance), which is out of scope.
 - 2 override false positives (over009 double-override dup; over030 false
   mg-props-correct cycle — override-internals bugs) + over014 + iri-001
   (custom DTD entities &URI; — encoding/xml limitation, skip candidate).

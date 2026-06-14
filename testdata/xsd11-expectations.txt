@@ -426,9 +426,13 @@ ibmMeta/typeAlternatives.testSet#s3_12ii02 pass
 ibmMeta/typeAlternatives.testSet#s3_12ii03 pass
 ibmMeta/typeAlternatives.testSet#s3_12ii04 pass
 ibmMeta/typeAlternatives.testSet#s3_12ii05 pass
+ibmMeta/typeAlternatives.testSet#s3_12ii06 pass
 ibmMeta/typeAlternatives.testSet#s3_12si01 pass
 ibmMeta/typeAlternatives.testSet#s3_12si02 pass
 ibmMeta/typeAlternatives.testSet#s3_12si03 pass
+ibmMeta/typeAlternatives.testSet#s3_12si04 pass
+ibmMeta/typeAlternatives.testSet#s3_12si05 pass
+ibmMeta/typeAlternatives.testSet#s3_12si06 pass
 ibmMeta/typeAlternatives.testSet#s3_12v01 pass
 ibmMeta/typeAlternatives.testSet#s3_12v02 pass
 ibmMeta/typeAlternatives.testSet#s3_12v03 pass
