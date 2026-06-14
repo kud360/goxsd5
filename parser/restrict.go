@@ -35,6 +35,8 @@ package parser
 // listed in NOTES.md.
 
 import (
+	"sort"
+
 	"github.com/kud360/goxsd5/builtin"
 	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
@@ -57,7 +59,12 @@ type baseSlot struct {
 // which case each branch is checked independently: an instance matching the
 // choice matches exactly one branch, so every branch must on its own be a valid
 // restriction of the base.
-func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) {
+// checkParticleRestrictLegacy is the original fragment-based analysis. It is
+// retained as the reference oracle for the Track-B unified relation (see
+// subsumption.go): production routes through checkParticleRestrict, which runs
+// this and, when the differential hook is installed, asserts the unified
+// relation agrees. It is deleted once the unified relation becomes authoritative.
+func (b *builder) checkParticleRestrictLegacy(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) {
 	if ct.DerivationMethod != xsd.DeriveRestriction {
 		return
 	}
@@ -619,6 +626,14 @@ func collectReps(bParts, rParts []*xsd.Particle) []xsd.QName {
 		freshNS += "x"
 	}
 	reps = append(reps, xsd.QName{Namespace: freshNS, Local: genericLocal})
+	// Sort so the representative set — and thus which offending name a diagnostic
+	// reports — is deterministic (qset/nsset iterate in random map order).
+	sort.Slice(reps, func(i, j int) bool {
+		if reps[i].Namespace != reps[j].Namespace {
+			return reps[i].Namespace < reps[j].Namespace
+		}
+		return reps[i].Local < reps[j].Local
+	})
 	return reps
 }
 

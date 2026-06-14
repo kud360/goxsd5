@@ -162,6 +162,26 @@ edges only, and element/ref recursion is NOT a derivation edge (same insight as
 buildGroup phase-4d), so it terminates.
 
 ### Track B — REWRITE restrict.go (1126 LOC) to one unified subsumption relation
+STEP 1 DONE (2026-06-14): strangler scaffold + differential harness landed,
+5672 held. checkParticleRestrict (now in subsumption.go) is the production entry:
+it runs the legacy fragments (renamed checkParticleRestrictLegacy in restrict.go,
+unchanged) via a scratch-ErrorList capture (collectLegacyRestrict → restrictViolation
+values) and EMITS those, and when the test hook restrictDiff is installed also
+computes particleRestrictUnified and hands both to it. particleRestrictUnified is
+the new §3.9.6 recursion; it natively decides the WILDCARD-FREE flat element-run
++ choice slice (unifiedRestrictRun = the Recurse case: NameAndTypeOK map + occ
+subsumption + required-retained) and DELEGATES every wildcard-bearing shape back
+to the legacy fragments, so output is identical until each case is ported. Diff
+oracle: TestRestrictDifferentialSuite (rebuilds the whole corpus with the hook;
+2602 restrictions, exact multiset agreement on ref+pos+msg) + TestRestrictDifferentialFuzz
+(20000 random flat element-run pairs over a ct0<-ct1<-ct2 chain). Found+fixed a
+latent nondeterminism: collectReps iterated maps, so the multi-wildcard "allows
+an element (N)" diagnostic picked a random offending name; now sorted. NEXT
+(step 2): port the single-wildcard NSSubset + wildcard-shadows-named, then the
+multi-wildcard rep-name engine (collectReps/baseRegion), removing each delegation
+while the diff stays green; preserve all238/wild048 supra-spec coverage. Then
+step 3: flip emission to unified, delete the fragments + the capture/hook.
+
 restrict.go accreted phase-by-phase as N necessary-condition fragments
 (checkRestrictRun, checkMultiWildcardRestrict, checkWildcardShadowsNamed,
 checkOpenContentRestrict, checkAttrWildcardRestriction, …), each a slice of
