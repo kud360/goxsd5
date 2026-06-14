@@ -1,85 +1,46 @@
 package parser
 
-// Unified particle-restriction relation (Track B).
+// Particle restriction (cos-particle-restrict, §3.4.6.4 / Particle Valid
+// (Restriction), §3.9.6) for complexContent restrictions.
 //
-// §3.9.6 Particle Valid (Restriction) describes ONE recursive subsumption
-// relation (NSRecurseCheckCardinality / NSSubset / Recurse / RecurseUnordered /
-// RecurseLax / MapAndSum). The original implementation (restrict.go) grew as a
-// set of independent necessary-condition fragments, each a slice of that
-// relation. This file collapses them into the single recursion.
+// §3.9.6 describes one subsumption relation (NSRecurseCheckCardinality /
+// NSSubset / Recurse / RecurseUnordered / RecurseLax / MapAndSum) deciding when
+// every instance valid against a restriction R is also valid against its base B
+// with validly-derived types. The full relation is language inclusion over
+// particle automata — the hardest algorithm in the specification — and §3.9.6
+// explicitly lets a processor provisionally accept a derivation it cannot decide
+// from the schema alone.
 //
-// The migration is a strangler: checkParticleRestrict (the production entry)
-// runs the legacy fragments and emits their findings, while
-// particleRestrictUnified computes the same findings through the unified
-// recursion. A test hook (restrictDiff) compares the two across the whole
-// conformance corpus, and a fuzzer compares them on random particle pairs, so
-// any divergence surfaces automatically. The unified relation natively decides
-// the cases it has ported and delegates the remainder to the legacy fragments;
-// each ported case shrinks the delegated set until the fragments are dead and
-// deleted, at which point checkParticleRestrict emits the unified findings
-// directly.
+// particleRestrictUnified implements the tractable, false-positive-free core: it
+// decides restrictions whose base and restriction content models are a flat
+// all/sequence of element/wildcard particles (the restriction may also be a flat
+// choice), and gives up — reporting nothing — on any other shape. Within that
+// scope it is a single region/representative-name relation; see
+// particleRestrictUnified for the per-case breakdown and soundness argument.
 
 import (
 	"github.com/kud360/goxsd5/builtin"
 	"github.com/kud360/goxsd5/xsd"
 )
 
+// checkParticleRestrict reports cos-particle-restrict violations for ct by
+// running the unified relation and emitting its findings.
+func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) {
+	for _, v := range b.particleRestrictUnified(ct, accepted, globalsByName) {
+		b.errs.Addf(v.ref, v.pos, "%s", v.msg)
+	}
+}
+
 // restrictViolation is one particle-restriction finding captured as a value, so
-// the analysis can be run as a pure function and its output compared (legacy vs
-// unified) without touching builder error state.
+// the relation is a pure function of its inputs that the builder then emits.
 type restrictViolation struct {
 	ref xsd.SpecRef
 	pos xsd.Pos
 	msg string
 }
 
-// restrictDiff, when non-nil, is invoked by checkParticleRestrict for every
-// complexContent restriction it analyses, with the violations the legacy
-// fragment relation and the unified relation each produce. It exists only so the
-// Track-B differential test can assert the two relations agree across the whole
-// conformance corpus; production builds leave it nil.
-var restrictDiff func(ct *xsd.ComplexType, legacy, unified []restrictViolation)
-
-// checkParticleRestrict reports cos-particle-restrict violations for ct. It is
-// the production entry point during the Track-B migration: it emits the legacy
-// fragment findings (still authoritative) and, when the differential hook is
-// installed, hands both the legacy and unified findings to it for comparison.
-func (b *builder) checkParticleRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) {
-	legacy := b.collectLegacyRestrict(ct, accepted, globalsByName)
-	if restrictDiff != nil {
-		restrictDiff(ct, legacy, b.particleRestrictUnified(ct, accepted, globalsByName))
-	}
-	for _, v := range legacy {
-		b.errs.Addf(v.ref, v.pos, "%s", v.msg)
-	}
-}
-
-// collectLegacyRestrict runs the legacy fragment analysis against a scratch
-// error list and returns its findings as values, leaving the builder's real
-// error list untouched.
-func (b *builder) collectLegacyRestrict(ct *xsd.ComplexType, accepted func(*xsd.ElementDecl) map[xsd.QName]bool, globalsByName map[xsd.QName]*xsd.ElementDecl) []restrictViolation {
-	saved := b.errs
-	scratch := &xsd.ErrorList{}
-	b.errs = scratch
-	b.checkParticleRestrictLegacy(ct, accepted, globalsByName)
-	b.errs = saved
-	return toViolations(scratch)
-}
-
-// toViolations flattens a scratch error list into restrictViolation values.
-func toViolations(errs *xsd.ErrorList) []restrictViolation {
-	var vs []restrictViolation
-	for _, e := range xsd.AllErrors(errs.Err()) {
-		if xe, ok := e.(*xsd.Error); ok {
-			vs = append(vs, restrictViolation{ref: xe.Ref, pos: xe.Pos, msg: xe.Msg})
-		}
-	}
-	return vs
-}
-
 // rreport collects restrictViolation values during a unified-relation run,
-// mirroring the builder.errf surface the legacy fragments use so ported code
-// reads the same.
+// presenting the same errf surface the builder uses.
 type rreport struct {
 	vs []restrictViolation
 }

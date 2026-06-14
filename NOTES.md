@@ -161,7 +161,22 @@ refs resolve to an in-progress derived type; the topo order is over DERIVATION
 edges only, and element/ref recursion is NOT a derivation edge (same insight as
 buildGroup phase-4d), so it terminates.
 
-### Track B — REWRITE restrict.go (1126 LOC) to one unified subsumption relation
+### Track B — DONE (2026-06-14). REWRITE restrict.go to one unified relation
+TRACK B COMPLETE: the §3.9.6 particle-restriction relation now lives in
+subsumption.go as one region/representative-name relation (particleRestrictUnified
+→ slotRun for ≤1 base wildcard, regionRun for ≥2, shared nameTypeOK + unifiedShadow);
+the legacy fragments are deleted and restrict.go shrank 1138 → 705 LOC (now: open-
+content + attribute restriction checks, type-derivation relations, and the flat-
+particle support helpers the relation is built on). 5672 held across all three
+steps. STEP 3 (this step): flipped checkParticleRestrict to emit the unified
+findings, deleted checkParticleRestrictLegacy + checkRestrictRun +
+checkWildcardShadowsNamed + checkMultiWildcardRestrict + checkMultiWildcardRun,
+and retired the differential harness (subsumption_test.go) — its legacy oracle is
+gone, so the unified relation is now guarded by the conformance suite + build_test
+particle-restrict positives/negatives (the message-asserting negatives passed the
+flip unchanged, confirming verdict AND wording parity). Whole structural refactor
+(Tracks C, A, B) is now DONE; nothing left in this FUTURE WORK block.
+
 STEP 1 DONE (2026-06-14): strangler scaffold + differential harness landed,
 5672 held. checkParticleRestrict (now in subsumption.go) is the production entry:
 it runs the legacy fragments (renamed checkParticleRestrictLegacy in restrict.go,
