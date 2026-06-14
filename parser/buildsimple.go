@@ -74,6 +74,9 @@ func (b *builder) applyRestriction(st *xsd.SimpleType, base *xsd.SimpleType, r *
 	st.Primitive = base.Primitive
 	st.ItemType = base.ItemType
 	st.MemberTypes = base.MemberTypes
+	// A restriction's {member type definitions} are its base's (Part 2 §4.1.1
+	// case 2): restriction adds facets, it does not change membership.
+	st.DirectMembers = base.DirectMembers
 
 	declared := b.buildFacets(r, doc, base)
 	cmp := base.EffectiveCompare()
@@ -183,6 +186,10 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 	st.BaseType = builtin.AnySimpleType
 	st.Variety = xsd.VarietyUnion
 	st.MemberTypes = flat
+	// DirectMembers keeps the declared members un-flattened (member unions
+	// retained) for cos-st-derived-ok clause 2.2.4 transitive-membership and
+	// intervening-union reasoning; MemberTypes above is the flattened basic set.
+	st.DirectMembers = members
 	st.Cardinality = xsd.CardinalityCountablyInfinite
 }
 

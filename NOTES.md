@@ -7,28 +7,71 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> NEXT SESSION — phase-6 XPath package pushed 5663 → 5667 (+4). Remainder below <<<
-REMAINING 7 GAPS after phase 6 (GOXSD5_CONFORMANCE_GAPS=1 to list), all the
-hard tail:
- - DONE phase 6 (XPath 2.0 PARSER built): the 4 <alternative> test cases that
-   needed real XPath — ibm typeAlternatives s3_12si04 (malformed XPath),
-   s3_12si05 (AND vs and case), s3_12si06 (bad cast QName prefix xs1::), and
-   s3_12ii06 (cast to a complex type). See phase-6 block below.
+## >>> NEXT SESSION — phase-7 cos-st-derived-ok 2.2.4 pushed 5667 → 5670 (+3). Remainder below <<<
+REMAINING 4 GAPS after phase 7 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
+tail is nearly exhausted — what is left is 2 spec bugs (correctly tolerated),
+1 encoding limitation (out of scope), and 1 genuinely-hard narrow case:
+ - DONE phase 7 (cos-st-derived-ok clause 2.2.4): simple011/014/015 — union
+   derived-by-restriction. See phase-7 block below.
  - OUT OF SCOPE — encoding/xml limitation: wg IRI iri-001 (custom DTD entities
    &URI; — Go's encoding/xml won't expand them). skip candidate.
  - SPEC BUGS, leave tolerated: saxon all308 (xs:all extension of mixed empty
    content, bug 6202); saxon complex018 (open content restriction subset, bug
    16786).
  - GENUINELY HARD, deferred (need bigger structural work):
-   * simple011/014/015 — union derived-by-restriction (cos-st-derived-ok clause
-     2.2.4). Our builder FLATTENS union members at build time, discarding the
-     intervening-union structure the rule needs; fixing means preserving union
-     nesting through the pipeline. Invasive, high regression risk.
    * wild069 — an xs:all restriction whose ##local lax wildcard binds a GLOBAL
      element (e: duration) that the base's like-named NAMED particle (e:
      union(date,time)) would type differently, so zang accepts <e>duration</e>
      that zing rejects. Needs wildcard-binds-global vs named-element type
-     reasoning inside the all-restriction solver.
+     reasoning inside the all-restriction solver. SOUNDNESS is the hard part:
+     a lax wildcard legitimately binds globals in many VALID restrictions, so a
+     naive check regresses the wild* corpus. The precise sound condition: R has
+     a wildcard W_R matching a name N for which (a) R has no named particle (so
+     N routes to W_R), (b) B HAS a named element particle for N of type T_B
+     (UPA gives the named particle precedence in B, so B never routes N to its
+     own wildcard), and (c) W_R's effective type for N (strict/lax → the global
+     N decl's type, or unconstrained if lax+no-global) is not validly derived
+     from T_B. Only then is there an instance valid in R but not B. Deferred:
+     one narrow case, real false-positive risk; separate subsystem from phase 7.
+
+SESSION 2026-06-13 phase 7 (5667 → 5670, +3): cos-st-derived-ok CLAUSE 2.2.4
+(§3.16.6.3) — UNION derived-by-restriction substitutability, the simple01x
+cluster the prior NOTES flagged as "invasive, high regression risk" because the
+builder flattens union members. ELEGANT FIX: instead of restructuring the whole
+pipeline, ADD an un-flattened view alongside the flattened one. New field
+xsd.SimpleType.DirectMembers = the spec {member type definitions} (members
+exactly as declared, member-unions NOT flattened); the existing MemberTypes
+stays the flattened *basic members* so nothing downstream changes. Populated in
+buildSTUnion (DirectMembers = resolved members pre-flatten) and applyRestriction
+(a restriction inherits base.DirectMembers per Part 2 §4.1.1 case 2). That
+preserves exactly the transitive-membership + intervening-union structure clause
+2.2.4 needs. validlyDerivedByRestriction (restrict.go) is no longer lenient on a
+UNION BASE: when bType.{variety}=union and the ordinary base chain misses, it
+calls stDerivedFromUnion, an EXACT decision of clause 2.2.4 — walk DirectMembers,
+a member reached by an ordinary chain is the endpoint M (its facets free,
+clause 2.2.4.2), a member union we pass THROUGH is an intervening union whose
+{facets} must be empty (clause 2.2.4.3, checked at the top of the recursion via
+unionFacetsEmpty); the base union's own facets are likewise required empty.
+SOUNDNESS: clause 2.2.4 is the ONLY way to be validly derived from a union base
+once the chain walk fails, so a false result is decisive — never a false
+positive. When only the RESTRICTION type involves a union but the base does not,
+still give up (accept) — the flattened model can't decide that cleanly. Catches:
+ - simple011: union(date,time) is not a member of union(date,dateTime,time)
+   (fails 2.2.4.2 — a smaller union is not derived from the larger).
+ - simple014: xs:date IS in chap's transitive membership but chap is a
+   pattern-restricted union (fails 2.2.4.3 — base union carries a facet).
+ - simple015: xs:date reached through intervening union dt which carries a
+   pattern facet (fails 2.2.4.3 on the intervening union).
+DIAGNOSTIC: the type-derivation failure now reports under cos-st-derived-ok (its
+actual appealed rule) when the base element's type is a union, else the generic
+cos-particle-restrict — derivationFailureRef() picks; references the previously
+unwired SpecCosSTDerivedOK so the xsd matrix guard is satisfied. Unit tests:
+TestBuilderNegatives +3 (2.2.4.2 smaller-union, 2.2.4.3 facet-restricted base,
+2.2.4.3 facet-restricted intervening union) and TestBuildParticleRestrictValid
+Models +1 (member reached through a FACET-FREE intervening union stays valid —
+guards the recursion's accept path) + repurposed the old union-tolerated case
+into a real 2.2.4-holds positive. CONFORMANCE.md cos-st-derived-ok row → wip.
+Zero conformance regressions.
 
 SESSION 2026-06-13 phase 6 (5663 → 5667, +4): XPath 2.0 PARSER. New top-level
 package `xpath` (xpath/lexer.go, xpath.go, parse.go, kindtest.go) — a faithful

@@ -255,6 +255,32 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="b"><xs:sequence><xs:element name="s"><xs:alternative test="@k='1'" type="xs:token"/></xs:element></xs:sequence></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="s"><xs:alternative test="@k='1'" type="xs:string"/></xs:element></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 			[]string{"cos-particle-restrict"}},
+		{"restriction element narrows a union to a smaller union (cos-st-derived-ok 2.2.4.2)",
+			// union(date,time) is not validly derived from union(date,dateTime,time):
+			// a smaller union is not a member of the larger (saxon simple011).
+			`<xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:big"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="tns:small"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>
+			 <xs:simpleType name="big"><xs:union memberTypes="xs:date xs:dateTime xs:time"/></xs:simpleType>
+			 <xs:simpleType name="small"><xs:union memberTypes="xs:date xs:time"/></xs:simpleType>`,
+			[]string{"cos-st-derived-ok"}},
+		{"restriction element type is a member of a facet-restricted union base (cos-st-derived-ok 2.2.4.3)",
+			// xs:date is in chap's transitive membership, but chap is a
+			// pattern-restricted union, so the member is no longer substitutable
+			// for it (saxon simple014).
+			`<xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:chap"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="xs:date"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>
+			 <xs:simpleType name="ddt"><xs:union memberTypes="xs:date xs:dateTime xs:time"/></xs:simpleType>
+			 <xs:simpleType name="chap"><xs:restriction base="tns:ddt"><xs:pattern value=".*Z"/></xs:restriction></xs:simpleType>`,
+			[]string{"cos-st-derived-ok"}},
+		{"restriction element type is a member reached through a facet-restricted intervening union",
+			// chap = union(dt, time); dt = pattern-restricted union(date,dateTime).
+			// xs:date is in chap's transitive membership but the intervening union
+			// dt carries a facet, so it is not substitutable (saxon simple015).
+			`<xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:chap"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="xs:date"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>
+			 <xs:simpleType name="chap"><xs:union memberTypes="tns:dt xs:time"/></xs:simpleType>
+			 <xs:simpleType name="dt"><xs:restriction><xs:simpleType><xs:union memberTypes="xs:date xs:dateTime"/></xs:simpleType><xs:pattern value=".*Z"/></xs:restriction></xs:simpleType>`,
+			[]string{"cos-st-derived-ok"}},
 		{"extension narrows interleave open content to suffix (explicit)",
 			`<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>
 			 <xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="suffix"><xs:any namespace="urn:o"/></xs:openContent><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
@@ -933,10 +959,17 @@ func TestBuildParticleRestrictValidModels(t *testing.T) {
 		 <xs:element name="A2" type="xs:int" substitutionGroup="tns:a"/>
 		 <xs:complexType name="b"><xs:all><xs:element ref="tns:a" minOccurs="4" maxOccurs="20"/></xs:all></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:all><xs:element ref="tns:A1" minOccurs="2" maxOccurs="8"/><xs:element ref="tns:A2" minOccurs="2" maxOccurs="8"/></xs:all></xs:restriction></xs:complexContent></xs:complexType>`,
-		// Union-typed child restricted to a member type: union involvement is
-		// accepted (cos-st-derived-ok clause 2.2.4 stays tolerated, not rejected).
+		// Union-typed child restricted to one of the union's members: validly
+		// derived because the facet-free union imposes no intervening facet
+		// (cos-st-derived-ok clause 2.2.4 holds — the positive of simple011/014/015).
 		`<xs:simpleType name="u"><xs:union memberTypes="xs:date xs:time"/></xs:simpleType>
 		 <xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:u"/></xs:sequence></xs:complexType>
+		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="xs:date"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
+		// Member reached through a facet-free intervening union: still validly
+		// derived (clause 2.2.4.3 holds because no union on the path carries a facet).
+		`<xs:simpleType name="inner"><xs:union memberTypes="xs:date xs:dateTime"/></xs:simpleType>
+		 <xs:simpleType name="outer"><xs:union memberTypes="tns:inner xs:time"/></xs:simpleType>
+		 <xs:complexType name="b"><xs:sequence><xs:element name="c" type="tns:outer"/></xs:sequence></xs:complexType>
 		 <xs:complexType name="r"><xs:complexContent><xs:restriction base="tns:b"><xs:sequence><xs:element name="c" type="xs:date"/></xs:sequence></xs:restriction></xs:complexContent></xs:complexType>`,
 		// Attribute wildcard narrowed to a subset (notNamespace widened set).
 		`<xs:complexType name="b"><xs:sequence/><xs:anyAttribute notNamespace="urn:x"/></xs:complexType>

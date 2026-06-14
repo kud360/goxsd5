@@ -4809,8 +4809,11 @@ saxonMeta/Simple.testSet#simple004 pass
 saxonMeta/Simple.testSet#simple005 pass
 saxonMeta/Simple.testSet#simple006 pass
 saxonMeta/Simple.testSet#simple010 pass
+saxonMeta/Simple.testSet#simple011 pass
 saxonMeta/Simple.testSet#simple012 pass
 saxonMeta/Simple.testSet#simple013 pass
+saxonMeta/Simple.testSet#simple014 pass
+saxonMeta/Simple.testSet#simple015 pass
 saxonMeta/Simple.testSet#simple016 pass
 saxonMeta/Simple.testSet#simple017 pass
 saxonMeta/Simple.testSet#simple018 pass

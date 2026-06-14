@@ -131,8 +131,16 @@ type SimpleType struct {
 	Primitive *SimpleType
 	// ItemType is the item type for list varieties.
 	ItemType *SimpleType
-	// MemberTypes are the member types for union varieties.
+	// MemberTypes are the *basic members* of a union variety (Part 2 §4.1.6):
+	// member unions are flattened away, so every entry is a non-union type.
+	// Most callers want this. DirectMembers below keeps the un-flattened form.
 	MemberTypes []*SimpleType
+	// DirectMembers is the spec {member type definitions} property of a union
+	// (Part 2 §4.1.1): the member types exactly as declared, WITHOUT flattening
+	// member unions. A restriction of a union inherits its base's DirectMembers.
+	// This preserves the union-nesting needed to compute transitive membership
+	// and the intervening unions of cos-st-derived-ok clause 2.2.4.
+	DirectMembers []*SimpleType
 
 	Final DerivationSet
 

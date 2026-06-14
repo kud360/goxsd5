@@ -166,8 +166,9 @@ func (b *builder) checkRestrictRun(ct *xsd.ComplexType, slots []*baseSlot, baseW
 				if !validlyDerivedByRestriction(term.Type, slots[slot].decl.Type) {
 					// spec: cos-particle-restrict — §3.4.6.4 clause 2 /
 					// NameAndTypeOK: the restricting element's type must derive
-					// from the base's.
-					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", term.Name, describeCT(ct))
+					// from the base's (appealing to cos-st-derived-ok for a
+					// union base, §3.16.6.3 clause 2.2.4).
+					b.errf(derivationFailureRef(slots[slot].decl.Type), rp.Pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", term.Name, describeCT(ct))
 				}
 				if !slots[slot].decl.Nillable && term.Nillable {
 					b.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s may not be nillable when the base element is not", term.Name, describeCT(ct))
@@ -412,7 +413,7 @@ func (b *builder) checkMultiWildcardRun(ct *xsd.ComplexType, regions []baseRegio
 				continue
 			}
 			if !validlyDerivedByRestriction(e.decl.Type, reg.decl.Type) {
-				b.errf(xsd.SpecCosParticleRestrict, e.pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", e.decl.Name, describeCT(ct))
+				b.errf(derivationFailureRef(reg.decl.Type), e.pos, "element %s in the restriction of %s has a type that is not derived from the base element's type", e.decl.Name, describeCT(ct))
 			}
 			if !reg.decl.Nillable && e.decl.Nillable {
 				b.errf(xsd.SpecCosParticleRestrict, e.pos, "element %s in the restriction of %s may not be nillable when the base element is not", e.decl.Name, describeCT(ct))
@@ -804,26 +805,95 @@ func flatGroup(p *xsd.Particle) (parts []*xsd.Particle, top *xsd.Particle, ok bo
 }
 
 // validlyDerivedByRestriction reports whether the restriction element's type
-// validly derives from the base element's type. It is lenient: an
-// undeterminable type (nil) or any derivation chain is accepted; only
-// definitely-unrelated types fail, so no valid restriction is ever rejected
-// here.
+// validly derives from the base element's type (cos-st-derived-ok §3.16.6.3,
+// empty blocking set). It is a necessary condition for L(R) ⊆ L(B): an
+// undeterminable type (nil) is accepted, and it never rejects a genuinely valid
+// derivation, so reporting its failure is always a real error.
 //
-// Union membership (cos-st-derived-ok clause 2.2.4: a type derived from a
-// member of a union is validly derived from the union) is subtle — and the
-// member-union flattening done at build time discards intervening unions — so
-// any union involvement is accepted rather than risk a false positive. The
-// union-substitutability cases (saxon simple01x) therefore stay tolerated; see
-// NOTES.md.
+// When the base type is a union the decision is EXACT via clause 2.2.4 (a type
+// is validly derived from a union only if it derives from a type in the union's
+// transitive membership AND the union plus every intervening union carry no
+// facets). When only the *restriction* type involves a union but the base does
+// not, the relation can't be decided cleanly from the flattened model, so it is
+// accepted (no false positive).
+// derivationFailureRef names the schema constraint that a NameAndTypeOK
+// type-derivation failure appeals to: cos-st-derived-ok (§3.16.6.3) when the
+// base element's type is a union simple type — the clause 2.2.4 cases — and the
+// generic cos-particle-restrict otherwise. The reported id is purely diagnostic;
+// the schema is invalid either way.
+func derivationFailureRef(bType xsd.Type) xsd.SpecRef {
+	if st, ok := bType.(*xsd.SimpleType); ok && st.Variety == xsd.VarietyUnion {
+		return xsd.SpecCosSTDerivedOK
+	}
+	return xsd.SpecCosParticleRestrict
+}
+
 func validlyDerivedByRestriction(rType, bType xsd.Type) bool {
 	if rType == nil || bType == nil || rType == bType {
 		return true
 	}
-	if involvesUnion(rType) || involvesUnion(bType) {
+	// Ordinary derivation chain (cos-st-derived-ok clauses 1, 2.2.1, 2.2.2):
+	// the base type appears in the restriction type's base chain.
+	if _, ok := derivationMethods(rType, bType); ok {
 		return true
 	}
-	_, derived := derivationMethods(rType, bType)
-	return derived
+	// cos-st-derived-ok clause 2.2.4: the base type is a union and the
+	// restriction type is validly derived from one of its members. This is the
+	// only remaining way to be validly derived from a union base, so a negative
+	// result is decisive (catches saxon simple011/014/015).
+	if bst, ok := bType.(*xsd.SimpleType); ok && bst.Variety == xsd.VarietyUnion {
+		return stDerivedFromUnion(rType, bst)
+	}
+	// Base is not a union but the restriction type involves one: the flattened
+	// model can't decide reliably — give up (accept) rather than risk rejecting
+	// a valid schema.
+	if involvesUnion(rType) {
+		return true
+	}
+	return false
+}
+
+// stDerivedFromUnion decides cos-st-derived-ok clause 2.2.4 (§3.16.6.3): whether
+// simple type d is validly derived from the union type u. Per the clause, d must
+// be validly derived from some type in u's transitive membership (clause 2.2.4.2)
+// while the {facets} of u and of every intervening union are empty (clause
+// 2.2.4.3 — a facet anywhere on the path makes the member no longer substitutable
+// for the facet-restricted union, the XSD 1.1 correction noted at §G.2).
+//
+// The walk uses DirectMembers (the un-flattened {member type definitions}); a
+// member reachable by an ordinary derivation chain is the endpoint M and its own
+// facets are unconstrained, whereas a member union we must pass *through* is an
+// intervening union whose facets are required empty by the check at the top of
+// the recursive call. The decision is exact, so a false result is never a false
+// positive.
+func stDerivedFromUnion(d xsd.Type, u *xsd.SimpleType) bool {
+	if !unionFacetsEmpty(u) {
+		return false // clause 2.2.4.3: u (the base or an intervening union) carries facets
+	}
+	for _, m := range u.DirectMembers {
+		// clause 2.2.4.2: d validly derived from member m (m is the endpoint).
+		if _, ok := derivationMethods(d, m); ok {
+			return true
+		}
+		// Otherwise m is an intervening union; recurse with its facets checked.
+		if m.Variety == xsd.VarietyUnion && stDerivedFromUnion(d, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// unionFacetsEmpty reports whether a union type carries no constraining facets,
+// the condition cos-st-derived-ok clause 2.2.4.3 imposes on the base and every
+// intervening union. (whiteSpace does not apply to unions, so only the
+// value-constraining facets are relevant.)
+func unionFacetsEmpty(st *xsd.SimpleType) bool {
+	f := &st.Facets
+	return len(f.PatternGroups) == 0 && !f.HasEnumeration && len(f.Assertions) == 0 &&
+		f.Length == nil && f.MinLength == nil && f.MaxLength == nil &&
+		f.MinInclusive == nil && f.MaxInclusive == nil &&
+		f.MinExclusive == nil && f.MaxExclusive == nil &&
+		f.TotalDigits == nil && f.FractionDigits == nil
 }
 
 // validlySubstitutable reports whether type s is validly substitutable for type

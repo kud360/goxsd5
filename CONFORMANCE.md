@@ -177,7 +177,7 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | cos-particle-restrict | §3.9.6 | M9+ | wip (per-name occurrence/type bag check for flat all/sequence element/wildcard models, incl. a choice of flat branches checked per-branch; multi-base-wildcard packing deferred) | parser/restrict.go |
 | cos-element-consistent (EDC) | §3.8.6 | M9+ | deferred (element declarations consistent) | |
 | cos-ct-derived-ok | §3.4.6 | M9+ | deferred (complex-type derivation OK) | |
-| cos-st-derived-ok | §3.16.6 | M9+ | deferred (simple-type derivation OK) | |
+| cos-st-derived-ok | §3.16.6 | M9+ | wip (clause 2.2.4 union-member derivation: transitive membership + intervening-union facet check, applied at particle restriction) | parser/restrict.go |
 | cos-aw-union | §3.10.6 | M9+ | deferred (wildcard union; first-wildcard-wins approximation) | |
 | cos-aw-intersect | §3.10.6 | M9+ | deferred (wildcard intersection) | |
 | cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset relation implemented in parser/wildcard.go; violations reported under derivation-ok-restriction) | |
