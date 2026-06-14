@@ -120,11 +120,10 @@ func TestListParsing(t *testing.T) {
 func TestFacetPipelineSpaceCorrectness(t *testing.T) {
 	declared := xsd.Facets{Length: &xsd.IntFacet{Value: 2}}
 	st := &xsd.SimpleType{
-		Name:      xsd.QName{Local: "twoOctets"},
-		BaseType:  HexBinary,
-		Variety:   xsd.VarietyAtomic,
-		Primitive: HexBinary,
-		Facets:    xsd.MergeFacets(&HexBinary.Facets, &declared),
+		Name:     xsd.QName{Local: "twoOctets"},
+		BaseType: HexBinary,
+		Variety:  xsd.VarietyAtomic,
+		Facets:   xsd.MergeFacets(&HexBinary.Facets, &declared),
 	}
 	if _, err := st.ParseValue("0FB7", nil); err != nil { // 4 chars = 2 octets
 		t.Errorf("0FB7 should be 2 octets: %v", err)
@@ -148,10 +147,9 @@ func TestPatternANDAcrossSteps(t *testing.T) {
 		}
 		declared := xsd.Facets{PatternGroups: []xsd.PatternGroup{group}}
 		return &xsd.SimpleType{
-			BaseType:  base,
-			Variety:   xsd.VarietyAtomic,
-			Primitive: base.Primitive,
-			Facets:    xsd.MergeFacets(&base.Facets, &declared),
+			BaseType: base,
+			Variety:  xsd.VarietyAtomic,
+			Facets:   xsd.MergeFacets(&base.Facets, &declared),
 		}
 	}
 	// Step 1: starts with a, OR starts with b. Step 2: ends with z.
@@ -175,10 +173,9 @@ func TestEnumerationValueSpace(t *testing.T) {
 	one, _ := Integer.ParseValue("1", nil)
 	declared := xsd.Facets{HasEnumeration: true, Enumeration: []xsd.Enum{{Value: one, Lexical: "1"}}}
 	st := &xsd.SimpleType{
-		BaseType:  Integer,
-		Variety:   xsd.VarietyAtomic,
-		Primitive: Decimal,
-		Facets:    xsd.MergeFacets(&Integer.Facets, &declared),
+		BaseType: Integer,
+		Variety:  xsd.VarietyAtomic,
+		Facets:   xsd.MergeFacets(&Integer.Facets, &declared),
 	}
 	if _, err := st.ParseValue("01", nil); err != nil {
 		t.Errorf("01 should match enum value 1: %v", err)
@@ -201,7 +198,7 @@ func TestAllBuiltinsWellFormed(t *testing.T) {
 		if b != AnySimpleType && b.BaseType == nil {
 			t.Errorf("%s has no base", b.Name.Local)
 		}
-		if b.Variety == xsd.VarietyAtomic && b != AnySimpleType && b != AnyAtomicType && b.Primitive == nil {
+		if b.Variety == xsd.VarietyAtomic && b != AnySimpleType && b != AnyAtomicType && b.PrimitiveType() == nil {
 			t.Errorf("%s has no primitive", b.Name.Local)
 		}
 	}

@@ -217,10 +217,14 @@ func derivationMethods(t, anc xsd.Type) (xsd.DerivationSet, bool) {
 // enumeration before they are used for validation.
 func (b *builder) checkNotationEnum(t xsd.Type, p xsd.Pos) {
 	st := contentSimpleType(t)
-	if st == nil || st.Primitive == nil {
+	if st == nil {
 		return
 	}
-	if st.Primitive.Name.Local == "NOTATION" && !st.Facets.HasEnumeration {
+	prim := st.PrimitiveType()
+	if prim == nil {
+		return
+	}
+	if prim.Name.Local == "NOTATION" && !st.Facets.HasEnumeration {
 		// spec: enumeration-required-notation — XSD 1.1 Part 2 §3.3.19
 		b.errf(xsd.SpecEnumNotation, p, "a NOTATION-derived type must constrain its values with an enumeration facet")
 	}

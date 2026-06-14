@@ -126,9 +126,6 @@ type SimpleType struct {
 	BaseType Type // *SimpleType, except xs:anySimpleType whose base is xs:anyType
 	Variety  Variety
 
-	// Primitive is the primitive ancestor for atomic types (self for the
-	// primitives themselves); nil for list/union varieties.
-	Primitive *SimpleType
 	// ItemType is the item type for list varieties.
 	ItemType *SimpleType
 	// MemberTypes are the *basic members* of a union variety (Part 2 §4.1.6):
@@ -173,6 +170,29 @@ func (t *SimpleType) TypeName() QName { return t.Name }
 func (t *SimpleType) TypePos() Pos    { return t.Pos }
 func (t *SimpleType) Base() Type      { return t.BaseType }
 func (t *SimpleType) isType()         {}
+
+// PrimitiveType returns the primitive ancestor for an atomic type (itself for a
+// primitive), or nil for list/union varieties and for the atomic ur-types
+// (anySimpleType/anyAtomicType, which have no primitive). It is a derived view
+// of the BaseType chain: the primitive is the nearest atomic ancestor that is a
+// built-in directly restricting xs:anyAtomicType — the only way the spec admits
+// a primitive (user schemas cannot define one).
+func (t *SimpleType) PrimitiveType() *SimpleType {
+	if t.Variety != VarietyAtomic {
+		return nil
+	}
+	anyAtomic := QName{Namespace: XSDNS, Local: "anyAtomicType"}
+	for cur := t; ; {
+		base, ok := cur.BaseType.(*SimpleType)
+		if !ok {
+			return nil // base is xs:anyType (or nil): reached an atomic ur-type
+		}
+		if cur.IsBuiltin && base.Name == anyAtomic {
+			return cur
+		}
+		cur = base
+	}
+}
 
 // OrderedFacet is the HFP `ordered` fundamental facet.
 type OrderedFacet int

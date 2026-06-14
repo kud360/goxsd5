@@ -71,7 +71,6 @@ func (b *builder) buildSTRestriction(st *xsd.SimpleType, r *xmltree.Node, doc *s
 func (b *builder) applyRestriction(st *xsd.SimpleType, base *xsd.SimpleType, r *xmltree.Node, doc *schemaDoc) {
 	st.BaseType = base
 	st.Variety = base.Variety
-	st.Primitive = base.Primitive
 	st.ItemType = base.ItemType
 	st.MemberTypes = base.MemberTypes
 	// A restriction's {member type definitions} are its base's (Part 2 §4.1.1
@@ -251,11 +250,12 @@ func applicableFacets(base *xsd.SimpleType) facetMask {
 	case xsd.VarietyUnion:
 		return fPattern | fEnumeration | fAssertion
 	}
-	if base.Primitive == nil {
+	prim := base.PrimitiveType()
+	if prim == nil {
 		// anySimpleType fallback after an earlier error: don't cascade.
 		return allFacets
 	}
-	if m, ok := primitiveFacetMask[base.Primitive.Name.Local]; ok {
+	if m, ok := primitiveFacetMask[prim.Name.Local]; ok {
 		return m
 	}
 	return allFacets
@@ -376,7 +376,7 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 			}
 			// For a NOTATION-derived type, an enumeration value must name a
 			// NOTATION declared in the schema (enumeration-required-notation).
-			if base.Primitive != nil && base.Primitive.Name.Local == "NOTATION" && base.Primitive.Name.Namespace == xsd.XSDNS {
+			if prim := base.PrimitiveType(); prim != nil && prim.Name.Local == "NOTATION" && prim.Name.Namespace == xsd.XSDNS {
 				if qv, ok := v.(xsd.QNameValue); ok && b.registryFor(doc).lookup(spaceNotation, qv.Name) == nil {
 					b.errf(xsd.SpecEnumNotation, c.Pos, "enumeration value %q does not name a declared notation", lex)
 				}

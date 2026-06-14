@@ -81,7 +81,6 @@ func primitive(local string, ws xsd.WhiteSpace, parse xsd.ParseFunc, ordered xsd
 		Numeric:   numeric,
 		IsBuiltin: true,
 	}
-	t.Primitive = t
 	t.Facets.WhiteSpace = ws
 	t.Facets.WhiteSpaceFixed = local != "string" && local != "anyURI"
 	t.DeclaredFacets = t.Facets
@@ -98,7 +97,6 @@ func restrict(local string, base *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.
 		Name:           qn(local),
 		BaseType:       base,
 		Variety:        base.Variety,
-		Primitive:      base.Primitive,
 		ItemType:       base.ItemType,
 		Facets:         xsd.MergeFacets(&base.Facets, &declared),
 		DeclaredFacets: declared,

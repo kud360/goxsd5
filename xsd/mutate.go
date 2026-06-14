@@ -32,7 +32,6 @@ func (t *SimpleType) RestrictWith(declared *Facets) (*SimpleType, error) {
 	st := &SimpleType{
 		BaseType:       t,
 		Variety:        t.Variety,
-		Primitive:      t.Primitive,
 		ItemType:       t.ItemType,
 		MemberTypes:    t.MemberTypes,
 		DeclaredFacets: *declared,

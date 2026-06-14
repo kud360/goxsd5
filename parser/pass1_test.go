@@ -602,7 +602,7 @@ func TestBuildSmoke(t *testing.T) {
 	if !ok || !size.Facets.HasEnumeration || len(size.Facets.Enumeration) != 2 {
 		t.Fatalf("size type facets not built: %+v", size)
 	}
-	if size.Primitive == nil || size.Primitive.Name.Local != "string" {
-		t.Errorf("size primitive = %v, want string", size.Primitive)
+	if p := size.PrimitiveType(); p == nil || p.Name.Local != "string" {
+		t.Errorf("size primitive = %v, want string", size.PrimitiveType())
 	}
 }
