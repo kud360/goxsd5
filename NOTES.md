@@ -182,6 +182,29 @@ multi-wildcard rep-name engine (collectReps/baseRegion), removing each delegatio
 while the diff stays green; preserve all238/wild048 supra-spec coverage. Then
 step 3: flip emission to unified, delete the fragments + the capture/hook.
 
+STEP 2 DONE (2026-06-14): the unified relation is fully implemented and
+differentially verified; 5672 held, production STILL emits legacy (unified runs
+only under the test hook — the flip is step 3). particleRestrictUnified now
+natively decides ALL shapes (no delegation): it gates as before, counts base
+wildcards, and dispatches the §3.9.6 cardinality rule — ≤1 base wildcard →
+slotRun (NSRecurseCheckCardinality: map each restriction particle to the one base
+particle it restricts, bound the occurrence sum, retain required content) + the
+xs:all unifiedShadow; ≥2 base wildcards → regionRun (the multi-wildcard
+rep-name/region packing, name-admissibility + disjoint-gated count + type). The
+shared NameAndTypeOK triple is factored into b.nameTypeOK (the slot path checks
+the type table, the region path doesn't — matching the fragments). KEY
+TRANSCRIPTION BUG the fuzz caught: regionRun must RETURN after name-admissibility
+when regions overlap, skipping BOTH count AND the type check (legacy
+checkMultiWildcardRun does); running the type check on overlap made unified
+stricter (329 fuzz divergences, all legacy-valid/unified-invalid) until gated.
+Diff relaxed from exact-message to VERDICT+ref-set parity (a genuine unification
+phrases diagnostics differently); green on 2602 suite restrictions + 100k fuzz
+pairs (now wildcard-bearing). NEXT (step 3): flip checkParticleRestrict to emit
+particleRestrictUnified, delete checkParticleRestrictLegacy + the fragment
+functions (checkRestrictRun, checkWildcardShadowsNamed, checkMultiWildcardRestrict,
+checkMultiWildcardRun, baseSlot, and now-unused helpers) from restrict.go, and
+retire the differential harness (its legacy oracle is gone).
+
 restrict.go accreted phase-by-phase as N necessary-condition fragments
 (checkRestrictRun, checkMultiWildcardRestrict, checkWildcardShadowsNamed,
 checkOpenContentRestrict, checkAttrWildcardRestriction, …), each a slice of

@@ -20,29 +20,33 @@ import (
 	"github.com/kud360/goxsd5/xsd"
 )
 
-// vkey renders a finding as a stable comparison key (spec id + position +
-// message); the multiset of keys is what must match between the two relations.
-func vkey(v restrictViolation) string {
-	return v.ref.ID + "|" + v.pos.String() + "|" + v.msg
+// verdict reduces a finding set to what the conformance ratchet cares about: is
+// the restriction rejected at all (any violation), and under which spec
+// constraints (the set of distinct ref ids). A genuine unification of the
+// fragments reaches the same verdict but may phrase or position its diagnostics
+// differently, so messages and positions are deliberately not compared.
+func verdict(vs []restrictViolation) (invalid bool, refs []string) {
+	seen := map[string]bool{}
+	for _, v := range vs {
+		if !seen[v.ref.ID] {
+			seen[v.ref.ID] = true
+			refs = append(refs, v.ref.ID)
+		}
+	}
+	sort.Strings(refs)
+	return len(vs) > 0, refs
 }
 
 // diffViolations returns a human-readable description of how two finding sets
-// differ, or "" when they are equal as multisets.
+// disagree on the verdict (rejected-or-not, and which spec constraints), or ""
+// when they agree.
 func diffViolations(legacy, unified []restrictViolation) string {
-	lk := make([]string, len(legacy))
-	uk := make([]string, len(unified))
-	for i, v := range legacy {
-		lk[i] = vkey(v)
-	}
-	for i, v := range unified {
-		uk[i] = vkey(v)
-	}
-	sort.Strings(lk)
-	sort.Strings(uk)
-	if fmt.Sprint(lk) == fmt.Sprint(uk) {
+	li, lr := verdict(legacy)
+	ui, ur := verdict(unified)
+	if li == ui && fmt.Sprint(lr) == fmt.Sprint(ur) {
 		return ""
 	}
-	return fmt.Sprintf("legacy=%v unified=%v", lk, uk)
+	return fmt.Sprintf("legacy={invalid:%v refs:%v} unified={invalid:%v refs:%v}", li, lr, ui, ur)
 }
 
 // TestRestrictDifferentialSuite installs the differential hook and rebuilds the
@@ -82,6 +86,34 @@ func TestRestrictDifferentialSuite(t *testing.T) {
 	t.Logf("compared %d restrictions across the suite; legacy and unified agree", compared)
 }
 
+// renderParticle renders a flat particle for divergence diagnostics.
+func renderParticle(p *xsd.Particle) string {
+	occ := func(p *xsd.Particle) string {
+		mx := fmt.Sprint(p.MaxOccurs)
+		if p.MaxOccurs == xsd.UnboundedOccurs {
+			mx = "*"
+		}
+		return fmt.Sprintf("[%d,%s]", p.MinOccurs, mx)
+	}
+	mg, ok := p.Term.(*xsd.ModelGroup)
+	if !ok {
+		return "?"
+	}
+	out := mg.Compositor.String() + occ(p) + "{"
+	for i, c := range mg.Particles {
+		if i > 0 {
+			out += " "
+		}
+		switch t := c.Term.(type) {
+		case *xsd.ElementDecl:
+			out += fmt.Sprintf("%s:%s%s", t.Name, t.Type.TypeName().Local, occ(c))
+		case *xsd.Wildcard:
+			out += fmt.Sprintf("any(m%d,ns%v,pc%d)%s", t.Mode, t.Namespaces, t.ProcessContents, occ(c))
+		}
+	}
+	return out + "}"
+}
+
 func joinLines(ss []string) string {
 	out := ""
 	for _, s := range ss {
@@ -104,7 +136,15 @@ func TestRestrictDifferentialFuzz(t *testing.T) {
 	ct2 := &xsd.ComplexType{Name: xsd.QName{Local: "T2"}, BaseType: ct1, DerivationMethod: xsd.DeriveRestriction}
 	ctx := &xsd.ComplexType{Name: xsd.QName{Local: "TX"}}
 	types := []xsd.Type{ct0, ct1, ct2, ctx}
-	names := []xsd.QName{{Local: "a"}, {Local: "b"}, {Local: "c"}, {Local: "d"}}
+	// Element names spread over the same namespaces the wildcards range over, so
+	// wildcard/element overlap actually occurs.
+	nss := []string{"", "n1", "n2"}
+	var names []xsd.QName
+	for _, ns := range nss {
+		for _, l := range []string{"a", "b", "c"} {
+			names = append(names, xsd.QName{Namespace: ns, Local: l})
+		}
+	}
 
 	// accepted with no substitution groups: an element particle accepts only its
 	// own name (the suite test covers the substitution-group routing).
@@ -125,17 +165,38 @@ func TestRestrictDifferentialFuzz(t *testing.T) {
 			return min, min
 		}
 	}
+	// A small pool of wildcards over the fuzz namespaces, plus the occasional
+	// "no wildcard" so most particles are named elements.
+	wildcard := func() *xsd.Wildcard {
+		w := &xsd.Wildcard{ProcessContents: xsd.ProcessContents(rng.Intn(3))}
+		switch rng.Intn(3) {
+		case 0:
+			w.Mode = xsd.NSConstraintAny
+		case 1:
+			w.Mode = xsd.NSConstraintEnumeration
+			w.Namespaces = []string{nss[rng.Intn(len(nss))]}
+		default:
+			w.Mode = xsd.NSConstraintNot
+			w.Namespaces = []string{nss[rng.Intn(len(nss))]}
+		}
+		return w
+	}
 	run := func(compositor xsd.Compositor) *xsd.Particle {
 		k := 1 + rng.Intn(4)
 		var parts []*xsd.Particle
 		for i := 0; i < k; i++ {
 			min, max := occ()
-			e := &xsd.ElementDecl{
-				Name:     names[rng.Intn(len(names))],
-				Type:     types[rng.Intn(len(types))],
-				Nillable: rng.Intn(4) == 0,
+			var term xsd.Term
+			if rng.Intn(4) == 0 {
+				term = wildcard()
+			} else {
+				term = &xsd.ElementDecl{
+					Name:     names[rng.Intn(len(names))],
+					Type:     types[rng.Intn(len(types))],
+					Nillable: rng.Intn(4) == 0,
+				}
 			}
-			parts = append(parts, &xsd.Particle{MinOccurs: min, MaxOccurs: max, Term: e})
+			parts = append(parts, &xsd.Particle{MinOccurs: min, MaxOccurs: max, Term: term})
 		}
 		tmin, tmax := occ()
 		if tmax == 0 {
@@ -151,7 +212,7 @@ func TestRestrictDifferentialFuzz(t *testing.T) {
 	}
 
 	mismatches := 0
-	for iter := 0; iter < 20000; iter++ {
+	for iter := 0; iter < 100000; iter++ {
 		base := &xsd.ComplexType{Name: xsd.QName{Local: "B"}, Content: &xsd.ElementContent{Particle: run(pick())}}
 		r := &xsd.ComplexType{
 			Name:             xsd.QName{Local: "R"},
@@ -162,8 +223,10 @@ func TestRestrictDifferentialFuzz(t *testing.T) {
 		legacy := b.collectLegacyRestrict(r, accepted, globals)
 		unified := b.particleRestrictUnified(r, accepted, globals)
 		if d := diffViolations(legacy, unified); d != "" {
-			if mismatches < 10 {
-				t.Errorf("iter %d diverges: %s", iter, d)
+			if mismatches < 5 {
+				t.Errorf("iter %d diverges: %s\n  base=%s\n  restr=%s", iter, d,
+					renderParticle(base.Content.(*xsd.ElementContent).Particle),
+					renderParticle(r.Content.(*xsd.ElementContent).Particle))
 			}
 			mismatches++
 		}
