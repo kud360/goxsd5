@@ -84,18 +84,9 @@ func (b *builder) applyRestriction(st *xsd.SimpleType, base *xsd.SimpleType, r *
 	b.errs.Add(xsd.ValidateFacetSet(&eff, cmp))
 	st.DeclaredFacets = *declared
 	st.Facets = eff
-
-	// Fundamental facets (Part 2 §F): ordering and numericness are those of
-	// the base; boundedness and cardinality can only tighten.
-	st.Ordered = base.Ordered
-	st.Numeric = base.Numeric
-	st.Bounded = base.Bounded ||
-		((eff.MinInclusive != nil || eff.MinExclusive != nil) &&
-			(eff.MaxInclusive != nil || eff.MaxExclusive != nil))
-	st.Cardinality = base.Cardinality
-	if eff.HasEnumeration || eff.Length != nil || eff.MaxLength != nil || eff.TotalDigits != nil {
-		st.Cardinality = xsd.CardinalityFinite
-	}
+	// The fundamental facets (Part 2 §F) are derived on demand by
+	// (*SimpleType).Fundamentals() from these effective facets and the
+	// primitive base case; nothing to store here.
 }
 
 func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDoc) {
@@ -136,7 +127,6 @@ func (b *builder) buildSTList(st *xsd.SimpleType, l *xmltree.Node, doc *schemaDo
 	st.ItemType = item
 	st.Facets.WhiteSpace = xsd.WSCollapse
 	st.Facets.WhiteSpaceFixed = true
-	st.Cardinality = xsd.CardinalityCountablyInfinite
 }
 
 func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaDoc) {
@@ -180,7 +170,6 @@ func (b *builder) buildSTUnion(st *xsd.SimpleType, u *xmltree.Node, doc *schemaD
 	// retained) for cos-st-derived-ok clause 2.2.4 transitive-membership and
 	// intervening-union reasoning; the flattened basic set is BasicMembers().
 	st.DirectMembers = members
-	st.Cardinality = xsd.CardinalityCountablyInfinite
 }
 
 // facetMask says which constraining facets a type admits

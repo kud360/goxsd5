@@ -71,14 +71,12 @@ func parseAsString(s string, _ xsd.ValueContext) (xsd.Value, error) { return xsd
 
 // primitive constructs a primitive type: based on anyAtomicType, its own
 // primitive ancestor.
-func primitive(local string, ws xsd.WhiteSpace, parse xsd.ParseFunc, ordered xsd.OrderedFacet, numeric bool) *xsd.SimpleType {
+func primitive(local string, ws xsd.WhiteSpace, parse xsd.ParseFunc) *xsd.SimpleType {
 	t := &xsd.SimpleType{
 		Name:      qn(local),
 		BaseType:  AnyAtomicType,
 		Variety:   xsd.VarietyAtomic,
 		Parse:     parse,
-		Ordered:   ordered,
-		Numeric:   numeric,
 		IsBuiltin: true,
 	}
 	t.Facets.WhiteSpace = ws
@@ -100,10 +98,6 @@ func restrict(local string, base *xsd.SimpleType, mod func(f *xsd.Facets)) *xsd.
 		ItemType:       base.ItemType,
 		Facets:         xsd.MergeFacets(&base.Facets, &declared),
 		DeclaredFacets: declared,
-		Ordered:        base.Ordered,
-		Numeric:        base.Numeric,
-		Bounded:        base.Bounded,
-		Cardinality:    base.Cardinality,
 		IsBuiltin:      true,
 	}
 	return t
@@ -292,28 +286,30 @@ func isNCName(s string) bool {
 
 // ---- primitives ----
 
+// The {ordered}/{numeric} fundamental facets of these primitives live in
+// xsd.primitiveFundamentals (Part 2 §F.1); SimpleType.Fundamentals() reads them.
 var (
-	String  = primitive("string", xsd.WSPreserve, parseAsString, xsd.OrderedFalse, false)
-	Boolean = primitive("boolean", xsd.WSCollapse, parseBoolean, xsd.OrderedFalse, false)
-	Decimal = primitive("decimal", xsd.WSCollapse, parseDecimalV, xsd.OrderedTotal, true)
-	Float   = primitive("float", xsd.WSCollapse, parseFloat, xsd.OrderedPartial, true)
-	Double  = primitive("double", xsd.WSCollapse, parseDouble, xsd.OrderedPartial, true)
+	String  = primitive("string", xsd.WSPreserve, parseAsString)
+	Boolean = primitive("boolean", xsd.WSCollapse, parseBoolean)
+	Decimal = primitive("decimal", xsd.WSCollapse, parseDecimalV)
+	Float   = primitive("float", xsd.WSCollapse, parseFloat)
+	Double  = primitive("double", xsd.WSCollapse, parseDouble)
 
-	Duration   = primitive("duration", xsd.WSCollapse, parseDurationV, xsd.OrderedPartial, false)
-	DateTime   = primitive("dateTime", xsd.WSCollapse, dtParser(xsd.KindDateTime), xsd.OrderedPartial, false)
-	Time       = primitive("time", xsd.WSCollapse, dtParser(xsd.KindTime), xsd.OrderedPartial, false)
-	Date       = primitive("date", xsd.WSCollapse, dtParser(xsd.KindDate), xsd.OrderedPartial, false)
-	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, dtParser(xsd.KindGYearMonth), xsd.OrderedPartial, false)
-	GYear      = primitive("gYear", xsd.WSCollapse, dtParser(xsd.KindGYear), xsd.OrderedPartial, false)
-	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, dtParser(xsd.KindGMonthDay), xsd.OrderedPartial, false)
-	GDay       = primitive("gDay", xsd.WSCollapse, dtParser(xsd.KindGDay), xsd.OrderedPartial, false)
-	GMonth     = primitive("gMonth", xsd.WSCollapse, dtParser(xsd.KindGMonth), xsd.OrderedPartial, false)
+	Duration   = primitive("duration", xsd.WSCollapse, parseDurationV)
+	DateTime   = primitive("dateTime", xsd.WSCollapse, dtParser(xsd.KindDateTime))
+	Time       = primitive("time", xsd.WSCollapse, dtParser(xsd.KindTime))
+	Date       = primitive("date", xsd.WSCollapse, dtParser(xsd.KindDate))
+	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, dtParser(xsd.KindGYearMonth))
+	GYear      = primitive("gYear", xsd.WSCollapse, dtParser(xsd.KindGYear))
+	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, dtParser(xsd.KindGMonthDay))
+	GDay       = primitive("gDay", xsd.WSCollapse, dtParser(xsd.KindGDay))
+	GMonth     = primitive("gMonth", xsd.WSCollapse, dtParser(xsd.KindGMonth))
 
-	HexBinary    = primitive("hexBinary", xsd.WSCollapse, parseHexBinary, xsd.OrderedFalse, false)
-	Base64Binary = primitive("base64Binary", xsd.WSCollapse, parseBase64Binary, xsd.OrderedFalse, false)
-	AnyURI       = primitive("anyURI", xsd.WSCollapse, parseAnyURI, xsd.OrderedFalse, false)
-	QName        = primitive("QName", xsd.WSCollapse, parseQName, xsd.OrderedFalse, false)
-	NOTATION     = primitive("NOTATION", xsd.WSCollapse, parseQName, xsd.OrderedFalse, false)
+	HexBinary    = primitive("hexBinary", xsd.WSCollapse, parseHexBinary)
+	Base64Binary = primitive("base64Binary", xsd.WSCollapse, parseBase64Binary)
+	AnyURI       = primitive("anyURI", xsd.WSCollapse, parseAnyURI)
+	QName        = primitive("QName", xsd.WSCollapse, parseQName)
+	NOTATION     = primitive("NOTATION", xsd.WSCollapse, parseQName)
 )
 
 // ---- derived numeric ladder ----

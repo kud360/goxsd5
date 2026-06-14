@@ -206,3 +206,44 @@ func TestAllBuiltinsWellFormed(t *testing.T) {
 		t.Error("Lookup misbehaves")
 	}
 }
+
+// TestFundamentalsDerivation locks the derived fundamental facets (Part 2 §F):
+// {ordered}/{numeric} from the primitive base case, {bounded} from the effective
+// min/max bounds, {cardinality} finite once a value-enumerating facet applies.
+func TestFundamentalsDerivation(t *testing.T) {
+	want := func(t *testing.T, name string, st *xsd.SimpleType, o xsd.OrderedFacet, b bool, c xsd.Cardinality, n bool) {
+		t.Helper()
+		f := st.Fundamentals()
+		if f.Ordered != o || f.Bounded != b || f.Cardinality != c || f.Numeric != n {
+			t.Errorf("%s.Fundamentals() = %+v; want {Ordered:%d Bounded:%v Cardinality:%d Numeric:%v}",
+				name, f, o, b, c, n)
+		}
+	}
+	// decimal: primitive, total order, numeric, unbounded, countably infinite.
+	want(t, "decimal", Decimal, xsd.OrderedTotal, false, xsd.CardinalityCountablyInfinite, true)
+	// integer: inherits decimal's ordering/numericness; no min+max bounds.
+	want(t, "integer", Integer, xsd.OrderedTotal, false, xsd.CardinalityCountablyInfinite, true)
+	// byte: minInclusive -128 AND maxInclusive 127 in its effective facets ->
+	// {bounded} = true (a value the old hand-copied field never reflected).
+	want(t, "byte", Byte, xsd.OrderedTotal, true, xsd.CardinalityCountablyInfinite, true)
+	// string: no order, not numeric, unbounded, countably infinite.
+	want(t, "string", String, xsd.OrderedFalse, false, xsd.CardinalityCountablyInfinite, false)
+	// list / union: not atomic -> no primitive -> ordered false, not numeric.
+	want(t, "NMTOKENS", NMTOKENS, xsd.OrderedFalse, false, xsd.CardinalityCountablyInfinite, false)
+
+	// A length-restricted type has finite {cardinality}.
+	short := derive(t, String, &xsd.Facets{Length: &xsd.IntFacet{Value: 4}})
+	want(t, "string(length=4)", short, xsd.OrderedFalse, false, xsd.CardinalityFinite, false)
+}
+
+// derive builds an anonymous restriction of base with the given declared facets,
+// mirroring how the parser/mutate paths construct a derived simple type.
+func derive(t *testing.T, base *xsd.SimpleType, declared *xsd.Facets) *xsd.SimpleType {
+	t.Helper()
+	return &xsd.SimpleType{
+		BaseType:       base,
+		Variety:        base.Variety,
+		Facets:         xsd.MergeFacets(&base.Facets, declared),
+		DeclaredFacets: *declared,
+	}
+}

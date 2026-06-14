@@ -36,17 +36,8 @@ func (t *SimpleType) RestrictWith(declared *Facets) (*SimpleType, error) {
 		DirectMembers:  t.DirectMembers, // BasicMembers() derives from these
 		DeclaredFacets: *declared,
 		Facets:         eff,
-		// Fundamental facets (Part 2 §F): ordering and numericness follow the
-		// base; boundedness and cardinality can only tighten.
-		Ordered: t.Ordered,
-		Numeric: t.Numeric,
-		Bounded: t.Bounded ||
-			((eff.MinInclusive != nil || eff.MinExclusive != nil) &&
-				(eff.MaxInclusive != nil || eff.MaxExclusive != nil)),
-		Cardinality: t.Cardinality,
-	}
-	if eff.HasEnumeration || eff.Length != nil || eff.MaxLength != nil || eff.TotalDigits != nil {
-		st.Cardinality = CardinalityFinite
+		// Fundamental facets (Part 2 §F) are derived from these effective facets
+		// by Fundamentals(); nothing to copy from the base.
 	}
 	return st, nil
 }
@@ -88,7 +79,8 @@ func (t *SimpleType) AddEnumeration(lexicals ...string) error {
 	}
 	t.DeclaredFacets = declared
 	t.Facets = eff
-	t.Cardinality = CardinalityFinite
+	// {cardinality} becomes finite by virtue of the enumeration now in
+	// t.Facets; Fundamentals() reflects it without a stored field.
 	return nil
 }
 
