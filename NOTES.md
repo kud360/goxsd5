@@ -7,6 +7,30 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — attribute ##defined + tighter EDC for wildcard-matched elements <<<
+Two more false-ACCEPT clusters (Wild). Instance ratchet 21344 → 21360 (schema held
+5672). Both in xsdvalidate/assess.go.
+ - ATTRIBUTE wildcard ##defined (cvc-wildcard clause 2.2): an attr wildcard with
+   notQName="##defined" must not admit a globally-declared attribute. New
+   attrWildcardAllows wraps WildcardAllows + a.v.attrs lookup. +6 (saxon
+   Wild054/055/056/058/059/060). (##definedSibling is illegal on attr wildcards.)
+ - DYNAMIC EDC for wildcard-matched elements (XSD 1.1 §3.9 "locally declared type"
+   / cvc-assess-elt; test category TighterMatchingRuleForEDC): when a lax/strict
+   wildcard matches an element whose name ALSO names an element decl in the content
+   model, the element's ACTUAL governing type (after xsi:type/subst, = res.Types[el])
+   must be validly derived from that locally declared type; a name with NO global
+   decl is governed by the local type directly (xsi:type-overridable). New
+   localDeclTypes + assessLocallyTyped + checkDynamicEDC; resolveXSIType made
+   nil-decl-safe. +10 (saxon Wild061-064/067/075/076, ibm edcWildcard). KEY GOTCHA
+   (two wrong cuts before the right one): it's NOT "local type replaces global"
+   (broke wild063: -12 valid as local integer but must fail global positiveInteger)
+   and NOT "global DECLARED type derived from local" (broke wild064.v2: global
+   decimal not derived from local integer, but xsi:type=int IS) — it's the
+   POST-xsi:type governing type (res.Types[el]) derived from the local type.
+REMAINING false-ACCEPTS after this (~64) are dominated by fail-open assertions
+(Assert/assertion/assert ≈40, need richer XPath) + scattered hard cases. The 7
+false-REJECTS are unchanged (XPath axis / multi-schema / override / union-pattern-ws).
+
 ## >>> DONE 2026-06-15 — open-content inheritance + ##defined/##definedSibling wildcard exclusions <<<
 Two more clusters. Instance ratchet 21315 → 21344 (schema held 5672). After this,
 only 7 instance false-REJECTS remain (see list at end); the ~80 false-ACCEPTS are

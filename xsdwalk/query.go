@@ -163,8 +163,10 @@ func substChain(member, target *xsd.ElementDecl, seen map[*xsd.ElementDecl]bool)
 	seen[member] = true
 	for _, head := range member.SubstitutionGroups {
 		// The substitution requires member's type validly derived from head's
-		// type, with head's {final}+block excluding the methods used.
-		exclude := head.Final | head.Block
+		// type, with the head element's {final}+{disallowed substitutions} AND the
+		// head type's {prohibited substitutions} excluding the methods used
+		// (cvc-substitution / §3.3.6.3).
+		exclude := head.Final | head.Block | typeBlock(declType(head))
 		if head.Block.Has(xsd.DeriveSubstitution) {
 			continue
 		}
@@ -186,6 +188,15 @@ func declType(e *xsd.ElementDecl) xsd.Type {
 		return nil
 	}
 	return e.Type
+}
+
+// typeBlock returns a type's {prohibited substitutions}; only complex types
+// carry one (simple types have no block).
+func typeBlock(t xsd.Type) xsd.DerivationSet {
+	if ct, ok := t.(*xsd.ComplexType); ok {
+		return ct.Block
+	}
+	return 0
 }
 
 // WildcardAllows reports whether the wildcard w admits an element/attribute of

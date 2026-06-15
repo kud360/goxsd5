@@ -20598,6 +20598,9 @@ sunMeta/ElemDecl.testSet#disallowedsubst00502m3#Negative	pass
 sunMeta/ElemDecl.testSet#disallowedsubst00502m4#Negative	pass
 sunMeta/ElemDecl.testSet#disallowedsubst00503m1#Positive	pass
 sunMeta/ElemDecl.testSet#disallowedsubst00503m2#Positive	pass
+sunMeta/ElemDecl.testSet#disallowedsubst00503m3#Negative	pass
+sunMeta/ElemDecl.testSet#disallowedsubst00503m4#Negative	pass
+sunMeta/ElemDecl.testSet#disallowedsubst00503m5#Negative	pass
 sunMeta/ElemDecl.testSet#idconstrdefs00101m#idConstrDefs00101m1_n	pass
 sunMeta/ElemDecl.testSet#idconstrdefs00101m#idConstrDefs00101m1_p	pass
 sunMeta/ElemDecl.testSet#idconstrdefs00201m#idConstrDefs00201m1_p	pass
