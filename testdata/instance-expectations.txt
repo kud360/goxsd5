@@ -71,8 +71,10 @@ ibmMeta/assertion.testSet#d4_3_15ii04#d4_3_15ii04i	pass
 ibmMeta/assertion.testSet#d4_3_15ii06#d4_3_15ii06i	pass
 ibmMeta/assertion.testSet#d4_3_15ii08#d4_3_15ii08i	pass
 ibmMeta/assertion.testSet#d4_3_15ii10#d4_3_15ii10i	pass
+ibmMeta/assertion.testSet#d4_3_15ii12#d4_3_15ii12i	pass
 ibmMeta/assertion.testSet#d4_3_15ii14#d4_3_15ii14i	pass
 ibmMeta/assertion.testSet#d4_3_15ii15#d4_3_15ii15i	pass
+ibmMeta/assertion.testSet#d4_3_15ii17#d4_3_15ii17i	pass
 ibmMeta/assertion.testSet#d4_3_15ii18#d4_3_15ii18i	pass
 ibmMeta/assertion.testSet#d4_3_15ii19#d4_3_15ii19i	pass
 ibmMeta/assertion.testSet#d4_3_15ii21#d4_3_15ii21i	pass
@@ -81,6 +83,8 @@ ibmMeta/assertion.testSet#d4_3_15ii25#d4_3_15ii25i	pass
 ibmMeta/assertion.testSet#d4_3_15ii27#d4_3_15ii27i	pass
 ibmMeta/assertion.testSet#d4_3_15ii29#d4_3_15ii29i	pass
 ibmMeta/assertion.testSet#d4_3_15ii30#d4_3_15ii30i	pass
+ibmMeta/assertion.testSet#d4_3_15ii31#d4_3_15ii31i	pass
+ibmMeta/assertion.testSet#d4_3_15ii32#d4_3_15ii32i	pass
 ibmMeta/assertion.testSet#d4_3_15v01#d4_3_15v01i	pass
 ibmMeta/assertion.testSet#d4_3_15v02#d4_3_15v02i	pass
 ibmMeta/assertion.testSet#d4_3_15v03#d4_3_15v03i	pass
@@ -94,6 +98,7 @@ ibmMeta/assertion.testSet#d4_3_15v10#d4_3_15v10i	pass
 ibmMeta/assertion.testSet#d4_3_15v11#d4_3_15v11i	pass
 ibmMeta/assertion.testSet#d4_3_15v13#d4_3_15v13i	pass
 ibmMeta/assertion.testSet#d4_3_15v14#d4_3_15v14i	pass
+ibmMeta/assertion.testSet#d4_3_15v15#d4_3_15v15i	pass
 ibmMeta/assertion.testSet#d4_3_15v18#d4_3_15v18i	pass
 ibmMeta/assertion.testSet#d4_3_15v19#d4_3_15v19i	pass
 ibmMeta/assertion.testSet#d4_3_15v21#d4_3_15v21i	pass

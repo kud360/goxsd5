@@ -193,8 +193,8 @@ type call struct {
 	args []exprNode
 }
 type pathExpr struct {
-	descendant bool
-	steps      []pathStep
+	fromRoot bool // path begins with "/" or "//": rooted at the document node
+	steps    []pathStep
 }
 type pathStep struct {
 	axisAttr bool
@@ -478,11 +478,18 @@ func (p *exprParser) parseCall() (exprNode, error) {
 func (p *exprParser) parsePath() (exprNode, error) {
 	path := &pathExpr{}
 	if p.isOp("/") {
-		return nil, errUnsupported
-	}
-	if p.isOp("//") {
+		// A leading "/" is rooted at the document node. In an XSD assertion the
+		// XDM root is the (parentless) element being assessed, so there is no
+		// document node and the path selects nothing; a bare "/" is the root
+		// itself, equally absent. Either way evalPath yields the empty sequence.
 		p.next()
-		path.descendant = true
+		path.fromRoot = true
+		if !p.stepStarts() {
+			return path, nil
+		}
+	} else if p.isOp("//") {
+		p.next()
+		path.fromRoot = true
 	}
 	for {
 		st, err := p.parseStep()
@@ -511,6 +518,11 @@ func (p *exprParser) parsePath() (exprNode, error) {
 		break
 	}
 	return path, nil
+}
+
+// stepStarts reports whether the current token can begin a path step.
+func (p *exprParser) stepStarts() bool {
+	return p.cur().kind == tkName || p.isOp("@") || p.isOp(".") || p.isOp("*")
 }
 
 func (p *exprParser) parseStep() (pathStep, error) {
@@ -773,10 +785,12 @@ func cmpNum(op string, a, b float64) bool {
 }
 
 func (e *evaluator) evalPath(n *pathExpr, ctx Node) (seq, error) {
-	cur := []Node{ctx}
-	if n.descendant {
-		cur = descendantsOrSelf(ctx)
+	if n.fromRoot {
+		// No document node exists above the assertion's root element, so an
+		// absolute path selects nothing (XSD 1.1 §3.13.4.1 "stay in subtree").
+		return seq{}, nil
 	}
+	cur := []Node{ctx}
 	for si, st := range n.steps {
 		if st.dot {
 			if err := e.applyPreds(&cur, st.preds); err != nil {
@@ -788,8 +802,12 @@ func (e *evaluator) evalPath(n *pathExpr, ctx Node) (seq, error) {
 			if si != len(n.steps)-1 {
 				return nil, errUnsupported
 			}
+			base := cur
+			if st.descend {
+				base = descendOrSelfAll(cur)
+			}
 			var out seq
-			for _, el := range cur {
+			for _, el := range base {
 				for _, at := range el.NodeAttrs() {
 					if st.name == "*" || at.AttrName().Local == st.name {
 						out = append(out, at)
@@ -801,11 +819,7 @@ func (e *evaluator) evalPath(n *pathExpr, ctx Node) (seq, error) {
 		var next []Node
 		base := cur
 		if st.descend {
-			var d []Node
-			for _, el := range cur {
-				d = append(d, descendants(el)...)
-			}
-			base = d
+			base = descendOrSelfAll(cur)
 		}
 		for _, el := range base {
 			for _, c := range el.NodeChildren() {
@@ -1119,6 +1133,16 @@ func descendants(el Node) []Node {
 
 func descendantsOrSelf(el Node) []Node {
 	return append([]Node{el}, descendants(el)...)
+}
+
+// descendOrSelfAll is the "//" step expansion: descendant-or-self::node() over
+// every node in the input set, preserving document order (self before descendants).
+func descendOrSelfAll(set []Node) []Node {
+	var out []Node
+	for _, el := range set {
+		out = append(out, descendantsOrSelf(el)...)
+	}
+	return out
 }
 
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }

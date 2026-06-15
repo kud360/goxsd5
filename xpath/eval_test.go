@@ -98,3 +98,40 @@ func TestEvalBool(t *testing.T) {
 		}
 	}
 }
+
+// TestEvalSubtree exercises the XSD-assertion "stay in subtree" rule: a leading
+// "/" or "//" is rooted at a document node that does not exist for a parentless
+// assertion root, so it selects nothing; a relative ".//" descends the subtree
+// (descendant-or-self), reaching nested element and attribute nodes.
+func TestEvalSubtree(t *testing.T) {
+	// ele2 / subElement2 / ele1[@attr1=2] — the inner ele1 is a descendant.
+	inner := el("ele1")
+	inner.attrs = []NodeAttr{at("attr1", "2")}
+	sub := el("subElement2")
+	sub.children = []Node{inner}
+	root := el("ele2")
+	root.attrs = []NodeAttr{at("attr2", "3")}
+	root.children = []Node{sub}
+
+	ec := EvalContext{Castable: castInt}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		{"count(.//@attr1) eq 1", true, true},  // descendant attribute reached
+		{"count(.//ele1) eq 1", true, true},    // descendant element reached
+		{"count(//ele1) eq 1", false, true},    // absolute // is empty → 0
+		{"count(//ele1) eq 0", true, true},     // ... so eq 0 holds
+		{"count(//@attr1) eq 1", false, true},  // absolute //@ is empty → 0
+		{"//ele1", false, true},                // absolute path → empty → false
+		{"exists(.//ele1)", true, true},        // relative descendant exists
+		{"count(.//*) eq 2", true, true},       // subElement2 + ele1
+	}
+	for _, c := range cases {
+		got, ok := EvalBool(c.expr, root, ec)
+		if got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}
