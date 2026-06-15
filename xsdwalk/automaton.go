@@ -168,9 +168,12 @@ func (m *Matcher) matchGroup(g *xsd.ModelGroup, pos int, cont func(int) bool) bo
 				return true
 			}
 		}
-		// An empty choice (no particles) matches nothing but the empty string,
-		// which a 0-occurrence wrapping particle already allows; here it fails.
-		return len(g.Particles) == 0 && cont(pos)
+		// An empty choice (no particles) matches the empty *language* — nothing,
+		// not even the empty string (unlike an empty sequence, which matches ε).
+		// So a single required occurrence is unsatisfiable; emptiness is allowed
+		// only through a minOccurs=0 wrapping particle, handled in matchParticle
+		// before this group is ever entered.
+		return false
 	case xsd.CompositorAll:
 		return m.matchAll(g, pos, cont)
 	default: // sequence

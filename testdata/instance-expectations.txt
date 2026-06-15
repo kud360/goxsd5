@@ -325,6 +325,7 @@ ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_001#typeAlternatives_001_
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_002#typeAlternatives_002_2	pass
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_003#typeAlternatives_003_2	pass
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_004#typeAlternatives_004_2	pass
+ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_004#typeAlternatives_004_3	pass
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_005#typeAlternatives_005_2	pass
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_005#typeAlternatives_005_3	pass
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_006#typeAlternatives_006_2	pass
@@ -362,6 +363,7 @@ ibmMeta/vc.testSet#vc_001#vc_001_3	pass
 ibmMeta/vc.testSet#vc_003#vc_003_2	pass
 ibmMeta/vc.testSet#vc_005#vc_005_2	pass
 ibmMeta/vc.testSet#vc_007#vc_007_2	pass
+ibmMeta/vc.testSet#vc_007#vc_007_3	pass
 ibmMeta/vc.testSet#vc_008#vc_008_2	pass
 ibmMeta/vc.testSet#vc_009#vc_009_2	pass
 ibmMeta/wildcard.testSet#s3_10_1ii01#s3_10_1ii01i	pass
@@ -19859,6 +19861,7 @@ saxonMeta/Complex.testSet#complex014#complex014.v1.xml	pass
 saxonMeta/Complex.testSet#complex014#complex014.v2.xml	pass
 saxonMeta/Complex.testSet#complex015#complex015.n1.xml	pass
 saxonMeta/Complex.testSet#complex021#complex021.n1.xml	pass
+saxonMeta/Complex.testSet#complex022#complex022.n1.xml	pass
 saxonMeta/Complex.testSet#complex022#complex022.n2.xml	pass
 saxonMeta/Complex.testSet#unique001#unique001.n1.xml	pass
 saxonMeta/Complex.testSet#unique001#unique001.v1.xml	pass
@@ -20173,11 +20176,13 @@ saxonMeta/TargetNS.testSet#target003#target003.n2.xml	pass
 saxonMeta/TargetNS.testSet#target003#target003.v1.xml	pass
 saxonMeta/VC.testSet#vc001#vc001.n1.xml	pass
 saxonMeta/VC.testSet#vc001#vc001.v1.xml	pass
+saxonMeta/VC.testSet#vc002#vc002.n1.xml	pass
 saxonMeta/VC.testSet#vc002#vc002.v1.xml	pass
 saxonMeta/VC.testSet#vc003#vc003.v1.xml	pass
 saxonMeta/VC.testSet#vc004#vc004.v1.xml	pass
 saxonMeta/VC.testSet#vc005#vc005.v1.xml	pass
 saxonMeta/VC.testSet#vc006#vc006.n1.xml	pass
+saxonMeta/VC.testSet#vc007#vc007.n1.xml	pass
 saxonMeta/VC.testSet#vc007#vc007.v1.xml	pass
 saxonMeta/VC.testSet#vc008#vc008.n1.xml	pass
 saxonMeta/VC.testSet#vc008#vc008.v1.xml	pass

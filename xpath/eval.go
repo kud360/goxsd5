@@ -632,6 +632,21 @@ func (p *exprParser) parseTypeExpr() (exprNode, error) {
 		}
 		return &typeOp{x, "castable", typ}, nil
 	}
+	if p.isKw("cast") {
+		p.next()
+		if !p.isKw("as") {
+			return nil, errUnsupported
+		}
+		p.next()
+		typ, err := p.parseTypeName()
+		if err != nil {
+			return nil, err
+		}
+		if p.isOp("?") {
+			p.next() // optional "?" (cast to an optional type)
+		}
+		return &typeOp{x, "cast", typ}, nil
+	}
 	if p.isKw("instance") {
 		p.next()
 		if !p.isKw("of") {
@@ -1732,6 +1747,19 @@ func (e *evaluator) evalTypeOp(n *typeOp, f *focus) (seq, error) {
 		return nil, err
 	}
 	atoms := atomizeAll(v)
+	if n.kind == "cast" {
+		// "x cast as T" yields the value cast to T; a non-castable value (or a
+		// non-singleton) raises a dynamic error.
+		if len(atoms) != 1 || e.ec.Castable == nil {
+			return nil, errDynamic
+		}
+		s := atomString(atoms[0])
+		if !e.ec.Castable(n.typ, s) {
+			return nil, errDynamic
+		}
+		return seq{castValue(n.typ, s)}, nil
+	}
+	// "castable as" / "instance of" — a boolean test.
 	if len(atoms) == 0 {
 		return seq{false}, nil
 	}
@@ -1739,6 +1767,24 @@ func (e *evaluator) evalTypeOp(n *typeOp, f *focus) (seq, error) {
 		return nil, errUnsupported
 	}
 	return seq{e.ec.Castable(n.typ, atomString(atoms[0]))}, nil
+}
+
+// castValue produces the in-evaluator representation of a lexical value cast to
+// a built-in type. xs:boolean must become a real boolean (so its effective
+// boolean value is the value, not "non-empty string"); other types keep the
+// lexical, tagged with the right comparison kind.
+func castValue(typeLocal, lex string) item {
+	switch typeLocal {
+	case "boolean":
+		return lex == "true" || lex == "1"
+	case "decimal", "integer", "int", "long", "short", "byte",
+		"nonNegativeInteger", "nonPositiveInteger", "positiveInteger",
+		"negativeInteger", "unsignedLong", "unsignedInt", "unsignedShort",
+		"unsignedByte", "float", "double":
+		return typedItem{lex: lex, kind: KindNumber}
+	default:
+		return typedItem{lex: lex, kind: KindString}
+	}
 }
 
 func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
@@ -1905,6 +1951,25 @@ func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
 		return seq{time.Now().Format("2006-01-02T15:04:05")}, nil
 	case "current-time":
 		return seq{time.Now().Format("15:04:05")}, nil
+	case "year-from-date", "month-from-date", "day-from-date",
+		"year-from-dateTime", "month-from-dateTime", "day-from-dateTime",
+		"hours-from-dateTime", "minutes-from-dateTime", "seconds-from-dateTime",
+		"hours-from-time", "minutes-from-time", "seconds-from-time":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, err
+		}
+		atoms := atomizeAll(v)
+		if len(atoms) == 0 {
+			return seq{}, nil // fn:*-from-*(()) is the empty sequence
+		}
+		comp, ok := dateComponent(n.name, atomString(atoms[0]))
+		if !ok {
+			// The argument is already a validated date/time value, so a parse
+			// failure means our reader is too strict — fail open, never reject.
+			return nil, errUnsupported
+		}
+		return seq{comp}, nil
 	case "local-name", "name":
 		var el *nodeCtx
 		if len(n.args) == 0 {
@@ -2065,6 +2130,108 @@ func formatNumber(f float64) string {
 }
 
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// dateComponent extracts the calendar component named by an fn:*-from-*
+// function (year/month/day-from-date·DateTime, hours/minutes/seconds-from-time·
+// DateTime) from an ISO date/dateTime/time lexical. ok is false when the lexical
+// cannot be parsed, so the caller fails open.
+func dateComponent(fn, lex string) (float64, bool) {
+	lex = strings.TrimSpace(lex)
+	var datePart, timePart string
+	switch {
+	case strings.Contains(fn, "from-dateTime"):
+		i := strings.IndexByte(lex, 'T')
+		if i < 0 {
+			return 0, false
+		}
+		datePart, timePart = lex[:i], lex[i+1:]
+	case strings.Contains(fn, "from-time"):
+		timePart = lex
+	default: // *-from-date
+		datePart = lex
+	}
+	field := fn[:strings.IndexByte(fn, '-')]
+	switch field {
+	case "year", "month", "day":
+		y, m, d, ok := parseISODate(datePart)
+		if !ok {
+			return 0, false
+		}
+		switch field {
+		case "year":
+			return float64(y), true
+		case "month":
+			return float64(m), true
+		default:
+			return float64(d), true
+		}
+	case "hours", "minutes", "seconds":
+		hh, mm, ss, ok := parseISOTime(timePart)
+		if !ok {
+			return 0, false
+		}
+		switch field {
+		case "hours":
+			return float64(hh), true
+		case "minutes":
+			return float64(mm), true
+		default:
+			return ss, true
+		}
+	}
+	return 0, false
+}
+
+// stripTimezone removes a trailing "Z" or "[+-]hh:mm" timezone from an ISO
+// date/time lexical.
+func stripTimezone(s string) string {
+	if strings.HasSuffix(s, "Z") {
+		return s[:len(s)-1]
+	}
+	if n := len(s); n >= 6 {
+		if c := s[n-6]; (c == '+' || c == '-') && s[n-3] == ':' {
+			return s[:n-6]
+		}
+	}
+	return s
+}
+
+// parseISODate reads a "[-]YYYY-MM-DD" date (with optional timezone).
+func parseISODate(s string) (y, m, d int, ok bool) {
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	parts := strings.Split(stripTimezone(s), "-")
+	if len(parts) != 3 {
+		return 0, 0, 0, false
+	}
+	y, e1 := strconv.Atoi(parts[0])
+	m, e2 := strconv.Atoi(parts[1])
+	d, e3 := strconv.Atoi(parts[2])
+	if e1 != nil || e2 != nil || e3 != nil {
+		return 0, 0, 0, false
+	}
+	if neg {
+		y = -y
+	}
+	return y, m, d, true
+}
+
+// parseISOTime reads an "hh:mm:ss[.frac]" time (with optional timezone).
+func parseISOTime(s string) (hh, mm int, ss float64, ok bool) {
+	parts := strings.Split(stripTimezone(s), ":")
+	if len(parts) != 3 {
+		return 0, 0, 0, false
+	}
+	hh, e1 := strconv.Atoi(parts[0])
+	mm, e2 := strconv.Atoi(parts[1])
+	ss, e3 := strconv.ParseFloat(parts[2], 64)
+	if e1 != nil || e2 != nil || e3 != nil {
+		return 0, 0, 0, false
+	}
+	return hh, mm, ss, true
+}
 
 func localPart(qname string) string {
 	if i := strings.LastIndexByte(qname, ':'); i >= 0 {

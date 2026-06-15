@@ -96,7 +96,7 @@ by the `xsdvalidate` package (PLAN-validate.md), not the schema processor.
 | cvc-wildcard | §3.10.4 | V2 | wip (namespace constraint + processContents) | xsdvalidate/assess.go |
 | cvc-id | §3.4.4 | V1 | wip (ID uniqueness + IDREF/IDREFS resolution) | xsdvalidate/assess.go |
 | cvc-identity-constraint | §3.11.4 | V3 | wip (unique/key/keyref over the selector/field subset; local-name name tests; value-space field comparison) | xsdvalidate/idc.go |
-| cvc-assertion | §3.13.4 | V4 | wip (xs:assert + xs:alternative/CTA over a partial XPath subset, fail-open; inheritable attributes; simple-type xs:assertion with schema-typed $value — list items recurse into ItemType, union requires a member to satisfy its own assertions, attribute values included; complex simpleContent xs:assert binds $value to the content sequence; no context item for simple-type assertions so `.`/position()/last() and failed constructor casts raise dynamic errors ⇒ unsatisfied) | xsdvalidate/assert.go, xsdvalidate/assess.go (assertSatisfied) |
+| cvc-assertion | §3.13.4 | V4 | wip (xs:assert + xs:alternative/CTA over a partial XPath subset, fail-open; inheritable attributes; simple-type xs:assertion with schema-typed $value — list items recurse into ItemType, union requires a member to satisfy its own assertions, attribute values included; complex simpleContent xs:assert binds $value to the content sequence; no context item for simple-type assertions so `.`/position()/last() and failed constructor casts raise dynamic errors ⇒ unsatisfied; simple-type recursion in assess.go assertSatisfied) | xsdvalidate/assert.go |
 
 ---
 
