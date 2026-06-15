@@ -7,6 +7,30 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-14 — comprehensive Go native fuzz testing added <<<
+Added 9 `func Fuzz*` targets (Go 1.18+ native fuzzing) across all four
+input-bearing surfaces, each with a curated seed corpus and invariants beyond
+mere no-panic. NEW FILES (all `*_test.go`, no production code touched):
+ - xsdregex/fuzz_test.go — FuzzTranslateRegex (output always RE2-compilable +
+   deterministic), FuzzCompileRegex (matcher non-nil & safe on any subject).
+ - builtin/xsdtype/fuzz_test.go — FuzzParseDecimal (self-eq, canonical String()
+   round-trip, non-negative digit counts), FuzzParseDuration, FuzzParseDateTime
+   (drives all 7 Kind*), FuzzCompareValues (antisymmetry a?b == -(b?a) +
+   Equal/Compare agreement on two parsed decimals).
+ - parser/xmltree/fuzz_test.go — FuzzParse (non-nil root, non-negative Pos,
+   walkable tree, no nil children), FuzzIsNCName (true ⇒ no colon).
+ - parser/fuzz_test.go — FuzzParseSchema (full public Parse via in-memory
+   mapResolver; no nil schema elements), FuzzParseValue (every builtin.AllBuiltins
+   type × arbitrary lexical, nil ctx is handled at builtin.go:270, never panics).
+FINDING (no real bug): FuzzParseSchema flagged that an over-strong "schemas slice
+never nil" assertion was wrong — a root doc that fails to load returns nil,error
+by design (parser.go:32 loadRoot path). Relaxed the test to the true invariant
+(no panic + no nil *elements*) rather than touch correct code. go vet + gofmt
+clean; full normal suite green (seed corpora double as unit tests under `go
+test`); ~10M+ execs across extended 30s runs of the deepest targets (schema
+build, regex translate, value parse), zero crashers, no testdata/fuzz corpus
+generated. Run one with e.g. `go test ./xsdregex/ -run '^$' -fuzz FuzzTranslateRegex`.
+
 ## >>> DONE 2026-06-14 — primitiveFundamentals map → authored on the type <<<
 Same anti-pattern the package-factoring refactor already killed for the parser's
 name-keyed primitiveFacetMask, but it had survived in core xsd: a `map[string]
