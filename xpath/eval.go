@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Name is an expanded (namespace-qualified) name in the instance tree. Its
@@ -1134,6 +1135,12 @@ func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 			sum += f
 		}
 		return seq{sum}, nil
+	case "current-date":
+		return seq{time.Now().Format("2006-01-02")}, nil
+	case "current-dateTime":
+		return seq{time.Now().Format("2006-01-02T15:04:05")}, nil
+	case "current-time":
+		return seq{time.Now().Format("15:04:05")}, nil
 	case "local-name", "name":
 		var el Node
 		if len(n.args) == 0 {

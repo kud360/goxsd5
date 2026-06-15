@@ -188,6 +188,10 @@ func TestEvalVars(t *testing.T) {
 		{"count($list) = 3", true, true},          // multi-item variable
 		{"$list = 'b'", true, true},               // existential over sequence
 		{"$missing > 1", false, false},            // unbound → fail open
+		// current-date() as an ISO string compares chronologically; these hold
+		// for any plausible run date.
+		{"current-date() gt '1900-01-01'", true, true},
+		{"current-date() lt '9999-01-01'", true, true},
 	}
 	for _, c := range cases {
 		got, ok := EvalBool(c.expr, root, ec)
