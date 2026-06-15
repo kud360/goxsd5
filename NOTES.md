@@ -7,6 +7,37 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> PLAN 2026-06-14 — instance validation plan authored (PLAN-validate.md), not yet started <<<
+Next work picks up here. Wrote `PLAN-validate.md`: extend the schema processor
+into an in-process, **format-pluggable** schema-validity assessor (XSD 1.1 Part 1
+§3 `cvc-*` rules). Two NEW top-level packages, named to the `xsd*` theme:
+ - `xsdwalk` — shared model algebra (content-model automaton + model queries:
+   subst-group acceptance, wildcard match, governing-type after xsi:type/CTA,
+   attribute-use lookup). Serves a PUSH/exhaustive walk (codegen/docs/diff) AND a
+   PULL/demand-driven walk (validator, generated-deserializer runtime). The
+   reusable core is the algebra, not the driver.
+ - `xsdvalidate` — the assessor: pull-driver + cvc-* actions over an abstract
+   infoset interface (`Element`/`Attribute`/`Node`); XML is just one source
+   (`xsdvalidate/xmlsrc` over `xmltree`; `jsonsrc`/`bersrc` future, each inventing
+   a documented format→infoset mapping). Engine never imports an XML package.
+KEY DESIGN RULINGS (settled in plan):
+ - `xsd` stays a PURE LEAF — infoset abstraction lives ABOVE it. **No
+   `ValidateInstance` method on model types** (would force xsd→infoset dep + is
+   contextual/stateful/cross-cutting). Locality rule: **value-space** (lexical/
+   facet/QName) stays on the type via existing `(*SimpleType).ParseValue` (already
+   emits cvc-* SpecRefs, `xsd/facets.go:301`) — engine never type-switches on
+   datatype; **document-scoped** (cvc-id ID/IDREF, keyref, assertions) in engine.
+ - Milestones V0 harness → V1 simple/local → V2 content-model → V3 identity
+   constraints → V4 assertions/CTA (optional). Conformance via the SAME ratchet
+   harness: the vendored W3C suite already has ~28k `<instanceTest>` entries;
+   parallel `testdata/instance-expectations.txt`.
+ - Future codegen (M10) = compiler back-end on the SAME front-end; shares `xsd`
+   model + `builtin` value-space + `xsdwalk`; separate memory/execution model +
+   infoset interface. Value-space/structure-space symmetry: builtin may get
+   `GenXMLMarshaller`/`GenXMLUnmarshaller` (compile-time analog of `ParseValue`).
+Nothing built yet — no code, no NOTES checkpoint to follow. Resume by reading
+`PLAN-validate.md` then starting V0.
+
 ## >>> DONE 2026-06-14 — testdata/xsdtests converted to a git submodule <<<
 Replaced the bespoke `testdata/fetch-xsdtests.sh` fetch-on-demand script with a
 proper git submodule at `testdata/xsdtests` → https://github.com/w3c/xsdtests.git,
