@@ -5,9 +5,11 @@
 //
 // Usage:
 //
-//	goxsd5 [-q] <schema.xsd>
+//	goxsd5 [-q] [-validate doc.xml] <schema.xsd>
 //
-//	-q  quiet: print only errors, suppress the component summary.
+//	-q              quiet: print only errors, suppress the component summary.
+//	-validate FILE  also assess the instance document FILE against the schema
+//	                (XSD 1.1 schema-validity assessment) and report cvc-* errors.
 package main
 
 import (
@@ -18,12 +20,15 @@ import (
 
 	"github.com/kud360/goxsd5/parser"
 	"github.com/kud360/goxsd5/xsd"
+	"github.com/kud360/goxsd5/xsdvalidate"
+	"github.com/kud360/goxsd5/xsdvalidate/xmlsrc"
 )
 
 func main() {
 	quiet := flag.Bool("q", false, "print only errors, no component summary")
+	validate := flag.String("validate", "", "assess this instance document against the schema")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: goxsd5 [-q] <schema.xsd>")
+		fmt.Fprintln(os.Stderr, "usage: goxsd5 [-q] [-validate doc.xml] <schema.xsd>")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -41,9 +46,42 @@ func main() {
 		for _, e := range errs {
 			fmt.Fprintln(os.Stderr, e)
 		}
-		fmt.Fprintf(os.Stderr, "%d error(s)\n", len(errs))
+		fmt.Fprintf(os.Stderr, "%d schema error(s)\n", len(errs))
 		os.Exit(1)
 	}
+
+	if *validate != "" {
+		os.Exit(assessInstance(schemas, *validate, *quiet))
+	}
+}
+
+// assessInstance validates one instance document and returns the process exit
+// code (0 valid, 1 invalid or unreadable).
+func assessInstance(schemas []*xsd.Schema, path string, quiet bool) int {
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer f.Close()
+	v := xsdvalidate.New(schemas, nil)
+	res, err := xmlsrc.Validate(v, f, path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
+		return 1
+	}
+	if res.Valid() {
+		if !quiet {
+			fmt.Printf("%s: valid\n", path)
+		}
+		return 0
+	}
+	errs := res.Errors()
+	for _, e := range errs {
+		fmt.Fprintln(os.Stderr, e)
+	}
+	fmt.Fprintf(os.Stderr, "%s: invalid (%d error(s))\n", path, len(errs))
+	return 1
 }
 
 // printSummary lists each namespace's component counts and named components.

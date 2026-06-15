@@ -1,65 +1,93 @@
-package xsdvalidate
+package xpath
+
+// A small XPath-2.0-subset evaluator over an abstract instance tree, the
+// "evaluator half" of this package (the static parser above feeds schema-time
+// type checks; this drives xs:assert and xs:alternative/@test at validation
+// time). It is intentionally partial: every unsupported construct returns an
+// error so callers can fail open — treat an assertion as satisfied and a
+// type-table alternative as unmatched — and never reject an instance for syntax
+// the evaluator does not understand.
+//
+// The evaluator is format-agnostic: it walks the Node / NodeAttr interfaces, so
+// any infoset (XML today, JSON/BER later) can be assessed without this package
+// depending on it. Name tests match by local name; the static namespace context
+// of the expression is not threaded in (callers that need built-in casts supply
+// EvalContext.Castable).
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/kud360/goxsd5/builtin"
-	"github.com/kud360/goxsd5/xsd"
 )
 
-// A small XPath-2.0-subset evaluator over the infoset, used for xs:assert and
-// xs:alternative/@test (V4). It is intentionally partial: every unsupported
-// construct returns an error, and the callers treat an evaluation error as
-// "fail open" (an assertion is considered satisfied; a type-alternative test is
-// considered not matched). That guarantees an instance is never rejected for a
-// construct this evaluator cannot understand — coverage only ratchets up.
-//
-// Name tests match by local name (the same namespace approximation the identity
-// constraint evaluator documents): the assertion's static namespace context is
-// not retained on the compiled component.
+// Name is an expanded (namespace-qualified) name in the instance tree. Its
+// field layout matches xsd.QName so callers can convert directly.
+type Name struct {
+	Namespace string
+	Local     string
+}
 
-// ---- value model ----
+// Node is one element item of the instance tree the evaluator walks.
+type Node interface {
+	NodeName() Name
+	NodeAttrs() []NodeAttr
+	NodeChildren() []Node // element children, in order
+	StringValue() string  // the element's string value (deep character data)
+}
 
-// item is one XPath item: float64, string, bool, Element, or Attribute.
-type xpItem any
+// NodeAttr is one attribute item.
+type NodeAttr interface {
+	AttrName() Name
+	AttrValue() string
+}
 
-type xpSeq []xpItem
+// EvalContext supplies the callbacks the evaluator cannot resolve on its own.
+type EvalContext struct {
+	// Castable reports whether value is castable to the built-in datatype with
+	// the given local name (for `castable as`, `instance of`, and constructor
+	// functions like xs:integer(...)). A nil Castable makes those constructs
+	// evaluation errors (fail open).
+	Castable func(typeLocal, value string) bool
+}
 
-// errUnsupported marks a construct outside the supported subset; it triggers
-// fail-open handling in the callers.
+// item is one XPath item: float64, string, bool, Node, or NodeAttr.
+type item any
+
+type seq []item
+
+// errUnsupported marks a construct outside the supported subset.
 var errUnsupported = fmt.Errorf("xpath: unsupported construct")
 
-// evalAssertion reports whether an assertion's test holds for the context
-// element. ok is false when the expression could not be evaluated (fail open).
-func evalAssertion(ctx Element, expr string) (result, ok bool) {
-	v, err := evalXPath(ctx, expr)
+// EvalBool evaluates expr against the context node and returns its effective
+// boolean value. ok is false when the expression is outside the supported
+// subset (or otherwise fails to evaluate), so callers can fail open.
+func EvalBool(expr string, node Node, ec EvalContext) (result, ok bool) {
+	v, err := evalExpr(expr, node, ec)
 	if err != nil {
 		return false, false
 	}
 	return effectiveBool(v), true
 }
 
-func evalXPath(ctx Element, expr string) (xpSeq, error) {
-	p := &xpParser{toks: lexXPath(expr)}
-	node, err := p.parseExpr()
+func evalExpr(expr string, node Node, ec EvalContext) (seq, error) {
+	p := &exprParser{toks: lexExpr(expr)}
+	root, err := p.parseExpr()
 	if err != nil {
 		return nil, err
 	}
 	if p.cur().kind != tkEOF {
 		return nil, errUnsupported
 	}
-	ev := &xpEval{ctx: ctx}
-	return ev.eval(node, ctx)
+	ev := &evaluator{ec: ec}
+	return ev.eval(root, node)
 }
 
-func effectiveBool(seq xpSeq) bool {
-	if len(seq) == 0 {
+func effectiveBool(s seq) bool {
+	if len(s) == 0 {
 		return false
 	}
-	if len(seq) == 1 {
-		switch v := seq[0].(type) {
+	if len(s) == 1 {
+		switch v := s[0].(type) {
 		case bool:
 			return v
 		case float64:
@@ -68,35 +96,30 @@ func effectiveBool(seq xpSeq) bool {
 			return v != ""
 		}
 	}
-	// A non-empty sequence whose first item is a node has EBV true.
-	switch seq[0].(type) {
-	case Element, Attribute:
-		return true
-	}
-	return true
+	return true // non-empty node sequence
 }
 
 func isNaN(f float64) bool { return f != f }
 
 // ---- lexer ----
 
-type xpTokKind int
+type exprTokKind int
 
 const (
-	tkName xpTokKind = iota
+	tkName exprTokKind = iota
 	tkNum
 	tkStr
 	tkOp
 	tkEOF
 )
 
-type xpTok struct {
-	kind xpTokKind
+type exprTok struct {
+	kind exprTokKind
 	text string
 }
 
-func lexXPath(s string) []xpTok {
-	var toks []xpTok
+func lexExpr(s string) []exprTok {
+	var toks []exprTok
 	i := 0
 	for i < len(s) {
 		c := s[i]
@@ -108,104 +131,103 @@ func lexXPath(s string) []xpTok {
 			for j < len(s) && s[j] != c {
 				j++
 			}
-			toks = append(toks, xpTok{tkStr, s[i+1 : min(j, len(s))]})
+			toks = append(toks, exprTok{tkStr, s[i+1 : min(j, len(s))]})
 			i = j + 1
 		case c >= '0' && c <= '9' || (c == '.' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9'):
 			j := i
 			for j < len(s) && (s[j] >= '0' && s[j] <= '9' || s[j] == '.') {
 				j++
 			}
-			toks = append(toks, xpTok{tkNum, s[i:j]})
+			toks = append(toks, exprTok{tkNum, s[i:j]})
 			i = j
-		case isNameStart(c):
+		case xnameStart(c):
 			j := i
-			for j < len(s) && isNameChar(s[j]) {
+			for j < len(s) && xnameChar(s[j]) {
 				j++
 			}
-			toks = append(toks, xpTok{tkName, s[i:j]})
+			toks = append(toks, exprTok{tkName, s[i:j]})
 			i = j
 		default:
-			// multi-char operators first
 			two := ""
 			if i+1 < len(s) {
 				two = s[i : i+2]
 			}
 			switch two {
 			case "//", "<=", ">=", "!=":
-				toks = append(toks, xpTok{tkOp, two})
+				toks = append(toks, exprTok{tkOp, two})
 				i += 2
 				continue
 			}
-			toks = append(toks, xpTok{tkOp, string(c)})
+			toks = append(toks, exprTok{tkOp, string(c)})
 			i++
 		}
 	}
-	toks = append(toks, xpTok{tkEOF, ""})
+	toks = append(toks, exprTok{tkEOF, ""})
 	return toks
 }
 
-func isNameStart(c byte) bool {
+func xnameStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
-func isNameChar(c byte) bool {
-	return isNameStart(c) || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == ':'
+func xnameChar(c byte) bool {
+	return xnameStart(c) || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == ':'
 }
 
 // ---- AST ----
 
-type xpNode interface{}
+type exprNode any
 
-type xpBinary struct {
+type binary struct {
 	op   string
-	l, r xpNode
+	l, r exprNode
 }
-type xpUnary struct {
+type unary struct {
 	op string
-	x  xpNode
+	x  exprNode
 }
-type xpLiteralNum struct{ v float64 }
-type xpLiteralStr struct{ v string }
-type xpIf struct{ cond, then, els xpNode }
-type xpCall struct {
+type litNum struct{ v float64 }
+type litStr struct{ v string }
+type ifExpr struct{ cond, then, els exprNode }
+type call struct {
 	name string
-	args []xpNode
+	args []exprNode
 }
-type xpPath struct {
-	descendant bool // leading "//"
-	steps      []xpStep
+type pathExpr struct {
+	descendant bool
+	steps      []pathStep
 }
-type xpStep struct {
+type pathStep struct {
 	axisAttr bool
-	name     string // "" with axisAttr=false and dot=true means "."
+	name     string
 	dot      bool
-	descend  bool // this step preceded by "//"
-	preds    []xpNode
+	descend  bool
+	preds    []exprNode
 }
-type xpTypeOp struct { // castable as / instance of
-	x    xpNode
+type typeOp struct {
+	x    exprNode
 	kind string // "castable" or "instance"
-	typ  string // local type name
+	typ  string
 }
 
 // ---- parser ----
 
-type xpParser struct {
-	toks []xpTok
+type exprParser struct {
+	toks []exprTok
 	pos  int
 }
 
-func (p *xpParser) cur() xpTok  { return p.toks[p.pos] }
-func (p *xpParser) next() xpTok { t := p.toks[p.pos]; p.pos++; return t }
-func (p *xpParser) isOp(s string) bool {
+func (p *exprParser) cur() exprTok  { return p.toks[p.pos] }
+func (p *exprParser) next() exprTok { t := p.toks[p.pos]; p.pos++; return t }
+func (p *exprParser) isOp(s string) bool {
 	return p.cur().kind == tkOp && p.cur().text == s
 }
-func (p *xpParser) isKw(s string) bool {
+func (p *exprParser) isKw(s string) bool {
 	return p.cur().kind == tkName && p.cur().text == s
 }
 
-func (p *xpParser) parseExpr() (xpNode, error) { return p.parseOr() }
+func (p *exprParser) parseExpr() (exprNode, error) { return p.parseOr() }
 
-func (p *xpParser) parseOr() (xpNode, error) {
+func (p *exprParser) parseOr() (exprNode, error) {
 	l, err := p.parseAnd()
 	if err != nil {
 		return nil, err
@@ -216,12 +238,12 @@ func (p *xpParser) parseOr() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &xpBinary{"or", l, r}
+		l = &binary{"or", l, r}
 	}
 	return l, nil
 }
 
-func (p *xpParser) parseAnd() (xpNode, error) {
+func (p *exprParser) parseAnd() (exprNode, error) {
 	l, err := p.parseComparison()
 	if err != nil {
 		return nil, err
@@ -232,14 +254,14 @@ func (p *xpParser) parseAnd() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &xpBinary{"and", l, r}
+		l = &binary{"and", l, r}
 	}
 	return l, nil
 }
 
 var cmpWords = map[string]bool{"eq": true, "ne": true, "lt": true, "le": true, "gt": true, "ge": true}
 
-func (p *xpParser) parseComparison() (xpNode, error) {
+func (p *exprParser) parseComparison() (exprNode, error) {
 	l, err := p.parseAdditive()
 	if err != nil {
 		return nil, err
@@ -252,19 +274,19 @@ func (p *xpParser) parseComparison() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &xpBinary{t.text, l, r}, nil
+		return &binary{t.text, l, r}, nil
 	case t.kind == tkName && cmpWords[t.text]:
 		p.next()
 		r, err := p.parseAdditive()
 		if err != nil {
 			return nil, err
 		}
-		return &xpBinary{t.text, l, r}, nil
+		return &binary{t.text, l, r}, nil
 	}
 	return l, nil
 }
 
-func (p *xpParser) parseAdditive() (xpNode, error) {
+func (p *exprParser) parseAdditive() (exprNode, error) {
 	l, err := p.parseMultiplicative()
 	if err != nil {
 		return nil, err
@@ -275,12 +297,12 @@ func (p *xpParser) parseAdditive() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &xpBinary{op, l, r}
+		l = &binary{op, l, r}
 	}
 	return l, nil
 }
 
-func (p *xpParser) parseMultiplicative() (xpNode, error) {
+func (p *exprParser) parseMultiplicative() (exprNode, error) {
 	l, err := p.parseUnary()
 	if err != nil {
 		return nil, err
@@ -291,24 +313,24 @@ func (p *xpParser) parseMultiplicative() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		l = &xpBinary{op, l, r}
+		l = &binary{op, l, r}
 	}
 	return l, nil
 }
 
-func (p *xpParser) parseUnary() (xpNode, error) {
+func (p *exprParser) parseUnary() (exprNode, error) {
 	if p.isOp("-") || p.isOp("+") {
 		op := p.next().text
 		x, err := p.parseUnary()
 		if err != nil {
 			return nil, err
 		}
-		return &xpUnary{op, x}, nil
+		return &unary{op, x}, nil
 	}
 	return p.parseTypeExpr()
 }
 
-func (p *xpParser) parseTypeExpr() (xpNode, error) {
+func (p *exprParser) parseTypeExpr() (exprNode, error) {
 	x, err := p.parsePrimary()
 	if err != nil {
 		return nil, err
@@ -323,7 +345,7 @@ func (p *xpParser) parseTypeExpr() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &xpTypeOp{x, "castable", typ}, nil
+		return &typeOp{x, "castable", typ}, nil
 	}
 	if p.isKw("instance") {
 		p.next()
@@ -335,23 +357,22 @@ func (p *xpParser) parseTypeExpr() (xpNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		// optional occurrence indicator
 		if p.isOp("?") || p.isOp("*") || p.isOp("+") {
 			p.next()
 		}
-		return &xpTypeOp{x, "instance", typ}, nil
+		return &typeOp{x, "instance", typ}, nil
 	}
 	return x, nil
 }
 
-func (p *xpParser) parseTypeName() (string, error) {
+func (p *exprParser) parseTypeName() (string, error) {
 	if p.cur().kind != tkName {
 		return "", errUnsupported
 	}
 	return localPart(p.next().text), nil
 }
 
-func (p *xpParser) parsePrimary() (xpNode, error) {
+func (p *exprParser) parsePrimary() (exprNode, error) {
 	t := p.cur()
 	switch {
 	case t.kind == tkNum:
@@ -360,15 +381,15 @@ func (p *xpParser) parsePrimary() (xpNode, error) {
 		if err != nil {
 			return nil, errUnsupported
 		}
-		return &xpLiteralNum{f}, nil
+		return &litNum{f}, nil
 	case t.kind == tkStr:
 		p.next()
-		return &xpLiteralStr{t.text}, nil
+		return &litStr{t.text}, nil
 	case p.isOp("("):
 		p.next()
-		if p.isOp(")") { // empty sequence ()
+		if p.isOp(")") {
 			p.next()
-			return &xpCall{name: "__empty__"}, nil
+			return &call{name: "__empty__"}, nil
 		}
 		inner, err := p.parseExpr()
 		if err != nil {
@@ -389,15 +410,13 @@ func (p *xpParser) parsePrimary() (xpNode, error) {
 	return nil, errUnsupported
 }
 
-func (p *xpParser) peekIsCall() bool {
-	// a name immediately followed by '(' is a function call (no reserved-word
-	// node test like text()/node() supported here → those fail open).
+func (p *exprParser) peekIsCall() bool {
 	return p.cur().kind == tkName && p.pos+1 < len(p.toks) &&
 		p.toks[p.pos+1].kind == tkOp && p.toks[p.pos+1].text == "("
 }
 
-func (p *xpParser) parseIf() (xpNode, error) {
-	p.next() // if
+func (p *exprParser) parseIf() (exprNode, error) {
+	p.next()
 	if !p.isOp("(") {
 		return nil, errUnsupported
 	}
@@ -426,23 +445,23 @@ func (p *xpParser) parseIf() (xpNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &xpIf{cond, then, els}, nil
+	return &ifExpr{cond, then, els}, nil
 }
 
-func (p *xpParser) parseCall() (xpNode, error) {
+func (p *exprParser) parseCall() (exprNode, error) {
 	name := p.next().text
 	p.next() // (
-	call := &xpCall{name: name}
+	c := &call{name: name}
 	if p.isOp(")") {
 		p.next()
-		return call, nil
+		return c, nil
 	}
 	for {
 		arg, err := p.parseExpr()
 		if err != nil {
 			return nil, err
 		}
-		call.args = append(call.args, arg)
+		c.args = append(c.args, arg)
 		if p.isOp(",") {
 			p.next()
 			continue
@@ -453,12 +472,12 @@ func (p *xpParser) parseCall() (xpNode, error) {
 		return nil, errUnsupported
 	}
 	p.next()
-	return call, nil
+	return c, nil
 }
 
-func (p *xpParser) parsePath() (xpNode, error) {
-	path := &xpPath{}
-	if p.isOp("/") { // absolute path — root not reachable from the infoset
+func (p *exprParser) parsePath() (exprNode, error) {
+	path := &pathExpr{}
+	if p.isOp("/") {
 		return nil, errUnsupported
 	}
 	if p.isOp("//") {
@@ -477,18 +496,14 @@ func (p *xpParser) parsePath() (xpNode, error) {
 		}
 		if p.isOp("//") {
 			p.next()
-			// mark the next step as a descendant step
 			next, err := p.parseStep()
 			if err != nil {
 				return nil, err
 			}
 			next.descend = true
 			path.steps = append(path.steps, next)
-			if p.isOp("/") || p.isOp("//") {
-				// chained — keep looping
-				if p.isOp("/") {
-					p.next()
-				}
+			if p.isOp("/") {
+				p.next()
 				continue
 			}
 			break
@@ -498,8 +513,8 @@ func (p *xpParser) parsePath() (xpNode, error) {
 	return path, nil
 }
 
-func (p *xpParser) parseStep() (xpStep, error) {
-	st := xpStep{}
+func (p *exprParser) parseStep() (pathStep, error) {
+	st := pathStep{}
 	switch {
 	case p.isOp("@"):
 		p.next()
@@ -516,14 +531,13 @@ func (p *xpParser) parseStep() (xpStep, error) {
 	case p.isOp("."):
 		p.next()
 		if p.isOp(".") {
-			return st, errUnsupported // ".." parent axis unsupported
+			return st, errUnsupported
 		}
 		st.dot = true
 	case p.isOp("*"):
 		p.next()
 		st.name = "*"
 	case p.cur().kind == tkName:
-		// reject "child::" style axes (name followed by "::")
 		st.name = localPart(p.next().text)
 	default:
 		return st, errUnsupported
@@ -545,17 +559,17 @@ func (p *xpParser) parseStep() (xpStep, error) {
 
 // ---- evaluator ----
 
-type xpEval struct {
-	ctx Element
+type evaluator struct {
+	ec EvalContext
 }
 
-func (e *xpEval) eval(node xpNode, ctx Element) (xpSeq, error) {
+func (e *evaluator) eval(node exprNode, ctx Node) (seq, error) {
 	switch n := node.(type) {
-	case *xpLiteralNum:
-		return xpSeq{n.v}, nil
-	case *xpLiteralStr:
-		return xpSeq{n.v}, nil
-	case *xpUnary:
+	case *litNum:
+		return seq{n.v}, nil
+	case *litStr:
+		return seq{n.v}, nil
+	case *unary:
 		v, err := e.eval(n.x, ctx)
 		if err != nil {
 			return nil, err
@@ -567,10 +581,10 @@ func (e *xpEval) eval(node xpNode, ctx Element) (xpSeq, error) {
 		if n.op == "-" {
 			f = -f
 		}
-		return xpSeq{f}, nil
-	case *xpBinary:
+		return seq{f}, nil
+	case *binary:
 		return e.evalBinary(n, ctx)
-	case *xpIf:
+	case *ifExpr:
 		c, err := e.eval(n.cond, ctx)
 		if err != nil {
 			return nil, err
@@ -579,17 +593,17 @@ func (e *xpEval) eval(node xpNode, ctx Element) (xpSeq, error) {
 			return e.eval(n.then, ctx)
 		}
 		return e.eval(n.els, ctx)
-	case *xpCall:
+	case *call:
 		return e.evalCall(n, ctx)
-	case *xpPath:
+	case *pathExpr:
 		return e.evalPath(n, ctx)
-	case *xpTypeOp:
+	case *typeOp:
 		return e.evalTypeOp(n, ctx)
 	}
 	return nil, errUnsupported
 }
 
-func (e *xpEval) evalBinary(n *xpBinary, ctx Element) (xpSeq, error) {
+func (e *evaluator) evalBinary(n *binary, ctx Node) (seq, error) {
 	switch n.op {
 	case "and":
 		l, err := e.eval(n.l, ctx)
@@ -597,26 +611,26 @@ func (e *xpEval) evalBinary(n *xpBinary, ctx Element) (xpSeq, error) {
 			return nil, err
 		}
 		if !effectiveBool(l) {
-			return xpSeq{false}, nil
+			return seq{false}, nil
 		}
 		r, err := e.eval(n.r, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{effectiveBool(r)}, nil
+		return seq{effectiveBool(r)}, nil
 	case "or":
 		l, err := e.eval(n.l, ctx)
 		if err != nil {
 			return nil, err
 		}
 		if effectiveBool(l) {
-			return xpSeq{true}, nil
+			return seq{true}, nil
 		}
 		r, err := e.eval(n.r, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{effectiveBool(r)}, nil
+		return seq{effectiveBool(r)}, nil
 	case "+", "-", "*", "div", "mod", "idiv":
 		l, err := e.eval(n.l, ctx)
 		if err != nil {
@@ -634,8 +648,8 @@ func (e *xpEval) evalBinary(n *xpBinary, ctx Element) (xpSeq, error) {
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{arith(n.op, lf, rf)}, nil
-	default: // comparisons
+		return seq{arith(n.op, lf, rf)}, nil
+	default:
 		l, err := e.eval(n.l, ctx)
 		if err != nil {
 			return nil, err
@@ -644,11 +658,11 @@ func (e *xpEval) evalBinary(n *xpBinary, ctx Element) (xpSeq, error) {
 		if err != nil {
 			return nil, err
 		}
-		res, err := compare(n.op, l, r)
+		res, err := compareSeq(n.op, l, r)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{res}, nil
+		return seq{res}, nil
 	}
 }
 
@@ -679,9 +693,7 @@ func arith(op string, a, b float64) float64 {
 	return 0
 }
 
-// compare implements both general comparison (=, !=, <, …) over sequences and
-// value comparison (eq, ne, …) over singletons.
-func compare(op string, l, r xpSeq) (bool, error) {
+func compareSeq(op string, l, r seq) (bool, error) {
 	value := false
 	switch op {
 	case "eq":
@@ -708,7 +720,6 @@ func compare(op string, l, r xpSeq) (bool, error) {
 		}
 		return cmpAtoms(op, la[0], ra[0]), nil
 	}
-	// general comparison: exists a pair that satisfies op
 	for _, a := range la {
 		for _, b := range ra {
 			if cmpAtoms(op, a, b) {
@@ -719,8 +730,7 @@ func compare(op string, l, r xpSeq) (bool, error) {
 	return false, nil
 }
 
-func cmpAtoms(op string, a, b xpItem) bool {
-	// numeric comparison when both atoms are numbers (or numeric strings)
+func cmpAtoms(op string, a, b item) bool {
 	if af, aok := asNumber(a); aok {
 		if bf, bok := asNumber(b); bok {
 			return cmpNum(op, af, bf)
@@ -762,77 +772,68 @@ func cmpNum(op string, a, b float64) bool {
 	return false
 }
 
-func (e *xpEval) evalPath(n *xpPath, ctx Element) (xpSeq, error) {
-	cur := []Element{ctx}
+func (e *evaluator) evalPath(n *pathExpr, ctx Node) (seq, error) {
+	cur := []Node{ctx}
 	if n.descendant {
 		cur = descendantsOrSelf(ctx)
 	}
-	var attrResult []Attribute
 	for si, st := range n.steps {
 		if st.dot {
-			// context unchanged
-			if err := e.applyPreds(&cur, st.preds, ctx); err != nil {
+			if err := e.applyPreds(&cur, st.preds); err != nil {
 				return nil, err
 			}
 			continue
 		}
 		if st.axisAttr {
 			if si != len(n.steps)-1 {
-				return nil, errUnsupported // attribute must be the final step
+				return nil, errUnsupported
 			}
+			var out seq
 			for _, el := range cur {
-				for _, at := range el.Attributes() {
-					if at.Name().Namespace == xsd.XMLNSNS {
-						continue
-					}
-					if st.name == "*" || at.Name().Local == st.name {
-						attrResult = append(attrResult, at)
+				for _, at := range el.NodeAttrs() {
+					if st.name == "*" || at.AttrName().Local == st.name {
+						out = append(out, at)
 					}
 				}
 			}
-			out := make(xpSeq, len(attrResult))
-			for i, a := range attrResult {
-				out[i] = a
-			}
 			return out, nil
 		}
-		var next []Element
+		var next []Node
 		base := cur
 		if st.descend {
-			var d []Element
+			var d []Node
 			for _, el := range cur {
 				d = append(d, descendants(el)...)
 			}
 			base = d
 		}
 		for _, el := range base {
-			for _, c := range elementChildren(el) {
-				if st.name == "*" || c.Name().Local == st.name {
+			for _, c := range el.NodeChildren() {
+				if st.name == "*" || c.NodeName().Local == st.name {
 					next = append(next, c)
 				}
 			}
 		}
 		cur = next
-		if err := e.applyPreds(&cur, st.preds, ctx); err != nil {
+		if err := e.applyPreds(&cur, st.preds); err != nil {
 			return nil, err
 		}
 	}
-	out := make(xpSeq, len(cur))
+	out := make(seq, len(cur))
 	for i, el := range cur {
 		out[i] = el
 	}
 	return out, nil
 }
 
-func (e *xpEval) applyPreds(set *[]Element, preds []xpNode, _ Element) error {
+func (e *evaluator) applyPreds(set *[]Node, preds []exprNode) error {
 	for _, pred := range preds {
-		var kept []Element
+		var kept []Node
 		for idx, el := range *set {
 			v, err := e.eval(pred, el)
 			if err != nil {
 				return err
 			}
-			// numeric predicate → positional; else EBV
 			if len(v) == 1 {
 				if f, ok := v[0].(float64); ok {
 					if int(f) == idx+1 {
@@ -850,74 +851,68 @@ func (e *xpEval) applyPreds(set *[]Element, preds []xpNode, _ Element) error {
 	return nil
 }
 
-func (e *xpEval) evalTypeOp(n *xpTypeOp, ctx Element) (xpSeq, error) {
+func (e *evaluator) evalTypeOp(n *typeOp, ctx Node) (seq, error) {
 	v, err := e.eval(n.x, ctx)
 	if err != nil {
 		return nil, err
 	}
-	t := builtin.Lookup(n.typ)
-	if t == nil {
-		return nil, errUnsupported
-	}
 	atoms := atomizeAll(v)
 	if len(atoms) == 0 {
-		return xpSeq{n.kind == "instance" && false}, nil
+		return seq{false}, nil
 	}
-	if len(atoms) != 1 {
+	if len(atoms) != 1 || e.ec.Castable == nil {
 		return nil, errUnsupported
 	}
-	s := atomString(atoms[0])
-	_, perr := t.ParseValue(s, nsContext{ctx})
-	return xpSeq{perr == nil}, nil
+	return seq{e.ec.Castable(n.typ, atomString(atoms[0]))}, nil
 }
 
-func (e *xpEval) evalCall(n *xpCall, ctx Element) (xpSeq, error) {
+func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 	switch n.name {
 	case "__empty__":
-		return xpSeq{}, nil
+		return seq{}, nil
 	case "true":
-		return xpSeq{true}, nil
+		return seq{true}, nil
 	case "false":
-		return xpSeq{false}, nil
+		return seq{false}, nil
 	case "not":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{!effectiveBool(v)}, nil
+		return seq{!effectiveBool(v)}, nil
 	case "boolean":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{effectiveBool(v)}, nil
+		return seq{effectiveBool(v)}, nil
 	case "exists":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{len(v) > 0}, nil
+		return seq{len(v) > 0}, nil
 	case "empty":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{len(v) == 0}, nil
+		return seq{len(v) == 0}, nil
 	case "count":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{float64(len(v))}, nil
+		return seq{float64(len(v))}, nil
 	case "string":
 		if len(n.args) == 0 {
-			return xpSeq{nodeString(ctx)}, nil
+			return seq{ctx.StringValue()}, nil
 		}
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{seqString(v)}, nil
+		return seq{seqString(v)}, nil
 	case "number":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
@@ -927,31 +922,19 @@ func (e *xpEval) evalCall(n *xpCall, ctx Element) (xpSeq, error) {
 		if err != nil {
 			return nil, err
 		}
-		return xpSeq{f}, nil
+		return seq{f}, nil
 	case "string-length":
-		var s string
-		if len(n.args) == 0 {
-			s = nodeString(ctx)
-		} else {
-			v, err := e.arg(n, 0, ctx)
-			if err != nil {
-				return nil, err
-			}
-			s = seqString(v)
+		s, err := e.strArgOrCtx(n, ctx)
+		if err != nil {
+			return nil, err
 		}
-		return xpSeq{float64(len([]rune(s)))}, nil
+		return seq{float64(len([]rune(s)))}, nil
 	case "normalize-space":
-		var s string
-		if len(n.args) == 0 {
-			s = nodeString(ctx)
-		} else {
-			v, err := e.arg(n, 0, ctx)
-			if err != nil {
-				return nil, err
-			}
-			s = seqString(v)
+		s, err := e.strArgOrCtx(n, ctx)
+		if err != nil {
+			return nil, err
 		}
-		return xpSeq{collapse(s)}, nil
+		return seq{collapse(s)}, nil
 	case "contains", "starts-with", "ends-with":
 		a, err := e.arg(n, 0, ctx)
 		if err != nil {
@@ -964,11 +947,11 @@ func (e *xpEval) evalCall(n *xpCall, ctx Element) (xpSeq, error) {
 		s1, s2 := seqString(a), seqString(b)
 		switch n.name {
 		case "contains":
-			return xpSeq{strings.Contains(s1, s2)}, nil
+			return seq{strings.Contains(s1, s2)}, nil
 		case "starts-with":
-			return xpSeq{strings.HasPrefix(s1, s2)}, nil
+			return seq{strings.HasPrefix(s1, s2)}, nil
 		default:
-			return xpSeq{strings.HasSuffix(s1, s2)}, nil
+			return seq{strings.HasSuffix(s1, s2)}, nil
 		}
 	case "concat":
 		var b strings.Builder
@@ -979,7 +962,7 @@ func (e *xpEval) evalCall(n *xpCall, ctx Element) (xpSeq, error) {
 			}
 			b.WriteString(seqString(v))
 		}
-		return xpSeq{b.String()}, nil
+		return seq{b.String()}, nil
 	case "sum":
 		v, err := e.arg(n, 0, ctx)
 		if err != nil {
@@ -993,9 +976,9 @@ func (e *xpEval) evalCall(n *xpCall, ctx Element) (xpSeq, error) {
 			}
 			sum += f
 		}
-		return xpSeq{sum}, nil
+		return seq{sum}, nil
 	case "local-name", "name":
-		var el Element
+		var el Node
 		if len(n.args) == 0 {
 			el = ctx
 		} else {
@@ -1004,53 +987,61 @@ func (e *xpEval) evalCall(n *xpCall, ctx Element) (xpSeq, error) {
 				return nil, err
 			}
 			if len(v) == 0 {
-				return xpSeq{""}, nil
+				return seq{""}, nil
 			}
-			if e2, ok := v[0].(Element); ok {
-				el = e2
-			} else {
-				return xpSeq{""}, nil
+			e2, ok := v[0].(Node)
+			if !ok {
+				return seq{""}, nil
 			}
+			el = e2
 		}
-		return xpSeq{el.Name().Local}, nil
+		return seq{el.NodeName().Local}, nil
 	}
-	// Constructor functions: xs:integer(…), xs:decimal(…), xs:date(…), etc.
-	// The argument is cast to the named built-in type; an uncastable value is an
-	// evaluation error (fail open). The cast value is carried as its lexical
-	// form, which the numeric/string comparisons coerce as needed.
-	if strings.IndexByte(n.name, ':') >= 0 && len(n.args) == 1 {
-		if t := builtin.Lookup(localPart(n.name)); t != nil {
-			v, err := e.arg(n, 0, ctx)
-			if err != nil {
-				return nil, err
-			}
-			s := seqString(v)
-			if _, perr := t.ParseValue(s, nsContext{ctx}); perr != nil {
-				return nil, perr
-			}
-			return xpSeq{s}, nil
+	// Constructor functions: xs:integer(…), xs:decimal(…), etc. — the argument
+	// must be castable to the named built-in type; the cast value is carried as
+	// its lexical form, which numeric/string comparisons coerce as needed.
+	if strings.IndexByte(n.name, ':') >= 0 && len(n.args) == 1 && e.ec.Castable != nil {
+		v, err := e.arg(n, 0, ctx)
+		if err != nil {
+			return nil, err
 		}
+		s := seqString(v)
+		if !e.ec.Castable(localPart(n.name), s) {
+			return nil, errUnsupported
+		}
+		return seq{s}, nil
 	}
 	return nil, errUnsupported
 }
 
-func (e *xpEval) arg(n *xpCall, i int, ctx Element) (xpSeq, error) {
+func (e *evaluator) arg(n *call, i int, ctx Node) (seq, error) {
 	if i >= len(n.args) {
 		return nil, errUnsupported
 	}
 	return e.eval(n.args[i], ctx)
 }
 
+func (e *evaluator) strArgOrCtx(n *call, ctx Node) (string, error) {
+	if len(n.args) == 0 {
+		return ctx.StringValue(), nil
+	}
+	v, err := e.arg(n, 0, ctx)
+	if err != nil {
+		return "", err
+	}
+	return seqString(v), nil
+}
+
 // ---- atomization / coercion ----
 
-func atomizeAll(seq xpSeq) []xpItem {
-	out := make([]xpItem, 0, len(seq))
-	for _, it := range seq {
+func atomizeAll(s seq) []item {
+	out := make([]item, 0, len(s))
+	for _, it := range s {
 		switch v := it.(type) {
-		case Element:
-			out = append(out, nodeString(v))
-		case Attribute:
-			out = append(out, v.Value())
+		case Node:
+			out = append(out, v.StringValue())
+		case NodeAttr:
+			out = append(out, v.AttrValue())
 		default:
 			out = append(out, it)
 		}
@@ -1058,7 +1049,7 @@ func atomizeAll(seq xpSeq) []xpItem {
 	return out
 }
 
-func atomString(it xpItem) string {
+func atomString(it item) string {
 	switch v := it.(type) {
 	case string:
 		return v
@@ -1069,15 +1060,15 @@ func atomString(it xpItem) string {
 			return "true"
 		}
 		return "false"
-	case Element:
-		return nodeString(v)
-	case Attribute:
-		return v.Value()
+	case Node:
+		return v.StringValue()
+	case NodeAttr:
+		return v.AttrValue()
 	}
 	return ""
 }
 
-func asNumber(it xpItem) (float64, bool) {
+func asNumber(it item) (float64, bool) {
 	switch v := it.(type) {
 	case float64:
 		return v, true
@@ -1091,8 +1082,8 @@ func asNumber(it xpItem) (float64, bool) {
 	return 0, false
 }
 
-func toNumber(seq xpSeq) (float64, error) {
-	a := atomizeAll(seq)
+func toNumber(s seq) (float64, error) {
+	a := atomizeAll(s)
 	if len(a) != 1 {
 		return 0, errUnsupported
 	}
@@ -1103,11 +1094,11 @@ func toNumber(seq xpSeq) (float64, error) {
 	return f, nil
 }
 
-func seqString(seq xpSeq) string {
-	if len(seq) == 0 {
+func seqString(s seq) string {
+	if len(s) == 0 {
 		return ""
 	}
-	return atomString(seq[0])
+	return atomString(s[0])
 }
 
 func formatNumber(f float64) string {
@@ -1117,34 +1108,24 @@ func formatNumber(f float64) string {
 	return strconv.FormatFloat(f, 'g', -1, 64)
 }
 
-// nodeString is the XPath string value of an element: the concatenation of all
-// descendant character data.
-func nodeString(el Element) string {
-	var b strings.Builder
-	var walk func(e Element)
-	walk = func(e Element) {
-		for _, c := range e.Children() {
-			switch c := c.(type) {
-			case Text:
-				b.WriteString(c.Data())
-			case Element:
-				walk(c)
-			}
-		}
-	}
-	walk(el)
-	return b.String()
-}
-
-func descendants(el Element) []Element {
-	var out []Element
-	for _, c := range elementChildren(el) {
+func descendants(el Node) []Node {
+	var out []Node
+	for _, c := range el.NodeChildren() {
 		out = append(out, c)
 		out = append(out, descendants(c)...)
 	}
 	return out
 }
 
-func descendantsOrSelf(el Element) []Element {
-	return append([]Element{el}, descendants(el)...)
+func descendantsOrSelf(el Node) []Node {
+	return append([]Node{el}, descendants(el)...)
+}
+
+func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+func localPart(qname string) string {
+	if i := strings.LastIndexByte(qname, ':'); i >= 0 {
+		return qname[i+1:]
+	}
+	return qname
 }
