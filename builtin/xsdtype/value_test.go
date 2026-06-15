@@ -1,10 +1,47 @@
 package xsdtype
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/kud360/goxsd5/xsd"
 )
+
+// parseByKind dispatches on a runtime DateTimeKind. Production code never
+// needs this — the kind of every primitive is statically known, so it calls
+// the type-specific ParseX directly (see builtin.go). It exists only for the
+// tests below, which sweep every kind in a loop, and unwraps the xsd.Value
+// back to the concrete *DateTime those tests compare.
+func parseByKind(kind DateTimeKind, s string) (*DateTime, error) {
+	var (
+		v   xsd.Value
+		err error
+	)
+	switch kind {
+	case KindDateTime:
+		v, err = ParseDateTime(s, nil)
+	case KindDate:
+		v, err = ParseDate(s, nil)
+	case KindTime:
+		v, err = ParseTime(s, nil)
+	case KindGYear:
+		v, err = ParseGYear(s, nil)
+	case KindGYearMonth:
+		v, err = ParseGYearMonth(s, nil)
+	case KindGMonth:
+		v, err = ParseGMonth(s, nil)
+	case KindGDay:
+		v, err = ParseGDay(s, nil)
+	case KindGMonthDay:
+		v, err = ParseGMonthDay(s, nil)
+	default:
+		return nil, fmt.Errorf("unknown date/time kind %d parsing %q", kind, s)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return v.(*DateTime), nil
+}
 
 func TestDecimal(t *testing.T) {
 	cases := []struct {
@@ -85,7 +122,7 @@ func TestDateTimeParse(t *testing.T) {
 		{KindGMonthDay, "--02-29"},
 	}
 	for _, tc := range valid {
-		if _, err := ParseDateTime(tc.kind, tc.in); err != nil {
+		if _, err := parseByKind(tc.kind, tc.in); err != nil {
 			t.Errorf("ParseDateTime(%v, %q): %v", tc.kind, tc.in, err)
 		}
 	}
@@ -113,7 +150,7 @@ func TestDateTimeParse(t *testing.T) {
 		{KindDate, "2002/10/10"},
 	}
 	for _, tc := range invalid {
-		if _, err := ParseDateTime(tc.kind, tc.in); err == nil {
+		if _, err := parseByKind(tc.kind, tc.in); err == nil {
 			t.Errorf("ParseDateTime(%v, %q) should fail", tc.kind, tc.in)
 		}
 	}
@@ -121,7 +158,7 @@ func TestDateTimeParse(t *testing.T) {
 
 func mustDT(t *testing.T, kind DateTimeKind, s string) *DateTime {
 	t.Helper()
-	dt, err := ParseDateTime(kind, s)
+	dt, err := parseByKind(kind, s)
 	if err != nil {
 		t.Fatalf("ParseDateTime(%q): %v", s, err)
 	}

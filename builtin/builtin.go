@@ -217,12 +217,6 @@ func parseDurationV(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	return xsdtype.ParseDuration(s)
 }
 
-func dtParser(kind xsdtype.DateTimeKind) xsd.ParseFunc {
-	return func(s string, _ xsd.ValueContext) (xsd.Value, error) {
-		return xsdtype.ParseDateTime(kind, s)
-	}
-}
-
 func parseHexBinary(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	if len(s)%2 != 0 {
 		return nil, fmt.Errorf("invalid hexBinary %q: odd length", s)
@@ -320,14 +314,14 @@ var (
 	Double  = primitive("double", xsd.WSCollapse, facetsNumeric, fundFloating, parseDouble)
 
 	Duration   = primitive("duration", xsd.WSCollapse, facetsNumeric, fundTemporal, parseDurationV)
-	DateTime   = primitive("dateTime", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindDateTime))
-	Time       = primitive("time", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindTime))
-	Date       = primitive("date", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindDate))
-	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGYearMonth))
-	GYear      = primitive("gYear", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGYear))
-	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGMonthDay))
-	GDay       = primitive("gDay", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGDay))
-	GMonth     = primitive("gMonth", xsd.WSCollapse, facetsDateTimey, fundTemporal, dtParser(xsdtype.KindGMonth))
+	DateTime   = primitive("dateTime", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseDateTime)
+	Time       = primitive("time", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseTime)
+	Date       = primitive("date", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseDate)
+	GYearMonth = primitive("gYearMonth", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseGYearMonth)
+	GYear      = primitive("gYear", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseGYear)
+	GMonthDay  = primitive("gMonthDay", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseGMonthDay)
+	GDay       = primitive("gDay", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseGDay)
+	GMonth     = primitive("gMonth", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseGMonth)
 
 	HexBinary    = primitive("hexBinary", xsd.WSCollapse, facetsStringy, fundUnordered, parseHexBinary)
 	Base64Binary = primitive("base64Binary", xsd.WSCollapse, facetsStringy, fundUnordered, parseBase64Binary)

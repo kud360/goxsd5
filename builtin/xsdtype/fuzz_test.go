@@ -96,7 +96,7 @@ func FuzzParseDateTime(f *testing.F) {
 	f.Fuzz(func(t *testing.T, kindIdx int, s string) {
 		kinds := allKinds()
 		kind := kinds[((kindIdx%len(kinds))+len(kinds))%len(kinds)]
-		dt, err := ParseDateTime(kind, s)
+		dt, err := parseByKind(kind, s)
 		if err != nil {
 			return
 		}

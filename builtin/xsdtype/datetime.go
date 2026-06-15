@@ -302,82 +302,167 @@ func addOneDay(dt *DateTime) {
 	}
 }
 
-// ParseDateTime parses the lexical form of any of the seven date/time
-// primitives, identified by kind.
-func ParseDateTime(kind DateTimeKind, s string) (*DateTime, error) {
-	rest, hasTZ, tz, err := parseTZ(s)
+// newTemporal strips the timezoneFrag shared by every date/time
+// ·…LexicalRep· and seeds a DateTime of the given kind (month and day default
+// to 1, the value used for absent properties). It returns the timezone-free
+// body for the caller's kind-specific lexical mapping.
+func newTemporal(kind DateTimeKind, s string) (dt *DateTime, body string, err error) {
+	body, hasTZ, tz, err := parseTZ(s)
+	if err != nil {
+		return nil, "", err
+	}
+	return &DateTime{Kind: kind, HasTZ: hasTZ, TZ: tz, Month: 1, Day: 1}, body, nil
+}
+
+// Each of the eight primitives is parsed by its own function — the lexical
+// grammars genuinely differ, so there is no runtime dispatch on the production
+// path: a caller registering xsd:date calls ParseDate directly (see
+// builtin.go). The doc comment of each gives its Part 2 ·…LexicalRep·.
+
+// ParseDateTime parses xsd:dateTime (§3.3.7):
+//
+//	dateTimeLexicalRep ::= yearFrag '-' monthFrag '-' dayFrag 'T'
+//	                       ((hourFrag ':' minuteFrag ':' secondFrag) | endOfDayFrag)
+//	                       timezoneFrag?
+func ParseDateTime(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindDateTime, s)
 	if err != nil {
 		return nil, err
 	}
-	dt := &DateTime{Kind: kind, HasTZ: hasTZ, TZ: tz, Month: 1, Day: 1}
-	switch kind {
-	case KindDateTime:
-		ti := strings.IndexByte(rest, 'T')
-		if ti < 0 {
-			return nil, fmt.Errorf("invalid dateTime %q", s)
-		}
-		if dt.Year, dt.Month, dt.Day, err = parseDatePart(rest[:ti]); err != nil {
-			return nil, err
-		}
-		var addDay bool
-		if dt.Hour, dt.Minute, dt.Second, addDay, err = parseTimePart(rest[ti+1:]); err != nil {
-			return nil, err
-		}
-		if addDay {
-			addOneDay(dt)
-		}
-	case KindDate:
-		if dt.Year, dt.Month, dt.Day, err = parseDatePart(rest); err != nil {
-			return nil, err
-		}
-	case KindTime:
-		var addDay bool
-		if dt.Hour, dt.Minute, dt.Second, addDay, err = parseTimePart(rest); err != nil {
-			return nil, err
-		}
-		_ = addDay // 24:00:00 is 00:00:00 in the time value space
-	case KindGYear:
-		if dt.Year, err = parseYear(rest); err != nil {
-			return nil, err
-		}
-	case KindGYearMonth:
-		i := strings.LastIndexByte(rest, '-')
-		if i < 1 {
-			return nil, fmt.Errorf("invalid gYearMonth %q", s)
-		}
-		if dt.Year, err = parseYear(rest[:i]); err != nil {
-			return nil, err
-		}
-		if dt.Month, err = atoi2(rest[i+1:]); err != nil || dt.Month < 1 || dt.Month > 12 {
-			return nil, fmt.Errorf("invalid gYearMonth %q", s)
-		}
-	case KindGMonth:
-		if !strings.HasPrefix(rest, "--") {
-			return nil, fmt.Errorf("invalid gMonth %q", s)
-		}
-		if dt.Month, err = atoi2(rest[2:]); err != nil || dt.Month < 1 || dt.Month > 12 {
-			return nil, fmt.Errorf("invalid gMonth %q", s)
-		}
-	case KindGDay:
-		if !strings.HasPrefix(rest, "---") {
-			return nil, fmt.Errorf("invalid gDay %q", s)
-		}
-		if dt.Day, err = atoi2(rest[3:]); err != nil || dt.Day < 1 || dt.Day > 31 {
-			return nil, fmt.Errorf("invalid gDay %q", s)
-		}
-	case KindGMonthDay:
-		if len(rest) != 7 || !strings.HasPrefix(rest, "--") || rest[4] != '-' {
-			return nil, fmt.Errorf("invalid gMonthDay %q", s)
-		}
-		if dt.Month, err = atoi2(rest[2:4]); err != nil || dt.Month < 1 || dt.Month > 12 {
-			return nil, fmt.Errorf("invalid gMonthDay %q", s)
-		}
-		// Day validity uses a leap year so --02-29 is admissible.
-		if dt.Day, err = atoi2(rest[5:7]); err != nil || dt.Day < 1 || dt.Day > daysInMonth(0, dt.Month) {
-			return nil, fmt.Errorf("invalid gMonthDay %q", s)
-		}
-	default:
-		return nil, fmt.Errorf("unknown date/time kind %d parsing %q", kind, s)
+	ti := strings.IndexByte(body, 'T')
+	if ti < 0 {
+		return nil, fmt.Errorf("invalid dateTime %q", s)
+	}
+	if dt.Year, dt.Month, dt.Day, err = parseDatePart(body[:ti]); err != nil {
+		return nil, err
+	}
+	var addDay bool // endOfDayFrag (24:00:00) rolls into the next day
+	if dt.Hour, dt.Minute, dt.Second, addDay, err = parseTimePart(body[ti+1:]); err != nil {
+		return nil, err
+	}
+	if addDay {
+		addOneDay(dt)
+	}
+	return dt, nil
+}
+
+// ParseDate parses xsd:date (§3.3.9):
+//
+//	dateLexicalRep ::= yearFrag '-' monthFrag '-' dayFrag timezoneFrag?
+func ParseDate(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindDate, s)
+	if err != nil {
+		return nil, err
+	}
+	if dt.Year, dt.Month, dt.Day, err = parseDatePart(body); err != nil {
+		return nil, err
+	}
+	return dt, nil
+}
+
+// ParseTime parses xsd:time (§3.3.8):
+//
+//	timeLexicalRep ::= ((hourFrag ':' minuteFrag ':' secondFrag) | endOfDayFrag)
+//	                   timezoneFrag?
+func ParseTime(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindTime, s)
+	if err != nil {
+		return nil, err
+	}
+	// endOfDayFrag (24:00:00) is 00:00:00 in the time value space: there is no
+	// day to carry into, so the rollover flag is discarded.
+	if dt.Hour, dt.Minute, dt.Second, _, err = parseTimePart(body); err != nil {
+		return nil, err
+	}
+	return dt, nil
+}
+
+// ParseGYear parses xsd:gYear (§3.3.11):
+//
+//	gYearLexicalRep ::= yearFrag timezoneFrag?
+func ParseGYear(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindGYear, s)
+	if err != nil {
+		return nil, err
+	}
+	if dt.Year, err = parseYear(body); err != nil {
+		return nil, err
+	}
+	return dt, nil
+}
+
+// ParseGYearMonth parses xsd:gYearMonth (§3.3.10):
+//
+//	gYearMonthLexicalRep ::= yearFrag '-' monthFrag timezoneFrag?
+func ParseGYearMonth(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindGYearMonth, s)
+	if err != nil {
+		return nil, err
+	}
+	i := strings.LastIndexByte(body, '-')
+	if i < 1 {
+		return nil, fmt.Errorf("invalid gYearMonth %q", s)
+	}
+	if dt.Year, err = parseYear(body[:i]); err != nil {
+		return nil, err
+	}
+	if dt.Month, err = atoi2(body[i+1:]); err != nil || dt.Month < 1 || dt.Month > 12 {
+		return nil, fmt.Errorf("invalid gYearMonth %q", s)
+	}
+	return dt, nil
+}
+
+// ParseGMonth parses xsd:gMonth (§3.3.14):
+//
+//	gMonthLexicalRep ::= '--' monthFrag timezoneFrag?
+func ParseGMonth(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindGMonth, s)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(body, "--") {
+		return nil, fmt.Errorf("invalid gMonth %q", s)
+	}
+	if dt.Month, err = atoi2(body[2:]); err != nil || dt.Month < 1 || dt.Month > 12 {
+		return nil, fmt.Errorf("invalid gMonth %q", s)
+	}
+	return dt, nil
+}
+
+// ParseGDay parses xsd:gDay (§3.3.13):
+//
+//	gDayLexicalRep ::= '---' dayFrag timezoneFrag?
+func ParseGDay(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindGDay, s)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(body, "---") {
+		return nil, fmt.Errorf("invalid gDay %q", s)
+	}
+	if dt.Day, err = atoi2(body[3:]); err != nil || dt.Day < 1 || dt.Day > 31 {
+		return nil, fmt.Errorf("invalid gDay %q", s)
+	}
+	return dt, nil
+}
+
+// ParseGMonthDay parses xsd:gMonthDay (§3.3.12):
+//
+//	gMonthDayLexicalRep ::= '--' monthFrag '-' dayFrag timezoneFrag?
+func ParseGMonthDay(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	dt, body, err := newTemporal(KindGMonthDay, s)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) != 7 || !strings.HasPrefix(body, "--") || body[4] != '-' {
+		return nil, fmt.Errorf("invalid gMonthDay %q", s)
+	}
+	if dt.Month, err = atoi2(body[2:4]); err != nil || dt.Month < 1 || dt.Month > 12 {
+		return nil, fmt.Errorf("invalid gMonthDay %q", s)
+	}
+	// Day validity uses a leap year so --02-29 is admissible.
+	if dt.Day, err = atoi2(body[5:7]); err != nil || dt.Day < 1 || dt.Day > daysInMonth(0, dt.Month) {
+		return nil, fmt.Errorf("invalid gMonthDay %q", s)
 	}
 	return dt, nil
 }
