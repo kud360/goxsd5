@@ -7,8 +7,53 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> PLAN 2026-06-14 — instance validation plan authored (PLAN-validate.md), not yet started <<<
-Next work picks up here. Wrote `PLAN-validate.md`: extend the schema processor
+## >>> DONE 2026-06-14 — instance validation V0–V4 implemented (PLAN-validate.md) <<<
+The whole instance-validation plan landed in one session (3 milestone commits +
+1 refactor commit). New packages:
+ - `xsdwalk` (pure-leaf-ish, imports only xsd): the shared model algebra —
+   content-model `Matcher` (automaton.go: occurrence/sequence/choice/all,
+   wildcards, substitution groups, open/mixed; CPS-backtracking) + queries
+   (query.go: DerivationOK, SubstitutableFor, WildcardAllows, AttributeUse).
+ - `xsdvalidate`: the cvc-* assessor over an abstract infoset
+   (`Element`/`Attribute`/`Node` — Node is an OPEN marker `any`, NOT a sealed
+   interface, so format adapters in other packages can implement it). assess.go
+   is the engine; idc.go identity constraints; assert.go assertions+CTA;
+   result.go PSVI-lite. `xsdvalidate/xmlsrc` adapts parser/xmltree.
+ - XPath evaluator lives in `xpath` (eval.go, the "evaluator half" the plan
+   named) over an abstract `Node`/`NodeAttr`/`EvalContext.Castable` — xpath
+   stays a PURE LEAF (no xsd/builtin dep); xsdvalidate/xpathadapt.go adapts.
+KEY DECISIONS / GOTCHAS (so a resume doesn't relitigate):
+ - Value-space delegated to the type via `(*SimpleType).ParseValue` (engine never
+   type-switches on datatype). Document-scoped rules (cvc-id ID/IDREF, IDC,
+   assertions) live in the engine.
+ - New cvc-* SpecRefs in xsd/specref.go (cvc-elt/type/complex-type/attribute/au/
+   particle/wildcard/id/identity-constraint/assertion) + CONFORMANCE.md rows
+   (matrix guard enforces row+ref+impl-file existence — keep in sync).
+ - IDC: selector/field matched by LOCAL NAME (IdentityConstraint carries no ns
+   context); field values compared in the VALUE SPACE via each node's type with
+   a collapsed-string fallback (so 5==5.0 but string"3.0"!=decimal3.0); singleton
+   list == atomic; skip-wildcard subtrees excluded from constraint scope.
+ - Assertions/CTA FAIL OPEN: any unsupported XPath construct → assertion
+   satisfied / type-table alternative unmatched → never a false rejection. This
+   is what makes the ratchet safe to grow. XSD 1.1 inheritable attributes are
+   threaded for CTA; added `xsd.AttributeUse.Inheritable` (use-level overrides
+   decl; parser buildAttrUse populates).
+ - Matcher bug fixed: an empty/nullable REQUIRED particle (`<xs:sequence/>`
+   minOccurs=1) now matches the empty sequence (was failing cvc-particle). This
+   fix exposed pre-existing DEFERRED parser gaps on ~22 negative cases that had
+   been passing for the wrong reason: cos-aw-intersect (attribute-wildcard
+   intersection, buildterms.go ~348 "first wildcard stands in for it") and
+   defaultOpenContent appliesToEmpty. Those are the obvious next parser TODOs.
+CONFORMANCE: parallel `testdata/instance-expectations.txt` ratchet (TAB-separated,
+mirrors schema ratchet; `go test ./parser -run TestInstanceConformance
+-update-instance-expectations`). 21434 instance cases, 21231 verdict-correct.
+Schema ratchet unchanged (5672). cmd/goxsd5 gained `-validate doc.xml`.
+REMAINING GAPS (future, not blocking): cos-aw-intersect + defaultOpenContent in
+parser; richer XPath (parent axis `..`, more fns) for more assert/CTA cases;
+cross-scope keyref; simple-type-level assertions; IDC true namespace resolution.
+
+## >>> PLAN 2026-06-14 — instance validation plan authored (PLAN-validate.md), DONE (see block above) <<<
+Wrote `PLAN-validate.md`: extend the schema processor
 into an in-process, **format-pluggable** schema-validity assessor (XSD 1.1 Part 1
 §3 `cvc-*` rules). Two NEW top-level packages, named to the `xsd*` theme:
  - `xsdwalk` — shared model algebra (content-model automaton + model queries:
