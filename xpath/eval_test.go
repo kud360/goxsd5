@@ -135,3 +135,35 @@ func TestEvalSubtree(t *testing.T) {
 		}
 	}
 }
+
+// TestEvalSeqUnion covers sequence construction "(a,b,c)", the range operator
+// "to", and the node-set union "|".
+func TestEvalSeqUnion(t *testing.T) {
+	root := el("root")
+	root.attrs = []NodeAttr{at("time", "9"), at("iterations", "3")}
+	a, b := el("a"), el("b")
+	a.text, b.text = "x", "y"
+	root.children = []Node{a, b}
+
+	ec := EvalContext{Castable: castInt}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		{"5 = (1 to 10, 20, 30)", true, true},   // range + sequence, existential =
+		{"15 = (1 to 10, 20, 30)", false, true}, // not in the set
+		{"20 = (1 to 10, 20, 30)", true, true},  // explicit member
+		{"count(@time | @iterations) = 2", true, true},     // attribute union
+		{"count(@time | @missing) = 1", true, true},        // union with empty side
+		{"@time = ('1', '9', '7')", true, true},            // string sequence membership
+		{"'z' = ('x', 'y')", false, true},                  // not a member
+		{"count(a | b) = 2", true, true},                   // element union
+	}
+	for _, c := range cases {
+		got, ok := EvalBool(c.expr, root, ec)
+		if got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}

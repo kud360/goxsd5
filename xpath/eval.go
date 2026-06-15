@@ -208,6 +208,8 @@ type typeOp struct {
 	kind string // "castable" or "instance"
 	typ  string
 }
+type seqExpr struct{ items []exprNode } // (e1, e2, ...) sequence construction
+type rangeExpr struct{ lo, hi exprNode } // e1 to e2
 
 // ---- parser ----
 
@@ -262,7 +264,7 @@ func (p *exprParser) parseAnd() (exprNode, error) {
 var cmpWords = map[string]bool{"eq": true, "ne": true, "lt": true, "le": true, "gt": true, "ge": true}
 
 func (p *exprParser) parseComparison() (exprNode, error) {
-	l, err := p.parseAdditive()
+	l, err := p.parseRange()
 	if err != nil {
 		return nil, err
 	}
@@ -270,18 +272,35 @@ func (p *exprParser) parseComparison() (exprNode, error) {
 	switch {
 	case t.kind == tkOp && (t.text == "=" || t.text == "!=" || t.text == "<" || t.text == ">" || t.text == "<=" || t.text == ">="):
 		p.next()
-		r, err := p.parseAdditive()
+		r, err := p.parseRange()
 		if err != nil {
 			return nil, err
 		}
 		return &binary{t.text, l, r}, nil
 	case t.kind == tkName && cmpWords[t.text]:
 		p.next()
-		r, err := p.parseAdditive()
+		r, err := p.parseRange()
 		if err != nil {
 			return nil, err
 		}
 		return &binary{t.text, l, r}, nil
+	}
+	return l, nil
+}
+
+// parseRange handles "AdditiveExpr to AdditiveExpr" (XPath 2.0 RangeExpr).
+func (p *exprParser) parseRange() (exprNode, error) {
+	l, err := p.parseAdditive()
+	if err != nil {
+		return nil, err
+	}
+	if p.isKw("to") {
+		p.next()
+		r, err := p.parseAdditive()
+		if err != nil {
+			return nil, err
+		}
+		return &rangeExpr{l, r}, nil
 	}
 	return l, nil
 }
@@ -303,17 +322,35 @@ func (p *exprParser) parseAdditive() (exprNode, error) {
 }
 
 func (p *exprParser) parseMultiplicative() (exprNode, error) {
-	l, err := p.parseUnary()
+	l, err := p.parseUnion()
 	if err != nil {
 		return nil, err
 	}
 	for p.isOp("*") || p.isKw("div") || p.isKw("mod") || p.isKw("idiv") {
 		op := p.next().text
-		r, err := p.parseUnary()
+		r, err := p.parseUnion()
 		if err != nil {
 			return nil, err
 		}
 		l = &binary{op, l, r}
+	}
+	return l, nil
+}
+
+// parseUnion handles "e | e" / "e union e" (XPath 2.0 UnionExpr), which binds
+// tighter than the multiplicative operators.
+func (p *exprParser) parseUnion() (exprNode, error) {
+	l, err := p.parseUnary()
+	if err != nil {
+		return nil, err
+	}
+	for p.isOp("|") || p.isKw("union") {
+		p.next()
+		r, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		l = &binary{"|", l, r}
 	}
 	return l, nil
 }
@@ -394,6 +431,18 @@ func (p *exprParser) parsePrimary() (exprNode, error) {
 		inner, err := p.parseExpr()
 		if err != nil {
 			return nil, err
+		}
+		if p.isOp(",") {
+			items := []exprNode{inner}
+			for p.isOp(",") {
+				p.next()
+				it, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				items = append(items, it)
+			}
+			inner = &seqExpr{items}
 		}
 		if !p.isOp(")") {
 			return nil, errUnsupported
@@ -611,6 +660,38 @@ func (e *evaluator) eval(node exprNode, ctx Node) (seq, error) {
 		return e.evalPath(n, ctx)
 	case *typeOp:
 		return e.evalTypeOp(n, ctx)
+	case *seqExpr:
+		var out seq
+		for _, it := range n.items {
+			v, err := e.eval(it, ctx)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, v...)
+		}
+		return out, nil
+	case *rangeExpr:
+		lo, err := e.eval(n.lo, ctx)
+		if err != nil {
+			return nil, err
+		}
+		hi, err := e.eval(n.hi, ctx)
+		if err != nil {
+			return nil, err
+		}
+		lf, err := toNumber(lo)
+		if err != nil {
+			return nil, err
+		}
+		hf, err := toNumber(hi)
+		if err != nil {
+			return nil, err
+		}
+		var out seq
+		for i := int64(lf); i <= int64(hf); i++ {
+			out = append(out, float64(i))
+		}
+		return out, nil
 	}
 	return nil, errUnsupported
 }
@@ -643,6 +724,16 @@ func (e *evaluator) evalBinary(n *binary, ctx Node) (seq, error) {
 			return nil, err
 		}
 		return seq{effectiveBool(r)}, nil
+	case "|":
+		l, err := e.eval(n.l, ctx)
+		if err != nil {
+			return nil, err
+		}
+		r, err := e.eval(n.r, ctx)
+		if err != nil {
+			return nil, err
+		}
+		return unionNodes(l, r)
 	case "+", "-", "*", "div", "mod", "idiv":
 		l, err := e.eval(n.l, ctx)
 		if err != nil {
@@ -676,6 +767,35 @@ func (e *evaluator) evalBinary(n *binary, ctx Node) (seq, error) {
 		}
 		return seq{res}, nil
 	}
+}
+
+// unionNodes is the "|" operator: the union of two node sequences, de-duplicated
+// by node identity. Both operands must contain only nodes (Node/NodeAttr); any
+// atomic value makes it a type error, so the caller fails open.
+func unionNodes(l, r seq) (seq, error) {
+	seen := map[item]bool{}
+	var out seq
+	add := func(s seq) error {
+		for _, it := range s {
+			switch it.(type) {
+			case Node, NodeAttr:
+			default:
+				return errUnsupported
+			}
+			if !seen[it] {
+				seen[it] = true
+				out = append(out, it)
+			}
+		}
+		return nil
+	}
+	if err := add(l); err != nil {
+		return nil, err
+	}
+	if err := add(r); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func arith(op string, a, b float64) float64 {

@@ -67,6 +67,7 @@ ibmMeta/assert.testSet#assert_033#assert_033_2	pass
 ibmMeta/assert.testSet#assert_035#assert_035_2	pass
 ibmMeta/assertion.testSet#d4_3_15ii01#d4_3_15ii01i	pass
 ibmMeta/assertion.testSet#d4_3_15ii02#d4_3_15ii02i	pass
+ibmMeta/assertion.testSet#d4_3_15ii03#d4_3_15ii03i	pass
 ibmMeta/assertion.testSet#d4_3_15ii04#d4_3_15ii04i	pass
 ibmMeta/assertion.testSet#d4_3_15ii06#d4_3_15ii06i	pass
 ibmMeta/assertion.testSet#d4_3_15ii08#d4_3_15ii08i	pass
@@ -19703,8 +19704,11 @@ saxonMeta/Assert.testSet#assert005#assert005.v1.xml	pass
 saxonMeta/Assert.testSet#assert005#assert005.v2.xml	pass
 saxonMeta/Assert.testSet#assert006#assert006.n2.xml	pass
 saxonMeta/Assert.testSet#assert006#assert006.v1.xml	pass
+saxonMeta/Assert.testSet#assert007#assert007.n3.xml	pass
 saxonMeta/Assert.testSet#assert007#assert007.v1.xml	pass
+saxonMeta/Assert.testSet#assert008#assert008.n3.xml	pass
 saxonMeta/Assert.testSet#assert008#assert008.v1.xml	pass
+saxonMeta/Assert.testSet#assert008a#assert008a.n3.xml	pass
 saxonMeta/Assert.testSet#assert008a#assert008a.v1.xml	pass
 saxonMeta/Assert.testSet#assert009#assert009.n1.xml	pass
 saxonMeta/Assert.testSet#assert009#assert009.v1.xml	pass
