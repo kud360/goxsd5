@@ -18,6 +18,17 @@ import (
 // namespace first).
 func buildSchemas(reg *registry, l *loader, errs *xsd.ErrorList) []*xsd.Schema {
 	b := newBuilder(reg, errs)
+	// Record which top-level component nodes are declared inside an <xs:override>
+	// (and the document they override): §4.2.4 places them in the target document,
+	// so the target's schema-level defaults apply to them.
+	for _, rep := range l.reps {
+		if rep.kind != "override" {
+			continue
+		}
+		for _, c := range xsdElems(rep.node, rep.owner) {
+			b.overrideTarget[c] = rep.target
+		}
+	}
 	byTNS := map[string]*xsd.Schema{}
 	var schemas []*xsd.Schema
 	for _, doc := range l.order {

@@ -164,6 +164,7 @@ ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii03#s3_4_2_4ii03i	pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii05#s3_4_2_4ii05i	pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii06#s3_4_2_4ii06i	pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii07#s3_4_2_4ii07i	pass
+ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii08#s3_4_2_4ii08i	pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii09#s3_4_2_4ii09i	pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii10#s3_4_2_4ii10i	pass
 ibmMeta/defaultAttributesApply.testSet#s3_4_2_4ii11#s3_4_2_4ii11i	pass
@@ -20059,6 +20060,7 @@ saxonMeta/Open.testSet#open044#open044.n1.xml	pass
 saxonMeta/Open.testSet#open044#open044.n2.xml	pass
 saxonMeta/Open.testSet#open044#open044.v1.xml	pass
 saxonMeta/Open.testSet#open045#open045.n1.xml	pass
+saxonMeta/Open.testSet#open045#open045.n2.xml	pass
 saxonMeta/Open.testSet#open045#open045.v1.xml	pass
 saxonMeta/Open.testSet#open047#open047.n1.xml	pass
 saxonMeta/Open.testSet#open047#open047.v1.xml	pass

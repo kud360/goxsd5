@@ -46,6 +46,12 @@ type builder struct {
 	ctOrder  []*xsd.ComplexType
 	ctFinish map[*xsd.ComplexType]*ctFinishEntry
 	ctDone   map[*xsd.ComplexType]bool
+
+	// overrideTarget maps a top-level component node declared inside an
+	// <xs:override> to the overridden (target) document. Per §4.2.4 such a
+	// component belongs to the target document, so the target's schema-level
+	// defaults (defaultAttributes) apply to it, not the overriding schema's.
+	overrideTarget map[*xmltree.Node]*schemaDoc
 }
 
 // ctFinishEntry locates the source nodes a complex type's finish pass needs.
@@ -84,6 +90,8 @@ func newBuilder(reg *registry, errs *xsd.ErrorList) *builder {
 		building:   map[*xmltree.Node]bool{},
 		ctFinish:   map[*xsd.ComplexType]*ctFinishEntry{},
 		ctDone:     map[*xsd.ComplexType]bool{},
+
+		overrideTarget: map[*xmltree.Node]*schemaDoc{},
 	}
 }
 

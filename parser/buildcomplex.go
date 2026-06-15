@@ -398,6 +398,12 @@ func (b *builder) mergeBaseAttrUses(own, base []*xsd.AttributeUse, prohibited ma
 // applyDefaultAttributes appends the schema's defaultAttributes group
 // unless the type opts out.
 func (b *builder) applyDefaultAttributes(ct *xsd.ComplexType, n *xmltree.Node, doc *schemaDoc) {
+	// A complex type declared inside <xs:override> belongs to the overridden
+	// document (§4.2.4), so that document's defaultAttributes apply — not the
+	// overriding schema's. saxon open045 / ibm s3_4_2_4ii08.
+	if target := b.overrideTarget[n]; target != nil {
+		doc = target
+	}
 	if doc.defaultAttributes.IsZero() || !boolAttr(n, "defaultAttributesApply", true) {
 		return
 	}
