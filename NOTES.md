@@ -7,6 +7,17 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — empty content type forbids whitespace (+1 open012) <<<
+Instance ratchet 21427 → 21428 (+1: saxon open012); schema held 5672. A complex
+type whose particle can never match an element (e.g. <xs:sequence/>) and has no
+open content is an EMPTY content type (§3.4.2), and cvc-complex-type.2.1 admits NO
+character content — not even whitespace (vs element-only clause 2.3, which allows
+whitespace). assessElementContent: when !mixed && no open content &&
+!particleCanMatchElement(particle), reject any non-"" charContent. New
+particleCanMatchElement helper (recurses groups/group-refs; nil or maxOccurs=0 →
+empty). Feared regressions did NOT materialise — no other instance has whitespace
+in an empty-particle element-only type expecting valid; only open012 moved.
+
 ## >>> DONE 2026-06-15 — mutual/circular override no longer drops the replacement (+1 over023) <<<
 Instance ratchet 21426 → 21427 (+1: saxon over023); schema held 5672. A mutual
 override (over023 overrides over023a; over023a overrides over023 back, empty body)

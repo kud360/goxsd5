@@ -300,9 +300,18 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 // assessElementContent matches the children against the content model and
 // recurses (cvc-complex-type.2.3/.4, cvc-particle).
 func (a *assessor) assessElementContent(el Element, ct *xsd.ComplexType, ec *xsd.ElementContent, inherited map[xsd.QName]string) {
-	// cvc-complex-type.2.3: element-only content admits only whitespace text.
-	if !ec.Mixed && hasNonWhitespace(charContent(el)) {
-		a.addf(xsd.SpecCvcComplexType, el.Pos(), "element-only content has character data")
+	// cvc-complex-type.2.3: element-only content admits only whitespace text —
+	// EXCEPT when the particle can never match an element and there is no open
+	// content: that is an empty content type (§3.4.2), which under clause 2.1
+	// admits no character content at all, not even whitespace (saxon open012).
+	if !ec.Mixed {
+		if ec.OpenContent == nil && !particleCanMatchElement(ec.Particle) {
+			if charContent(el) != "" {
+				a.addf(xsd.SpecCvcComplexType, el.Pos(), "empty content type admits no character data")
+			}
+		} else if hasNonWhitespace(charContent(el)) {
+			a.addf(xsd.SpecCvcComplexType, el.Pos(), "element-only content has character data")
+		}
 	}
 	kids := elementChildren(el)
 	names := make([]xsd.QName, len(kids))
@@ -320,6 +329,35 @@ func (a *assessor) assessElementContent(el Element, ct *xsd.ComplexType, ec *xsd
 	for i, k := range kids {
 		a.assessChild(k, terms[i], inherited, el, local)
 	}
+}
+
+// particleCanMatchElement reports whether the particle can match at least one
+// element or wildcard child — i.e. it is not an empty content model. A nil or
+// zero-maxOccurs particle, or a model group with no matchable members, matches
+// only the empty sequence (an empty content type, §3.4.2).
+func particleCanMatchElement(p *xsd.Particle) bool {
+	if p == nil || p.MaxOccurs == 0 {
+		return false
+	}
+	switch t := p.Term.(type) {
+	case *xsd.ElementDecl, *xsd.Wildcard:
+		return true
+	case *xsd.ModelGroup:
+		for _, sub := range t.Particles {
+			if particleCanMatchElement(sub) {
+				return true
+			}
+		}
+	case *xsd.GroupRef:
+		if t.Ref != nil && t.Ref.Group != nil {
+			for _, sub := range t.Ref.Group.Particles {
+				if particleCanMatchElement(sub) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // baseLocalDeclTypes is localDeclTypes accumulated over a complex type and its

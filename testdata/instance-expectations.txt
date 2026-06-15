@@ -20017,6 +20017,7 @@ saxonMeta/Open.testSet#open011#open011.v1.xml	pass
 saxonMeta/Open.testSet#open011#open011.v2.xml	pass
 saxonMeta/Open.testSet#open012#open012.n1.xml	pass
 saxonMeta/Open.testSet#open012#open012.n2.xml	pass
+saxonMeta/Open.testSet#open012#open012.n3.xml	pass
 saxonMeta/Open.testSet#open012#open012.v1.xml	pass
 saxonMeta/Open.testSet#open013#open013.v1.xml	pass
 saxonMeta/Open.testSet#open014#open014.n1.xml	pass
