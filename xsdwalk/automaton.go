@@ -84,25 +84,28 @@ func (m *Matcher) finish(pos int) bool {
 func (m *Matcher) matchParticle(p *xsd.Particle, pos int, cont func(int) bool) bool {
 	var rec func(count, cur int) bool
 	rec = func(count, cur int) bool {
-		if count >= p.MinOccurs && cont(cur) {
-			return true
-		}
-		if p.MaxOccurs != xsd.UnboundedOccurs && count >= p.MaxOccurs {
-			return false
-		}
-		// Try one more occurrence that consumes at least one child. An empty
-		// occurrence (next == cur) makes no progress; counting it would loop, so
-		// it is tracked separately and used only to satisfy a still-unmet
-		// minOccurs (a nullable term — e.g. an empty sequence — occurring the
-		// required number of times without consuming anything).
+		// Greedy: try to consume one more occurrence BEFORE exiting the loop, so
+		// the explicit content model takes every child it can. This is what gives
+		// explicit content precedence over an interleaved open-content wildcard —
+		// a child the model can still match is matched by it, not absorbed by the
+		// wildcard (XSD 1.1 §3.4.4.2; saxon open025). UPA-determinism makes the
+		// explicit model unambiguous, so greedy never needs to give a match back.
+		// An empty occurrence (next == cur) makes no progress; counting it would
+		// loop, so it is tracked and used only to satisfy a still-unmet minOccurs
+		// (a nullable term — e.g. an empty sequence — occurring without consuming).
 		emptyOK := false
-		if m.matchTerm(p.Term, cur, func(next int) bool {
-			if next == cur {
-				emptyOK = true
-				return false
+		if p.MaxOccurs == xsd.UnboundedOccurs || count < p.MaxOccurs {
+			if m.matchTerm(p.Term, cur, func(next int) bool {
+				if next == cur {
+					emptyOK = true
+					return false
+				}
+				return rec(count+1, next)
+			}) {
+				return true
 			}
-			return rec(count+1, next)
-		}) {
+		}
+		if count >= p.MinOccurs && cont(cur) {
 			return true
 		}
 		if emptyOK && count < p.MinOccurs {

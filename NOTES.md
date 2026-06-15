@@ -7,6 +7,24 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — greedy matcher: explicit content beats open-content wildcard (+1 open025) — INSTANCE SUITE NOW CLEAN <<<
+Instance ratchet 21428 → 21429 (+1: saxon open025); schema held 5672. THE LAST
+verdict-wrong instance case. The instance suite is now FULLY conformant: 21429
+pass + 2 skip (assert011 doc()); the remaining 3 of 21434 error before producing a
+verdict (infra-excluded, ungated).
+Root cause: the matcher's occurrence loop was reluctant (tried exiting the loop
+before consuming another occurrence), so after one `i` it would exit `i+` and let
+the interleave open-content wildcard absorb an invalid `<i>42.3</i>` (skip →
+unvalidated) instead of the explicit `i` (which validates it as integer → fails).
+Fix: make the loop GREEDY — try to consume one more occurrence BEFORE exiting, so
+the explicit content model takes every child it can and the wildcard only fills
+gaps (XSD 1.1 §3.4.4.2). UPA-determinism makes the explicit model unambiguous, so
+greedy never needs to backtrack a match. This is STATE-sensitive (unlike the
+name-based guard tried+reverted earlier): in open025.v1 a later `<i>` after a `<d>`
+still goes to the wildcard because `i+` is closed by then. KEY RESULT: clean across
+all 21434 instance cases AND the 5672 schema suite — no regressions despite this
+being the core content-model matcher used everywhere.
+
 ## >>> DONE 2026-06-15 — empty content type forbids whitespace (+1 open012) <<<
 Instance ratchet 21427 → 21428 (+1: saxon open012); schema held 5672. A complex
 type whose particle can never match an element (e.g. <xs:sequence/>) and has no
