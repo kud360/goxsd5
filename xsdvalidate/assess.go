@@ -339,6 +339,22 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited 
 	}
 }
 
+// attrWildcardAllows applies the ##defined keyword exclusion (cvc-wildcard
+// clause 2.2) on top of the namespace/notQName check for an attribute wildcard:
+// a name that resolves to a global attribute declaration is excluded.
+// (##definedSibling is not permitted on attribute wildcards, w-props-correct.5.)
+func (a *assessor) attrWildcardAllows(w *xsd.Wildcard, name xsd.QName) bool {
+	if !xsdwalk.WildcardAllows(w, name) {
+		return false
+	}
+	for _, d := range w.NotQName {
+		if d.Namespace == "" && d.Local == "##defined" && a.v.attrs[name] != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // assessAttributes implements cvc-complex-type.3 / cvc-attribute / cvc-au.
 func (a *assessor) assessAttributes(el Element, uses []*xsd.AttributeUse, wildcard *xsd.Wildcard) {
 	seen := map[xsd.QName]bool{}
@@ -359,7 +375,7 @@ func (a *assessor) assessAttributes(el Element, uses []*xsd.AttributeUse, wildca
 			a.checkAttrFixed(el, attr, u)
 			continue
 		}
-		if wildcard != nil && xsdwalk.WildcardAllows(wildcard, name) {
+		if wildcard != nil && a.attrWildcardAllows(wildcard, name) {
 			d := a.v.attrs[name]
 			switch wildcard.ProcessContents {
 			case xsd.ProcessStrict:
