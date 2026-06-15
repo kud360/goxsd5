@@ -235,7 +235,13 @@ func (l *loader) register(reg *registry) {
 				continue // annotation
 			}
 			if name, ok := c.Attr("name"); ok {
-				l.suppress(rep.target, symKey{s, xsd.QName{Namespace: rep.owner.targetNamespace, Local: name}}, map[*schemaDoc]bool{})
+				// Seed the visited set with rep.owner: a replacement suppresses the
+				// originals it overrides through the target's composition closure,
+				// but must NOT suppress the component in its OWN document — that is
+				// the replacement it provides. Without this, a mutual override
+				// (A overrides B, B overrides A) propagates back and suppresses A's
+				// own replacement, losing the component entirely (saxon over023).
+				l.suppress(rep.target, symKey{s, xsd.QName{Namespace: rep.owner.targetNamespace, Local: name}}, map[*schemaDoc]bool{rep.owner: true})
 			}
 		}
 	}

@@ -7,6 +7,18 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — mutual/circular override no longer drops the replacement (+1 over023) <<<
+Instance ratchet 21426 → 21427 (+1: saxon over023); schema held 5672. A mutual
+override (over023 overrides over023a; over023a overrides over023 back, empty body)
+was losing the `doc` element entirely → "no global element declaration". Root
+cause in loader.register: the transitive suppress() of a replacement's overridden
+original walks the target's composition closure (target.targets), which in a CYCLE
+leads back to the OWNING document and wrongly suppressed the owner's OWN
+replacement. Fix: seed suppress's visited set with rep.owner — a replacement
+suppresses originals through the target closure but never the component in its own
+document. One-line change (loader.go:238); schema ratchet held (this touches
+override/redefine suppression broadly), so no regression.
+
 ## >>> DONE 2026-06-15 — schema-level defaults skip xs:override-declared types (+3) <<<
 Instance ratchet 21423 → 21426 (+3: saxon open045/open043, ibm s3_4_2_4ii08);
 schema held 5672. A complex type declared inside <xs:override> belongs to the

@@ -20121,6 +20121,7 @@ saxonMeta/Override.testSet#over020#over020.n02.xml	pass
 saxonMeta/Override.testSet#over020#over020.v01.xml	pass
 saxonMeta/Override.testSet#over023#over023.n01.xml	pass
 saxonMeta/Override.testSet#over023#over023.n02.xml	pass
+saxonMeta/Override.testSet#over023#over023.v01.xml	pass
 saxonMeta/Override.testSet#over028#over028.n01.xml	pass
 saxonMeta/Override.testSet#over028#over028.v01.xml	pass
 saxonMeta/Override.testSet#over029#over029.n01.xml	pass
