@@ -7,6 +7,40 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — cos-aw-intersect + defaultOpenContent appliesToEmpty <<<
+Both were identified as "obvious next parser TODOs" after the V0–V4 instance
+validation session (NOTES block above, lines ~67-75): the matcher bug fix
+exposed that ~10 instance negative cases were passing for the wrong reason.
+ - cos-aw-intersect (§3.10.6.3): when multiple `<attributeGroup ref>` children
+   contribute wildcards, the effective {attribute wildcard} is their INTERSECTION
+   (not the first one). Also applies to the type's own `<anyAttribute>` when
+   it appears alongside group refs. New `wildcardIntersect(w1, w2 *xsd.Wildcard)`
+   in parser/wildcard.go (plus helpers `notQNameUnion`, `stringsUnion`,
+   `stringsDifference`, `stringsIntersection`). The intersection per the five
+   spec clauses: both-Any=Any; one-Any+other=other; Not∩Not=Not(union);
+   Not∩Enum=Enum(difference); Enum∩Enum=Enum(intersection). processContents uses
+   `min()` (strict=0 < lax=1 < skip=2). NotQName takes the union (either
+   wildcard's exclusions apply to the intersection). Fixes: wild023.n1, wild024.n1,
+   wild025.n3, wild026.n1/.n4, wild043.n3, suntest test007.2.n/.7.n/.8.n.
+   WIRING: buildAttrUses (buildterms.go) now calls `wildcardIntersect(wc, g.Wildcard)`
+   for each `<attributeGroup ref>` (was: `if wc==nil { wc=g.Wildcard }`) and
+   `wildcardIntersect(wc, b.buildWildcard(c, doc))` for the `<anyAttribute>` case
+   (was: `wc = b.buildWildcard(c, doc)` which overwrote group wildcards).
+   cos-aw-union (extension's wildcard union with base) remains deferred (the
+   comment in mergeComplexType is unchanged).
+ - defaultOpenContent appliesToEmpty (§3.11.4.2): a bare `<xs:sequence/>` with no
+   child elements has an EMPTY content type (particleMatchesNonEmpty=false), not a
+   non-empty element-only type. Changed the condition in fillElementOnlyContent
+   (buildcomplex.go) from `particle != nil` to `mixed || particleMatchesNonEmpty(particle)`.
+   `mixed=true` means the content type is always non-empty (mixed variety), so it
+   gets defaultOpenContent regardless of `appliesToEmpty`. Fixes: open012.n1.
+   open012.n3 remains a gap — the instance validator allows whitespace in content
+   type "empty" (a separate xsdvalidate issue, not the parser's model).
+CONFORMANCE: schema suite held at 5672; instance suite +10 (21231 → 21241).
+Unit tests: TestBuildAttrWildcardIntersect (4 sub-cases: Not∩Not, Any∩Not,
+Enum∩Not, Enum∩Enum via group+anyAttribute) and TestBuildDefaultOpenContentAppliesToEmpty
+(4 sub-cases: empty-false=no-OC, empty-true=OC, mixed-false=OC, non-empty-false=OC).
+
 ## >>> DONE 2026-06-14 — xmltree.Parse streams (no unbounded io.ReadAll) <<<
 `parser/xmltree.Parse` used `io.ReadAll` twice (raw + transcoded) and held the
 whole document in `treeParser.data` — an unbounded-memory vector on untrusted
@@ -70,9 +104,12 @@ CONFORMANCE: parallel `testdata/instance-expectations.txt` ratchet (TAB-separate
 mirrors schema ratchet; `go test ./parser -run TestInstanceConformance
 -update-instance-expectations`). 21434 instance cases, 21231 verdict-correct.
 Schema ratchet unchanged (5672). cmd/goxsd5 gained `-validate doc.xml`.
-REMAINING GAPS (future, not blocking): cos-aw-intersect + defaultOpenContent in
-parser; richer XPath (parent axis `..`, more fns) for more assert/CTA cases;
-cross-scope keyref; simple-type-level assertions; IDC true namespace resolution.
+REMAINING GAPS (future, not blocking): richer XPath (parent axis `..`, more fns)
+for more assert/CTA cases; cross-scope keyref; simple-type-level assertions; IDC
+true namespace resolution; whitespace in empty content type (xsdvalidate gap —
+open012.n3); override + defaultOpenContent/defaultAttributes inheritance for types
+defined within xs:override (open043.n2, open045.n2). cos-aw-intersect +
+defaultOpenContent appliesToEmpty are DONE (2026-06-15, +10 instance passes).
 
 ## >>> PLAN 2026-06-14 — instance validation plan authored (PLAN-validate.md), DONE (see block above) <<<
 Wrote `PLAN-validate.md`: extend the schema processor

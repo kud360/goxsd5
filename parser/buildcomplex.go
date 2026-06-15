@@ -320,7 +320,13 @@ func (b *builder) fillElementOnlyContent(ct *xsd.ComplexType, n, content *xmltre
 	if ocn := firstChild(content, doc, "openContent"); ocn != nil {
 		ec.OpenContent = b.buildOpenContent(ocn, doc)
 	} else if doc.defaultOpenContent != nil {
-		if particle != nil || boolAttr(doc.defaultOpenContent, "appliesToEmpty", false) {
+		// Apply defaultOpenContent when the content type is non-empty (i.e. the
+		// particle can match at least one element, or the type is mixed — mixed
+		// always has a non-empty content type), OR when appliesToEmpty=true.
+		// A bare <xs:sequence/> with no children is an empty content type, so
+		// particleMatchesNonEmpty correctly returns false for it. §3.11.4.2.
+		nonEmpty := mixed || particleMatchesNonEmpty(particle)
+		if nonEmpty || boolAttr(doc.defaultOpenContent, "appliesToEmpty", false) {
 			ec.OpenContent = b.buildOpenContent(doc.defaultOpenContent, doc)
 		}
 	}

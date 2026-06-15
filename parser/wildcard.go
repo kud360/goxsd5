@@ -96,6 +96,75 @@ func hasDisallowedKeyword(w *xsd.Wildcard, kw string) bool {
 	return false
 }
 
+// wildcardIntersect returns the Attribute Wildcard Intersection of W1 and W2
+// per XSD 1.1 Part 1 §3.10.6.3 (cos-aw-intersect). Either argument may be
+// nil (no wildcard); nil means "all allowed" for intersection purposes. When
+// both are nil the result is nil.
+func wildcardIntersect(w1, w2 *xsd.Wildcard) *xsd.Wildcard {
+	if w1 == nil {
+		return w2
+	}
+	if w2 == nil {
+		return w1
+	}
+	out := &xsd.Wildcard{}
+	// {process contents}: use the stronger of the two (strict > lax > skip),
+	// i.e. the minimum of the iota values (ProcessStrict=0 < ProcessLax=1 < ProcessSkip=2).
+	out.ProcessContents = min(w1.ProcessContents, w2.ProcessContents)
+	// {disallowed names}: union of both NotQName sets (a name disallowed by
+	// either wildcard is disallowed by the intersection).
+	out.NotQName = notQNameUnion(w1.NotQName, w2.NotQName)
+	// {namespace constraint}: per cos-aw-intersect clauses 1–5.
+	switch {
+	case w1.Mode == xsd.NSConstraintAny && w2.Mode == xsd.NSConstraintAny:
+		// clause 1: both any → any
+		out.Mode = xsd.NSConstraintAny
+	case w1.Mode == xsd.NSConstraintAny:
+		// clause 2: one is any → take the other
+		out.Mode = w2.Mode
+		out.Namespaces = w2.Namespaces
+	case w2.Mode == xsd.NSConstraintAny:
+		// clause 2 (symmetric)
+		out.Mode = w1.Mode
+		out.Namespaces = w1.Namespaces
+	case w1.Mode == xsd.NSConstraintNot && w2.Mode == xsd.NSConstraintNot:
+		// clause 3: Not(S1) ∩ Not(S2) = Not(S1 ∪ S2)
+		out.Mode = xsd.NSConstraintNot
+		out.Namespaces = stringsUnion(w1.Namespaces, w2.Namespaces)
+	case w1.Mode == xsd.NSConstraintNot && w2.Mode == xsd.NSConstraintEnumeration:
+		// clause 4: Not(S1) ∩ Enum(S2) = Enum(S2 - S1)
+		out.Mode = xsd.NSConstraintEnumeration
+		out.Namespaces = stringsDifference(w2.Namespaces, w1.Namespaces)
+	case w1.Mode == xsd.NSConstraintEnumeration && w2.Mode == xsd.NSConstraintNot:
+		// clause 4 (symmetric)
+		out.Mode = xsd.NSConstraintEnumeration
+		out.Namespaces = stringsDifference(w1.Namespaces, w2.Namespaces)
+	default:
+		// clause 5: Enum(S1) ∩ Enum(S2) = Enum(S1 ∩ S2)
+		out.Mode = xsd.NSConstraintEnumeration
+		out.Namespaces = stringsIntersection(w1.Namespaces, w2.Namespaces)
+	}
+	return out
+}
+
+// notQNameUnion returns the union of two NotQName slices, deduplicating.
+func notQNameUnion(a, b []xsd.QName) []xsd.QName {
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	out := make([]xsd.QName, len(a))
+	copy(out, a)
+	for _, q := range b {
+		if !slices.Contains(out, q) {
+			out = append(out, q)
+		}
+	}
+	return out
+}
+
 // stringsSubset reports whether every member of a is in b.
 func stringsSubset(a, b []string) bool {
 	for _, x := range a {
@@ -104,4 +173,44 @@ func stringsSubset(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// stringsUnion returns the union of two string slices, deduplicating.
+func stringsUnion(a, b []string) []string {
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	out := make([]string, len(a))
+	copy(out, a)
+	for _, s := range b {
+		if !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// stringsDifference returns the elements of a that are not in b.
+func stringsDifference(a, b []string) []string {
+	var out []string
+	for _, s := range a {
+		if !slices.Contains(b, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// stringsIntersection returns the elements common to both a and b.
+func stringsIntersection(a, b []string) []string {
+	var out []string
+	for _, s := range a {
+		if slices.Contains(b, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }

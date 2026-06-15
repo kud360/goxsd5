@@ -340,13 +340,13 @@ func (b *builder) buildAttrUses(parent *xmltree.Node, doc *schemaDoc) (uses []*x
 				continue // cyclic, already reported
 			}
 			uses = append(uses, g.Uses...)
-			if wc == nil {
-				// Full wildcard intersection (cos-aw-intersect) is deferred;
-				// the first wildcard encountered stands in for it.
-				wc = g.Wildcard
-			}
+			// spec: cos-aw-intersect — XSD 1.1 Part 1 §3.10.6.3: the effective
+			// attribute wildcard is the intersection of all group wildcards.
+			wc = wildcardIntersect(wc, g.Wildcard)
 		case "anyAttribute":
-			wc = b.buildWildcard(c, doc)
+			// The type's own anyAttribute is also intersected with any group
+			// wildcards already accumulated (§3.8.4.2).
+			wc = wildcardIntersect(wc, b.buildWildcard(c, doc))
 		}
 	}
 	return uses, wc, prohibited

@@ -1083,3 +1083,136 @@ func TestBuildMaxOccursZeroParticle(t *testing.T) {
 		t.Errorf("maxOccurs=0 particle must map to no component; got %+v", mg.Particles)
 	}
 }
+
+// TestBuildAttrWildcardIntersect verifies that when multiple attributeGroup
+// references (or a mix of attributeGroup refs and a local anyAttribute) all
+// carry wildcards, the effective attribute wildcard is their INTERSECTION
+// (cos-aw-intersect §3.10.6.3) rather than the first one encountered.
+func TestBuildAttrWildcardIntersect(t *testing.T) {
+	cases := []struct {
+		name     string
+		body     string
+		wantMode xsd.NamespaceConstraintMode
+		wantNS   []string // expected Namespaces slice (sorted)
+	}{
+		{
+			// Not(##local) ∩ Not(urn:eve) = Not(##local, urn:eve)  — clause 3
+			name: "Not∩Not→Not(union)",
+			body: `<xs:attributeGroup name="a"><xs:anyAttribute notNamespace="##local" processContents="lax"/></xs:attributeGroup>
+			       <xs:attributeGroup name="b"><xs:anyAttribute notNamespace="urn:eve" processContents="lax"/></xs:attributeGroup>
+			       <xs:complexType name="t"><xs:sequence/><xs:attributeGroup ref="tns:a"/><xs:attributeGroup ref="tns:b"/></xs:complexType>`,
+			wantMode: xsd.NSConstraintNot,
+			wantNS:   []string{"", "urn:eve"},
+		},
+		{
+			// ##any ∩ Not(urn:eve) = Not(urn:eve)  — clause 2
+			name: "Any∩Not→Not",
+			body: `<xs:attributeGroup name="a"><xs:anyAttribute namespace="##any" processContents="lax"/></xs:attributeGroup>
+			       <xs:attributeGroup name="b"><xs:anyAttribute notNamespace="urn:eve" processContents="lax"/></xs:attributeGroup>
+			       <xs:complexType name="t"><xs:sequence/><xs:attributeGroup ref="tns:a"/><xs:attributeGroup ref="tns:b"/></xs:complexType>`,
+			wantMode: xsd.NSConstraintNot,
+			wantNS:   []string{"urn:eve"},
+		},
+		{
+			// Enum(urn:a,urn:b) ∩ Not(urn:b,urn:c) = Enum(urn:a)  — clause 4
+			name: "Enum∩Not→Enum(difference)",
+			body: `<xs:attributeGroup name="a"><xs:anyAttribute namespace="urn:a urn:b" processContents="skip"/></xs:attributeGroup>
+			       <xs:attributeGroup name="b"><xs:anyAttribute notNamespace="urn:b urn:c" processContents="skip"/></xs:attributeGroup>
+			       <xs:complexType name="t"><xs:sequence/><xs:attributeGroup ref="tns:a"/><xs:attributeGroup ref="tns:b"/></xs:complexType>`,
+			wantMode: xsd.NSConstraintEnumeration,
+			wantNS:   []string{"urn:a"},
+		},
+		{
+			// Enum(urn:a) ∩ Enum(urn:a,urn:b,urn:c) = Enum(urn:a)  — clause 5
+			// anyAttribute overrides/intersects the group wildcard.
+			name: "Enum∩Enum→Enum(intersection) via attributeGroup+anyAttribute",
+			body: `<xs:attributeGroup name="a"><xs:anyAttribute namespace="urn:a" processContents="skip"/></xs:attributeGroup>
+			       <xs:complexType name="t"><xs:sequence/><xs:attributeGroup ref="tns:a"/><xs:anyAttribute namespace="urn:a urn:b urn:c" processContents="skip"/></xs:complexType>`,
+			wantMode: xsd.NSConstraintEnumeration,
+			wantNS:   []string{"urn:a"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+tc.body+`</xs:schema>`)
+			wantClean(t, errs)
+			ct := s.Types[xsd.QName{Namespace: "urn:t", Local: "t"}].(*xsd.ComplexType)
+			wc := ct.AttributeWildcard
+			if wc == nil {
+				t.Fatal("attribute wildcard is nil; want non-nil")
+			}
+			if wc.Mode != tc.wantMode {
+				t.Errorf("wildcard mode = %v, want %v", wc.Mode, tc.wantMode)
+			}
+			if len(wc.Namespaces) != len(tc.wantNS) {
+				t.Errorf("wildcard namespaces = %v, want %v", wc.Namespaces, tc.wantNS)
+			} else {
+				for _, ns := range tc.wantNS {
+					found := false
+					for _, got := range wc.Namespaces {
+						if got == ns {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("wildcard namespaces %v missing expected %q", wc.Namespaces, ns)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestBuildDefaultOpenContentAppliesToEmpty verifies that a bare
+// <xs:sequence/> with no children is treated as an EMPTY content type, so a
+// defaultOpenContent with appliesToEmpty=false does NOT apply to it, while one
+// with appliesToEmpty=true (or a mixed type with an empty sequence) still does.
+func TestBuildDefaultOpenContentAppliesToEmpty(t *testing.T) {
+	const openNS = "urn:o"
+	cases := []struct {
+		name        string
+		body        string
+		wantOpenCtx bool // whether the type "t" should have open content
+	}{
+		{
+			name: "empty sequence + appliesToEmpty=false → no open content",
+			body: `<xs:defaultOpenContent appliesToEmpty="false"><xs:any namespace="` + openNS + `" processContents="lax"/></xs:defaultOpenContent>
+			       <xs:complexType name="t"><xs:sequence/></xs:complexType>`,
+			wantOpenCtx: false,
+		},
+		{
+			name: "empty sequence + appliesToEmpty=true → open content applied",
+			body: `<xs:defaultOpenContent appliesToEmpty="true"><xs:any namespace="` + openNS + `" processContents="lax"/></xs:defaultOpenContent>
+			       <xs:complexType name="t"><xs:sequence/></xs:complexType>`,
+			wantOpenCtx: true,
+		},
+		{
+			name: "mixed type with empty sequence + appliesToEmpty=false → open content applied",
+			body: `<xs:defaultOpenContent appliesToEmpty="false"><xs:any namespace="` + openNS + `" processContents="lax"/></xs:defaultOpenContent>
+			       <xs:complexType name="t" mixed="true"><xs:sequence/></xs:complexType>`,
+			wantOpenCtx: true,
+		},
+		{
+			name: "non-empty sequence + appliesToEmpty=false → open content applied",
+			body: `<xs:defaultOpenContent appliesToEmpty="false"><xs:any namespace="` + openNS + `" processContents="lax"/></xs:defaultOpenContent>
+			       <xs:complexType name="t"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>`,
+			wantOpenCtx: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+tc.body+`</xs:schema>`)
+			wantClean(t, errs)
+			ct := s.Types[xsd.QName{Namespace: "urn:t", Local: "t"}].(*xsd.ComplexType)
+			ec, ok := ct.Content.(*xsd.ElementContent)
+			if !ok {
+				t.Fatal("type t has no element content")
+			}
+			hasOC := ec.OpenContent != nil && ec.OpenContent.Mode != xsd.OpenContentNone
+			if hasOC != tc.wantOpenCtx {
+				t.Errorf("open content present = %v, want %v", hasOC, tc.wantOpenCtx)
+			}
+		})
+	}
+}
