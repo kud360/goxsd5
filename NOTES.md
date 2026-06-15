@@ -7,6 +7,28 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — scattered false-ACCEPT fixes: substitution type-block, fixed-mixed, fixed-ID, union facets, nilled ws <<<
+Five small spec fixes after the EDC cluster. Instance ratchet 21360 → 21370
+(schema held 5672). Each landed as its own commit + ratchet re-baseline.
+ - SUBSTITUTION honours head TYPE's block (xsdwalk substChain): exclude set now
+   folds in typeBlock(head's type) — a member derived from the head type by a
+   method the head TYPE blocks (complexType block=) is not substitutable
+   (§3.3.6.3). +3 (sun ElemDecl disallowedSubst00503).
+ - FIXED on MIXED content (assess.go cvc-elt.5.2.2.1): a fixed value on a mixed
+   content type forbids element children and requires char content == fixed. +2
+   (sun valueConstraint00701/00801).
+ - FIXED attribute ID harvest (assess.go): an absent optional attr contributes
+   its value constraint whether default OR fixed; new attrValueConstraint. A
+   fixed xs:ID absent on two elements → duplicate ID. +2 (saxon Id011/013).
+ - UNION validation via DirectMembers (xsd/facets.go buildValue): was flattening
+   through an intervening restriction-of-union (BasicMembers), bypassing its
+   pattern/enum. Now tries DIRECT members, each validating through its own facets.
+   +2 (ibm union ii02/ii04). (simple085 — pattern-vs-collapsed-whitespace on a
+   union — is a SEPARATE whiteSpace-ordering issue, still open.)
+ - NILLED element strictness (assess.go cvc-elt.3.2.1): a nilled element must
+   have NO character children incl. whitespace (was hasContent = non-whitespace
+   only). +1 (saxon All004.n02).
+
 ## >>> DONE 2026-06-15 — attribute ##defined + tighter EDC for wildcard-matched elements <<<
 Two more false-ACCEPT clusters (Wild). Instance ratchet 21344 → 21360 (schema held
 5672). Both in xsdvalidate/assess.go.

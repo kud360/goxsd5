@@ -156,8 +156,9 @@ func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited ma
 
 	if nilled {
 		// cvc-elt.3.2.1: a nilled element must have no character or element
-		// content. Attributes are still assessed.
-		if hasContent(el) {
+		// information item children — including whitespace. Attributes are still
+		// assessed.
+		if hasElementChildren(el) || charContent(el) != "" {
 			a.addf(xsd.SpecCvcElt, el.Pos(), "nilled element %s must be empty", decl.Name)
 		}
 		if ct, ok := gov.(*xsd.ComplexType); ok {
