@@ -68,30 +68,56 @@ func (e *Error) Error() string {
 // XPath 2.0 grammar). A nil error means src is well-formed XPath 2.0; any
 // remaining schema-level checks are driven by the returned Expr.TypeRefs.
 func Parse(src string) (*Expr, error) {
+	_, expr, _, err := parseTree(src)
+	if err != nil {
+		return nil, err
+	}
+	return expr, nil
+}
+
+// parseTree is the single front-end shared by Parse (schema-time static checks,
+// which read expr.TypeRefs and the syntax error) and evalExpr (instance-time
+// evaluation, which walks the AST root). It lexes and parses src exactly once.
+// unsupported reports whether the expression used a construct outside the
+// evaluator's subset; the evaluator fails open on it (see evalExpr), while Parse
+// ignores it — an out-of-subset construct is still well-formed XPath.
+func parseTree(src string) (root exprNode, expr *Expr, unsupported bool, err *Error) {
 	toks, lerr := lex(src)
 	if lerr != nil {
-		return nil, lerr
+		return nil, nil, false, lerr
 	}
 	p := &parser{src: src, toks: toks, expr: &Expr{Src: src}}
-	p.parseExpr()
+	root = p.parseExpr()
 	if p.err != nil {
-		return nil, p.err
+		return nil, nil, false, p.err
 	}
 	if p.cur().kind != tokEOF {
 		p.errorf(p.cur().offset, "unexpected %s", p.describe(p.cur()))
-		return nil, p.err
+		return nil, nil, false, p.err
 	}
-	return p.expr, nil
+	return root, p.expr, p.unsupported, nil
 }
 
-// parser is a recursive-descent parser over the pre-tokenised expression.
+// parser is a recursive-descent parser over the pre-tokenised expression. It
+// both validates syntax (recording cast/instance-of TypeRefs on expr) and
+// builds the evaluable AST returned to evalExpr.
 type parser struct {
 	src  string
 	toks []token
 	pos  int
 	expr *Expr
 	err  *Error
+	// unsupported is set when a parsed construct lies outside the evaluator's
+	// subset (treat-as, intersect/except, node comparison, a non-atomic
+	// sequence type, …). The AST built for such an expression may be partial;
+	// evalExpr never walks it, failing open instead.
+	unsupported bool
 }
+
+// markUnsupported flags the expression as outside the evaluable subset. Parsing
+// continues (for syntax validation and TypeRef collection); only evaluation is
+// affected.
+func (p *parser) markUnsupported() { p.unsupported = true }
 
 func (p *parser) cur() token { return p.toks[p.pos] }
 func (p *parser) peek(n int) token {
