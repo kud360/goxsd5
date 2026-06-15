@@ -7,10 +7,10 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> DONE 2026-06-15 — XPATH assertion evaluator push (+26 instance cases) <<<
-Six commits enriching the XPath subset (xpath/eval.go) + one engine rule, all
+## >>> DONE 2026-06-15 — XPATH assertion evaluator push (+31 instance cases) <<<
+Eight commits enriching the XPath subset (xpath/eval.go) + two engine rules, all
 ratcheting the instance suite up with the schema suite held at 5672 throughout.
-Instance ratchet 21370 → 21396 (+26). Each landed as its own commit + re-baseline.
+Instance ratchet 21370 → 21401 (+31). Each landed as its own commit + re-baseline.
 Diagnostic: throwaway parser/zz_instdiag_test.go (INSTDIAG=1) listed every
 verdict-wrong instance with its schema's assert/alternative/simple-assertion
 exprs; deleted after.
@@ -40,17 +40,33 @@ exprs; deleted after.
    ISO dates of equal form compare chronologically via string cmp (suite values
    are far past/future so verdict is run-date-independent). +3 (ibm ii11/ii13
    "current-date() le @date" date 2000-12-12; saxon assert-simple001 value 2080).
-REMAINING XPath false-ACCEPTS (NOT done, rising cost): (1) QUANTIFIED cluster
-assert007/008/008a .n1 (3) — "every $w in chess:white satisfies
-not($w/following-sibling::*[1][self::chess:white])" needs node-valued variables
-with dynamic scoping + the following-sibling axis + self:: kind test. BLOCKER:
-neither xpath.Node nor infoset Element exposes parent/siblings; following-sibling
-would require threading positional context through the node model (touches
-infoset + xmlsrc + evaluator) — poor ROI for 3 cases. (2) list-type $value:
-simple005 count($value) eq count(distinct-values($value)) needs $value as the
-list-item SEQUENCE (currently single-item). (3) date assertions on list-union
-types (assert_032/034). The ~30 non-XPath false-ACCEPTS are open-content/VC/
-wildcard/defaultAttributes features (empty assert exprs), out of XPath scope.
+ - POSITIONED-NODE rewrite of the path machinery (xpath/eval.go, the big one):
+   tree navigation is NOT exposed by the Node interface or infoset (downward-only
+   walk preserved). The evaluator threads *nodeCtx{node,parent,index} built as it
+   descends; in a tree each node has one parent and downward nav always reaches it
+   via that parent, so the synthesized parent IS the real one — and the parentless
+   assertion root makes reverse/sibling axes of the context empty (stay-in-subtree
+   for free). Added: ALL 12 AXES (child/descendant[-or-self]/attribute/self/parent/
+   ancestor[-or-self]/following[-preceding]-sibling/following/preceding; reverse
+   axes emit reverse-doc-order so positional preds work); explicit "axis::test" +
+   node()/text() (lexer splits "::" and ".." while keeping single ":" in QNames);
+   PRIMARY-LED paths ($w/following-sibling::*, (e)/step, fn()/step); QUANTIFIED
+   some/every...satisfies + for...return with a runtime node-valued var scope
+   (shadows EvalContext.Vars); position()/last() (focus threaded); distinct-values;
+   path steps de-dup by node identity + per-context-node predicates. +4 (saxon
+   assert007/008/008a .n1 quantified+following-sibling; assert005.n1 preceding::).
+   This CLOSED the navigation "blocker" from the same-day earlier note. Unit
+   TestEvalAxes. All prior xpath tests passed unchanged through the rewrite.
+ - LIST-type $value bound as the item SEQUENCE (assess.go checkSimpleAssertions,
+   strings.Fields when Variety==VarietyList). +1 (saxon assert-simple005
+   count($value) eq count(distinct-values($value))).
+REMAINING XPath false-ACCEPTS (hard / out of scope): date assertions on list-union
+types (ibm assert_032/034); simple-type position()/last() where the focus is the
+VALUE sequence not nodes (saxon assert-simple009/010); xs:date()-cast comparisons
+(assert-simple007/008). The ibm assert_021..035 groups bundle many (schema,
+instance) pairs in ONE testGroup — a HARNESS-structural limitation, not XPath.
+The ~17 other false-ACCEPTS are non-XPath features (open content / VC version-
+control / wildcard / defaultAttributes / Complex022), out of scope here.
 
 ## >>> DONE 2026-06-15 — scattered false-ACCEPT fixes: substitution type-block, fixed-mixed, fixed-ID, union facets, nilled ws <<<
 Five small spec fixes after the EDC cluster. Instance ratchet 21360 → 21370
