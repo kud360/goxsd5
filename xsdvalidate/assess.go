@@ -274,6 +274,15 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 		a.validateSimpleContent(el, content.Type, charContent(el), decl, parent)
 	case *xsd.ElementContent:
 		a.assessElementContent(el, content, inherited)
+		// cvc-elt.5.2.2.1: a fixed value on a mixed content type forbids element
+		// children and requires the character content to equal the fixed value.
+		if decl != nil && decl.Fixed != nil && content.Mixed {
+			if hasElementChildren(el) {
+				a.addf(xsd.SpecCvcElt, el.Pos(), "element %s has a fixed value but contains element children", decl.Name)
+			} else if charContent(el) != *decl.Fixed {
+				a.addf(xsd.SpecCvcElt, el.Pos(), "element %s content %q does not match fixed value %q", decl.Name, charContent(el), *decl.Fixed)
+			}
+		}
 	default: // empty content
 		// cvc-complex-type.2.1: empty content admits neither element nor
 		// non-whitespace character content.

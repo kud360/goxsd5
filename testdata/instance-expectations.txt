@@ -20792,7 +20792,9 @@ sunMeta/ElemDecl.testSet#valueconstraint00601m1#Positive	pass
 sunMeta/ElemDecl.testSet#valueconstraint00601m3#Positive	pass
 sunMeta/ElemDecl.testSet#valueconstraint00601m5#Positive	pass
 sunMeta/ElemDecl.testSet#valueconstraint00601m7#Positive	pass
+sunMeta/ElemDecl.testSet#valueconstraint00701m1#Negative	pass
 sunMeta/ElemDecl.testSet#valueconstraint00701m1#Positive	pass
+sunMeta/ElemDecl.testSet#valueconstraint00801m1#Negative	pass
 sunMeta/ElemDecl.testSet#valueconstraint00801m1#Positive	pass
 sunMeta/ElemDecl.testSet#valueconstraint00901m1#Negative	pass
 sunMeta/ElemDecl.testSet#valueconstraint00901m1#Positive	pass
