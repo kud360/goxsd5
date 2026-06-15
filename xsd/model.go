@@ -493,7 +493,12 @@ type AttributeUse struct {
 	// Default/Fixed here override the declaration's (for ref= uses).
 	Default *string
 	Fixed   *string
-	Pos     Pos
+	// Inheritable is the use's {inheritable} (XSD 1.1): the value declared on
+	// the use if present, else inherited from the declaration. It governs
+	// whether the attribute is supplied to descendant conditional type
+	// assignment / assertions.
+	Inheritable bool
+	Pos         Pos
 }
 
 // AttributeGroup is an attribute group definition (Part 1 §3.6).

@@ -75,17 +75,19 @@ func (a *assessor) assessRoot(root Element) {
 		a.addf(xsd.SpecCvcElt, root.Pos(), "no global element declaration for root element %s", root.Name())
 		return
 	}
-	a.assessElement(root, decl)
+	a.assessElement(root, decl, nil)
 }
 
 // assessElement implements cvc-elt (Element Locally Valid (Element), §3.3.4).
-func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl) {
+// inherited carries the XSD 1.1 inheritable attributes contributed by ancestor
+// elements, available to conditional-type-assignment tests on this element.
+func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited map[xsd.QName]string) {
 	// cvc-elt.2: the declaration must not be abstract.
 	if decl.Abstract {
 		a.addf(xsd.SpecCvcElt, el.Pos(), "element %s is declared abstract and cannot appear in an instance", decl.Name)
 	}
 
-	gov := decl.Type
+	gov := a.selectGoverningType(el, decl, decl.Type, inherited)
 	nilled := false
 
 	// cvc-elt.3: xsi:nil.
@@ -123,10 +125,44 @@ func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl) {
 	}
 
 	// cvc-elt.5: the element is locally valid with respect to its type.
-	a.assessType(el, gov, decl)
+	a.assessType(el, gov, decl, childInherited(el, gov, inherited))
 
 	// Identity constraints are scoped at this element and read its subtree.
 	a.checkIdentityConstraints(el, decl)
+}
+
+// childInherited extends the inherited-attribute set with this element's own
+// attributes whose declarations are inheritable (XSD 1.1 §3.4.4). The element's
+// own values override any inherited of the same name.
+func childInherited(el Element, gov xsd.Type, parent map[xsd.QName]string) map[xsd.QName]string {
+	ct, ok := gov.(*xsd.ComplexType)
+	if !ok {
+		return parent
+	}
+	var out map[xsd.QName]string
+	clone := func() {
+		if out == nil {
+			out = make(map[xsd.QName]string, len(parent)+2)
+			for k, v := range parent {
+				out[k] = v
+			}
+		}
+	}
+	for _, u := range ct.AttributeUses {
+		if u.Decl == nil || !u.Inheritable {
+			continue
+		}
+		for _, at := range el.Attributes() {
+			if at.Name() == u.Decl.Name {
+				clone()
+				out[u.Decl.Name] = at.Value()
+			}
+		}
+	}
+	if out == nil {
+		return parent
+	}
+	return out
 }
 
 // resolveXSIType handles cvc-elt.4: resolve and validate the xsi:type override.
@@ -157,7 +193,7 @@ func (a *assessor) resolveXSIType(el Element, decl *xsd.ElementDecl, declared xs
 }
 
 // assessType implements cvc-type (§3.4.4): dispatch on simple vs complex.
-func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl) {
+func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl, inherited map[xsd.QName]string) {
 	switch t := t.(type) {
 	case *xsd.SimpleType:
 		// cvc-type.3.1.1/.2: a simple-typed element admits no element children
@@ -168,12 +204,12 @@ func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl) {
 		}
 		a.validateSimpleContent(el, t, charContent(el), decl)
 	case *xsd.ComplexType:
-		a.assessComplexType(el, t, decl)
+		a.assessComplexType(el, t, decl, inherited)
 	}
 }
 
 // assessComplexType implements cvc-complex-type (§3.4.4).
-func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.ElementDecl) {
+func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.ElementDecl, inherited map[xsd.QName]string) {
 	// cvc-complex-type.1: the type must not be abstract.
 	if ct.Abstract {
 		a.addf(xsd.SpecCvcComplexType, el.Pos(), "complex type %s is abstract and cannot be instantiated", typeName(ct))
@@ -189,7 +225,7 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 		}
 		a.validateSimpleContent(el, content.Type, charContent(el), decl)
 	case *xsd.ElementContent:
-		a.assessElementContent(el, content)
+		a.assessElementContent(el, content, inherited)
 	default: // empty content
 		// cvc-complex-type.2.1: empty content admits neither element nor
 		// non-whitespace character content.
@@ -197,11 +233,14 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 			a.addf(xsd.SpecCvcComplexType, el.Pos(), "element %s has empty content type but is not empty", decl.Name)
 		}
 	}
+
+	// cvc-complex-type.5 / cvc-assertion: xs:assert children.
+	a.checkAssertions(el, ct)
 }
 
 // assessElementContent matches the children against the content model and
 // recurses (cvc-complex-type.2.3/.4, cvc-particle).
-func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent) {
+func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent, inherited map[xsd.QName]string) {
 	// cvc-complex-type.2.3: element-only content admits only whitespace text.
 	if !ec.Mixed && hasNonWhitespace(charContent(el)) {
 		a.addf(xsd.SpecCvcComplexType, el.Pos(), "element-only content has character data")
@@ -219,14 +258,14 @@ func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent) {
 		return
 	}
 	for i, k := range kids {
-		a.assessChild(k, terms[i])
+		a.assessChild(k, terms[i], inherited)
 	}
 }
 
 // assessChild recurses into one matched child element.
-func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm) {
+func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited map[xsd.QName]string) {
 	if mt.Elem != nil {
-		a.assessElement(child, mt.Elem)
+		a.assessElement(child, mt.Elem, inherited)
 		return
 	}
 	if mt.Wildcard == nil {
@@ -242,7 +281,7 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm) {
 		a.skipped[child] = true
 	case xsd.ProcessLax:
 		if d := a.v.elements[child.Name()]; d != nil {
-			a.assessElement(child, d)
+			a.assessElement(child, d, inherited)
 		}
 	case xsd.ProcessStrict:
 		d := a.v.elements[child.Name()]
@@ -251,7 +290,7 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm) {
 			a.addf(xsd.SpecCvcWildcard, child.Pos(), "no declaration for element %s matched by a strict wildcard", child.Name())
 			return
 		}
-		a.assessElement(child, d)
+		a.assessElement(child, d, inherited)
 	}
 }
 

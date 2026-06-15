@@ -377,6 +377,9 @@ func (b *builder) buildAttrUse(c *xmltree.Node, doc *schemaDoc) *xsd.AttributeUs
 		} else {
 			u.Decl = b.buildAttributeDecl(d.node, d.doc, true)
 		}
+		// {inheritable} of the use: declared on the use if present (it overrides
+		// the declaration's), else the declaration's value (XSD 1.1 §3.5.2).
+		u.Inheritable = boolAttr(c, "inheritable", u.Decl.Inheritable)
 		if v, ok := c.Attr("default"); ok {
 			u.Default = &v
 		}
@@ -396,6 +399,7 @@ func (b *builder) buildAttrUse(c *xmltree.Node, doc *schemaDoc) *xsd.AttributeUs
 		return u
 	}
 	u.Decl = b.buildAttributeDecl(c, doc, false)
+	u.Inheritable = u.Decl.Inheritable
 	return u
 }
 

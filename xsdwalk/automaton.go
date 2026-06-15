@@ -85,12 +85,25 @@ func (m *Matcher) matchParticle(p *xsd.Particle, pos int, cont func(int) bool) b
 		if p.MaxOccurs != xsd.UnboundedOccurs && count >= p.MaxOccurs {
 			return false
 		}
-		return m.matchTerm(p.Term, cur, func(next int) bool {
+		// Try one more occurrence that consumes at least one child. An empty
+		// occurrence (next == cur) makes no progress; counting it would loop, so
+		// it is tracked separately and used only to satisfy a still-unmet
+		// minOccurs (a nullable term — e.g. an empty sequence — occurring the
+		// required number of times without consuming anything).
+		emptyOK := false
+		if m.matchTerm(p.Term, cur, func(next int) bool {
 			if next == cur {
-				return false // empty match: stop to avoid looping
+				emptyOK = true
+				return false
 			}
 			return rec(count+1, next)
-		})
+		}) {
+			return true
+		}
+		if emptyOK && count < p.MinOccurs {
+			return cont(cur)
+		}
+		return false
 	}
 	return rec(0, pos)
 }
