@@ -575,9 +575,32 @@ func (a *assessor) validateSimpleContent(el Element, t *xsd.SimpleType, text str
 			a.addf(xsd.SpecCvcElt, el.Pos(), "element %s content %q does not match fixed value %q", decl.Name, text, *decl.Fixed)
 		}
 	}
+	a.checkSimpleAssertions(el, t, text)
 	// An xs:ID in element simple content binds the value to the element's PARENT
 	// (§3.3.4.5); attributes bind to their own element (see validateAttrValue).
 	a.collectID(t, text, el.Pos(), el, parent)
+}
+
+// checkSimpleAssertions evaluates a simple type's xs:assertion facets against
+// the element's value (cvc-assertion / §3.13.4). $value is bound to the
+// whiteSpace-normalized lexical value; the evaluator fails open on any construct
+// it does not support, so this only ever ratchets coverage up.
+func (a *assessor) checkSimpleAssertions(el Element, t *xsd.SimpleType, text string) {
+	if a.v.opts.DisableAssertions {
+		return
+	}
+	eff := t.EffectiveFacets()
+	if len(eff.Assertions) == 0 {
+		return
+	}
+	value := []string{eff.WhiteSpace.Apply(text)}
+	for _, as := range eff.Assertions {
+		result, ok := evalSimpleAssertion(el, as.Test, value)
+		if ok && !result {
+			// spec: cvc-assertion — XSD 1.1 Part 1 §3.13.4 (xmlschema11-1.md#cvc-assertion)
+			a.addf(xsd.SpecCvcAssertion, el.Pos(), "assertion %q is not satisfied", as.Test)
+		}
+	}
 }
 
 // valuesEqual reports whether two lexical forms denote the same value in t.

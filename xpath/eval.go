@@ -48,6 +48,12 @@ type EvalContext struct {
 	// functions like xs:integer(...)). A nil Castable makes those constructs
 	// evaluation errors (fail open).
 	Castable func(typeLocal, value string) bool
+
+	// Vars binds XPath variables ("$name") to a sequence of atomic string
+	// values. A reference to an unbound variable is an evaluation error (fail
+	// open). Used by simple-type assertions to bind $value to the value being
+	// validated.
+	Vars map[string][]string
 }
 
 // item is one XPath item: float64, string, bool, Node, or NodeAttr.
@@ -210,6 +216,7 @@ type typeOp struct {
 }
 type seqExpr struct{ items []exprNode } // (e1, e2, ...) sequence construction
 type rangeExpr struct{ lo, hi exprNode } // e1 to e2
+type varRef struct{ name string }        // $name variable reference
 
 // ---- parser ----
 
@@ -449,6 +456,12 @@ func (p *exprParser) parsePrimary() (exprNode, error) {
 		}
 		p.next()
 		return inner, nil
+	case p.isOp("$"):
+		p.next()
+		if p.cur().kind != tkName {
+			return nil, errUnsupported
+		}
+		return &varRef{localPart(p.next().text)}, nil
 	case p.isKw("if"):
 		return p.parseIf()
 	case t.kind == tkName && p.peekIsCall():
@@ -668,6 +681,16 @@ func (e *evaluator) eval(node exprNode, ctx Node) (seq, error) {
 				return nil, err
 			}
 			out = append(out, v...)
+		}
+		return out, nil
+	case *varRef:
+		vals, ok := e.ec.Vars[n.name]
+		if !ok {
+			return nil, errUnsupported
+		}
+		out := make(seq, len(vals))
+		for i, v := range vals {
+			out[i] = v
 		}
 		return out, nil
 	case *rangeExpr:

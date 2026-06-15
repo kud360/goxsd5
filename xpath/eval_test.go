@@ -167,3 +167,32 @@ func TestEvalSeqUnion(t *testing.T) {
 		}
 	}
 }
+
+// TestEvalVars covers "$name" variable references, as used by simple-type
+// assertions binding $value to the value under validation.
+func TestEvalVars(t *testing.T) {
+	root := el("v")
+	ec := EvalContext{
+		Castable: castInt,
+		Vars:     map[string][]string{"value": {"4"}, "list": {"a", "b", "c"}},
+	}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		{"$value mod 2 = 0", true, true},          // even
+		{"$value = 4", true, true},                // numeric compare
+		{"ends-with($value, '4')", true, true},    // string function on $value
+		{"$value castable as xs:integer", true, true},
+		{"count($list) = 3", true, true},          // multi-item variable
+		{"$list = 'b'", true, true},               // existential over sequence
+		{"$missing > 1", false, false},            // unbound → fail open
+	}
+	for _, c := range cases {
+		got, ok := EvalBool(c.expr, root, ec)
+		if got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}

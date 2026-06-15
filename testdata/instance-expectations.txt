@@ -78,8 +78,11 @@ ibmMeta/assertion.testSet#d4_3_15ii15#d4_3_15ii15i	pass
 ibmMeta/assertion.testSet#d4_3_15ii17#d4_3_15ii17i	pass
 ibmMeta/assertion.testSet#d4_3_15ii18#d4_3_15ii18i	pass
 ibmMeta/assertion.testSet#d4_3_15ii19#d4_3_15ii19i	pass
+ibmMeta/assertion.testSet#d4_3_15ii20#d4_3_15ii20i	pass
 ibmMeta/assertion.testSet#d4_3_15ii21#d4_3_15ii21i	pass
+ibmMeta/assertion.testSet#d4_3_15ii22#d4_3_15ii22i	pass
 ibmMeta/assertion.testSet#d4_3_15ii23#d4_3_15ii23i	pass
+ibmMeta/assertion.testSet#d4_3_15ii24#d4_3_15ii24i	pass
 ibmMeta/assertion.testSet#d4_3_15ii25#d4_3_15ii25i	pass
 ibmMeta/assertion.testSet#d4_3_15ii27#d4_3_15ii27i	pass
 ibmMeta/assertion.testSet#d4_3_15ii29#d4_3_15ii29i	pass
@@ -346,6 +349,9 @@ ibmMeta/unsignedInteger.testSet#d3_4_23v01#d3_4_23v01i	pass
 ibmMeta/unsignedInteger.testSet#d3_4_24ii01#d3_4_24ii01i	pass
 ibmMeta/unsignedInteger.testSet#d3_4_24v01#d3_4_24v01i	pass
 ibmMeta/vc.testSet#vc_001#vc_001_2	pass
+ibmMeta/vc.testSet#vc_001#vc_001_3	pass
+ibmMeta/vc.testSet#vc_003#vc_003_2	pass
+ibmMeta/vc.testSet#vc_005#vc_005_2	pass
 ibmMeta/vc.testSet#vc_007#vc_007_2	pass
 ibmMeta/vc.testSet#vc_008#vc_008_2	pass
 ibmMeta/vc.testSet#vc_009#vc_009_2	pass
@@ -19683,9 +19689,12 @@ saxonMeta/All.testSet#all314#all314.v01.xml	pass
 saxonMeta/All.testSet#all314#all314.v02.xml	pass
 saxonMeta/All.testSet#all314#all314.v05.xml	pass
 saxonMeta/Assert.testSet#assert-simple001#assert-simple001.v1.xml	pass
+saxonMeta/Assert.testSet#assert-simple003#assert-simple003.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple003#assert-simple003.v1.xml	pass
+saxonMeta/Assert.testSet#assert-simple004#assert-simple004.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple004#assert-simple004.v1.xml	pass
 saxonMeta/Assert.testSet#assert-simple005#assert-simple005.v1.xml	pass
+saxonMeta/Assert.testSet#assert-simple006#assert-simple006.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple006#assert-simple006.v1.xml	pass
 saxonMeta/Assert.testSet#assert001#assert001.n1.xml	pass
 saxonMeta/Assert.testSet#assert001#assert001.v1.xml	pass
@@ -20062,6 +20071,7 @@ saxonMeta/Override.testSet#over008#over008.v01.xml	pass
 saxonMeta/Override.testSet#over009#over009.n01.xml	pass
 saxonMeta/Override.testSet#over009#over009.n02.xml	pass
 saxonMeta/Override.testSet#over009#over009.v01.xml	pass
+saxonMeta/Override.testSet#over010#over010.n01.xml	pass
 saxonMeta/Override.testSet#over010#over010.n02.xml	pass
 saxonMeta/Override.testSet#over010#over010.v01.xml	pass
 saxonMeta/Override.testSet#over012#over012.n01.xml	pass

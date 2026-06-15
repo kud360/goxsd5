@@ -72,7 +72,21 @@ func nodeString(el Element) string {
 // subset, so callers fail open. Built-in casts resolve QNames against ctx's
 // in-scope namespaces.
 func evalAssertion(ctx Element, expr string) (result, ok bool) {
-	ec := xpath.EvalContext{
+	return xpath.EvalBool(expr, xpNode{ctx}, castableContext(ctx, nil))
+}
+
+// evalSimpleAssertion evaluates a simple-type xs:assertion (XSD 1.1 §3.13.4)
+// against the element carrying the value, with $value bound to the validated
+// value. The element node serves as the context item, so "." atomizes to the
+// same value. ok is false for any unsupported construct (fail open).
+func evalSimpleAssertion(ctx Element, expr string, value []string) (result, ok bool) {
+	return xpath.EvalBool(expr, xpNode{ctx}, castableContext(ctx, map[string][]string{"value": value}))
+}
+
+// castableContext builds the shared EvalContext: built-in casts resolve QNames
+// against ctx's in-scope namespaces, plus any variable bindings.
+func castableContext(ctx Element, vars map[string][]string) xpath.EvalContext {
+	return xpath.EvalContext{
 		Castable: func(local, val string) bool {
 			t := builtin.Lookup(local)
 			if t == nil {
@@ -81,6 +95,6 @@ func evalAssertion(ctx Element, expr string) (result, ok bool) {
 			_, err := t.ParseValue(val, nsContext{ctx})
 			return err == nil
 		},
+		Vars: vars,
 	}
-	return xpath.EvalBool(expr, xpNode{ctx}, ec)
 }
