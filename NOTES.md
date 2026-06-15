@@ -7,6 +7,30 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — architecture review refactors (2 of 2) — 5672/21429 held <<<
+Post-conformance structural cleanups from an architecture review (no behaviour
+change; both pinned by the ratchets).
+ 1. WILDCARD ADMISSION unified into ONE canonical impl in package `xsd`
+    (`xsd/wildcard.go`): `(*Wildcard).AllowsNamespace` / `AllowsName` (static:
+    namespace constraint + literal notQName) and `.Allows(q, WildcardContext)`
+    (adds ##defined/##definedSibling via Defined/DefinedSibling lookups). Was
+    implemented 5× (xsdwalk.WildcardAllows+namespaceAllowed, parser.namespaceAllowed
+    [literal dup], parser.wildcardAllowsName, automaton.wildcardOK, assess.
+    attrWildcardAllows). Callers wire the context they have (matcher: global-elem +
+    sibling; attr assessor: global-attr, DefinedSibling nil). parser keyword consts
+    now alias xsd.WildcardDefined/Sibling. Commit 7941fa8.
+ 2. XPATH: ONE parser + ONE lexer. The strict parser (parse.go/lexer.go/kindtest.go)
+    now BUILDS the evaluator's AST (the exprNode types in eval.go) while keeping its
+    strict syntax errors + TypeRef recording; the second lenient lexer+parser
+    (lexExpr/exprParser in eval.go) is DELETED. Single `parseTree()` (xpath.go) feeds
+    both Parse (schema-time: TypeRefs+syntax err) and evalExpr (instance-time: walks
+    AST). KEY preservation trick: the old eval parser failed as a UNIT (first
+    out-of-subset construct → whole expr fail-open), so a single parser-level
+    `p.unsupported` flag reproduces it exactly — treat-as, intersect/except, node
+    comparison (is/<</>>), non-atomic sequence types, kind-test node tests are parsed
+    for validity (Parse sees no false error) but flag the expr; evalExpr fails open on
+    it. -438 LOC in pkg; 8.3M-exec fuzz of Parse+EvalBool, no panic. Commit 44d2020.
+
 ## >>> DONE 2026-06-15 — greedy matcher: explicit content beats open-content wildcard (+1 open025) — INSTANCE SUITE NOW CLEAN <<<
 Instance ratchet 21428 → 21429 (+1: saxon open025); schema held 5672. THE LAST
 verdict-wrong instance case. The instance suite is now FULLY conformant: 21429
