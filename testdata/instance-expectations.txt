@@ -19849,11 +19849,13 @@ saxonMeta/Id.testSet#id010#id010.n01.xml	pass
 saxonMeta/Id.testSet#id010#id010.n02.xml	pass
 saxonMeta/Id.testSet#id010#id010.v01.xml	pass
 saxonMeta/Id.testSet#id011#id011.n01.xml	pass
+saxonMeta/Id.testSet#id011#id011.n02.xml	pass
 saxonMeta/Id.testSet#id011#id011.v01.xml	pass
 saxonMeta/Id.testSet#id012#id012.n01.xml	pass
 saxonMeta/Id.testSet#id012#id012.n02.xml	pass
 saxonMeta/Id.testSet#id012#id012.v01.xml	pass
 saxonMeta/Id.testSet#id013#id013.n01.xml	pass
+saxonMeta/Id.testSet#id013#id013.n02.xml	pass
 saxonMeta/Id.testSet#id013#id013.v01.xml	pass
 saxonMeta/Id.testSet#id014#id014.n01.xml	pass
 saxonMeta/Id.testSet#id014#id014.n02.xml	pass

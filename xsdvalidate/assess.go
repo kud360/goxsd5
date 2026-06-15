@@ -486,9 +486,10 @@ func (a *assessor) assessAttributes(el Element, uses []*xsd.AttributeUse, wildca
 		a.addf(xsd.SpecCvcComplexType, attr.Pos(), "attribute %s is not permitted here", name)
 	}
 	// cvc-complex-type.4: required attribute uses must be present.
-	// An absent attribute use with a default {value constraint} contributes that
-	// default to the [attribute] (cvc-complex-type.3 / §3.4.4.2); harvest any ID
-	// it carries so default-supplied IDs resolve IDREFs (e.g. id_attr default).
+	// An absent attribute use with a {value constraint} (default OR fixed)
+	// contributes that value to the [attribute] (cvc-complex-type.3 / §3.4.4.2);
+	// harvest any ID it carries so the supplied value participates in cvc-id
+	// (an absent fixed-ID attribute on two elements yields a duplicate ID).
 	for _, u := range uses {
 		if u.Decl == nil || seen[u.Decl.Name] {
 			continue
@@ -497,13 +498,25 @@ func (a *assessor) assessAttributes(el Element, uses []*xsd.AttributeUse, wildca
 			a.addf(xsd.SpecCvcComplexType, el.Pos(), "required attribute %s is missing", u.Decl.Name)
 			continue
 		}
-		def := u.Default
-		if def == nil {
-			def = u.Decl.Default
+		if vc := attrValueConstraint(u); vc != nil {
+			a.collectID(u.Decl.Type, *vc, el.Pos(), el, el)
 		}
-		if def != nil {
-			a.collectID(u.Decl.Type, *def, el.Pos(), el, el)
-		}
+	}
+}
+
+// attrValueConstraint returns the effective {value constraint} value of an
+// attribute use — the use's default/fixed overrides the declaration's, and a
+// default takes precedence over a fixed when both somehow apply.
+func attrValueConstraint(u *xsd.AttributeUse) *string {
+	switch {
+	case u.Default != nil:
+		return u.Default
+	case u.Decl.Default != nil:
+		return u.Decl.Default
+	case u.Fixed != nil:
+		return u.Fixed
+	default:
+		return u.Decl.Fixed
 	}
 }
 
