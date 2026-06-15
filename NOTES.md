@@ -7,6 +7,36 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — instance false-REJECT clusters: root xsi:type, union derivation, cos-aw-union <<<
+Three follow-on commits after the cvc-id batch, each a clean spec rule. Instance
+ratchet 21302 → 21315 (schema held 5672 throughout). Same INSTDIAG diagnostic
+method (throwaway parser/zz_instdiag_test.go, deleted).
+ - ROOT xsi:type with no element decl (assess.go assessRoot): a validation root
+   lacking a governing element declaration but carrying xsi:type has a governing
+   TYPE definition (cvc-assess-elt clause 8) and is assessed against it instead of
+   being rejected "no global element declaration". New resolveRootXSIType; the
+   no-decl-no-xsitype path still errors. +4 (sun CType/SType targetNS, ST_name).
+ - DerivationOK union transitive membership (xsdwalk/query.go, cos-st-derived-ok
+   clause 2.2.4): D is validly derived from a union B if derived from a type in
+   B's transitive membership AND B + every intervening union have EMPTY facets
+   (2.2.4.3). New derivedFromUnionMember + unionFacetsEmpty (checks pattern/enum/
+   assertion on EffectiveFacets). So xsi:type may name a union member, but not
+   reach through a restriction-narrowed union. +4 (ibm union v05/v07, saxon
+   Simple012/016 valids); simple016.n01 STAYS invalid (xs:date only reachable
+   through the pattern-restricted intervening union dt). FIRST cut used
+   BasicMembers (flattened) and over-accepted — DirectMembers + facet gate is key.
+ - cos-aw-union (parser/wildcard.go + buildcomplex.go mergeComplexType): an
+   EXTENSION's {attribute wildcard} is the UNION of base + own wildcard (was: own,
+   or base as fallback — the long-deferred TODO). New wildcardUnion with §3.10.6.3
+   namespace clauses (Not∪Not=Not(∩)→any if empty; Enum∪Not=Not(diff)→any if
+   empty; Enum∪Enum=Enum(∪)) + setUnionNot helper. {disallowed names} via
+   notQNameUnionDisallowed: a name disallowed by one survives only if the OTHER
+   does not allow it (wildcardAllowsName); ##defined/##definedSibling keyword
+   survives only if in BOTH. +9 (saxon Wild013-016/045/046/083, sun suntest
+   test008); wild046.n2 STAYS invalid (xml:lang excluded). GOTCHA: first cut used
+   notQName intersection and wrongly accepted xml:lang — the spec rule is
+   "not allowed by the other", not "in both". Unit test TestBuildAttrWildcardUnion.
+
 ## >>> DONE 2026-06-15 — instance cvc-id rework + value-constraint defaults + xs:ENTITY <<<
 Closed the biggest instance false-REJECT/false-ACCEPT cluster (cvc-id family).
 Instance ratchet 21241 → 21298 (+57); schema held at 5672. All changes in
