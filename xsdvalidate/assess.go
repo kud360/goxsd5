@@ -17,6 +17,15 @@ type assessor struct {
 
 	ids    map[string]bool // declared xs:ID values, for uniqueness (cvc-id.2)
 	idrefs []idref         // pending IDREF values, resolved after the walk
+
+	// attrType records the simple type assessed for each attribute node, so
+	// identity-constraint fields selecting attributes can compare typed values.
+	attrType map[Attribute]*xsd.SimpleType
+
+	// skipped records elements matched by a processContents="skip" wildcard:
+	// they are not assessed, so they (and their subtrees) are excluded from
+	// identity-constraint target/field selection.
+	skipped map[Element]bool
 }
 
 type idref struct {
@@ -115,6 +124,9 @@ func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl) {
 
 	// cvc-elt.5: the element is locally valid with respect to its type.
 	a.assessType(el, gov, decl)
+
+	// Identity constraints are scoped at this element and read its subtree.
+	a.checkIdentityConstraints(el, decl)
 }
 
 // resolveXSIType handles cvc-elt.4: resolve and validate the xsi:type override.
@@ -222,7 +234,12 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm) {
 	}
 	switch mt.Wildcard.ProcessContents {
 	case xsd.ProcessSkip:
-		// No assessment of the wildcard-matched subtree.
+		// No assessment of the wildcard-matched subtree; record it so identity
+		// constraints do not reach into the unassessed region.
+		if a.skipped == nil {
+			a.skipped = map[Element]bool{}
+		}
+		a.skipped[child] = true
 	case xsd.ProcessLax:
 		if d := a.v.elements[child.Name()]; d != nil {
 			a.assessElement(child, d)
@@ -303,6 +320,10 @@ func (a *assessor) validateAttrValue(el Element, attr Attribute, t *xsd.SimpleTy
 	if t == nil {
 		return
 	}
+	if a.attrType == nil {
+		a.attrType = map[Attribute]*xsd.SimpleType{}
+	}
+	a.attrType[attr] = t
 	v, err := t.ParseValue(attr.Value(), nsContext{el})
 	if err != nil {
 		a.addValueErr(err, attr.Pos())

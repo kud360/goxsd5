@@ -95,7 +95,7 @@ by the `xsdvalidate` package (PLAN-validate.md), not the schema processor.
 | cvc-particle | §3.9.4 | V2 | wip (occurrence/sequence/choice/all, wildcards, substitution groups, open/mixed) | xsdwalk/automaton.go |
 | cvc-wildcard | §3.10.4 | V2 | wip (namespace constraint + processContents) | xsdvalidate/assess.go |
 | cvc-id | §3.4.4 | V1 | wip (ID uniqueness + IDREF/IDREFS resolution) | xsdvalidate/assess.go |
-| cvc-identity-constraint | §3.11.4 | V3 | deferred (unique/key/keyref — next milestone) | |
+| cvc-identity-constraint | §3.11.4 | V3 | wip (unique/key/keyref over the selector/field subset; local-name name tests; value-space field comparison) | xsdvalidate/idc.go |
 | cvc-assertion | §3.13.4 | V4 | deferred (xs:assert — next milestone) | |
 
 ---

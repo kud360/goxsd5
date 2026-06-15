@@ -93,16 +93,16 @@ var (
 // schema-validity assessment of an instance against the component model and are
 // enforced by the xsdvalidate engine, not the schema processor.
 var (
-	SpecCvcElt          = ref(1, "cvc-elt", "3.3.4", "cvc-elt")
-	SpecCvcType         = ref(1, "cvc-type", "3.4.4", "cvc-type")
-	SpecCvcComplexType  = ref(1, "cvc-complex-type", "3.4.4", "cvc-complex-type")
-	SpecCvcAttribute    = ref(1, "cvc-attribute", "3.2.4", "cvc-attribute")
-	SpecCvcAU           = ref(1, "cvc-au", "3.5.4", "cvc-au")
-	SpecCvcParticle     = ref(1, "cvc-particle", "3.9.4", "cvc-particle")
-	SpecCvcWildcard     = ref(1, "cvc-wildcard", "3.10.4", "cvc-wildcard")
-	SpecCvcID           = ref(1, "cvc-id", "3.4.4", "cvc-id")
-	SpecCvcIdentity     = ref(1, "cvc-identity-constraint", "3.11.4", "cvc-identity-constraint")
-	SpecCvcAssertion    = ref(1, "cvc-assertion", "3.13.4", "cvc-assertion")
+	SpecCvcElt         = ref(1, "cvc-elt", "3.3.4", "cvc-elt")
+	SpecCvcType        = ref(1, "cvc-type", "3.4.4", "cvc-type")
+	SpecCvcComplexType = ref(1, "cvc-complex-type", "3.4.4", "cvc-complex-type")
+	SpecCvcAttribute   = ref(1, "cvc-attribute", "3.2.4", "cvc-attribute")
+	SpecCvcAU          = ref(1, "cvc-au", "3.5.4", "cvc-au")
+	SpecCvcParticle    = ref(1, "cvc-particle", "3.9.4", "cvc-particle")
+	SpecCvcWildcard    = ref(1, "cvc-wildcard", "3.10.4", "cvc-wildcard")
+	SpecCvcID          = ref(1, "cvc-id", "3.4.4", "cvc-id")
+	SpecCvcIdentity    = ref(1, "cvc-identity-constraint", "3.11.4", "cvc-identity-constraint")
+	SpecCvcAssertion   = ref(1, "cvc-assertion", "3.13.4", "cvc-assertion")
 )
 
 // Part 2 — Datatypes: facet validation rules (cvc-*).

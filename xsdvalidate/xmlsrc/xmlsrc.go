@@ -15,8 +15,8 @@ import (
 // element wraps an xmltree.Node as an xsdvalidate.Element.
 type element struct{ n *xmltree.Node }
 
-func (e element) Pos() xsd.Pos                { return e.n.Pos }
-func (e element) Name() xsd.QName             { return xsd.QName{Namespace: e.n.Name.Space, Local: e.n.Name.Local} }
+func (e element) Pos() xsd.Pos                   { return e.n.Pos }
+func (e element) Name() xsd.QName                { return xsd.QName{Namespace: e.n.Name.Space, Local: e.n.Name.Local} }
 func (e element) Lookup(p string) (string, bool) { return e.n.NS.Lookup(p) }
 
 func (e element) Attributes() []xsdvalidate.Attribute {
@@ -45,9 +45,11 @@ func (e element) Children() []xsdvalidate.Node {
 
 type attribute struct{ a xmltree.Attr }
 
-func (at attribute) Name() xsd.QName { return xsd.QName{Namespace: at.a.Name.Space, Local: at.a.Name.Local} }
-func (at attribute) Value() string  { return at.a.Value }
-func (at attribute) Pos() xsd.Pos   { return at.a.Pos }
+func (at attribute) Name() xsd.QName {
+	return xsd.QName{Namespace: at.a.Name.Space, Local: at.a.Name.Local}
+}
+func (at attribute) Value() string { return at.a.Value }
+func (at attribute) Pos() xsd.Pos  { return at.a.Pos }
 
 type text struct{ s string }
 
