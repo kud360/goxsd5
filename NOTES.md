@@ -7,6 +7,21 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — union pattern vs member whiteSpace (+1 simple085) <<<
+Instance ratchet 21421 → 21422 (+1); schema held 5672. A pattern facet on a union
+(restriction) is matched against the value as normalized by the VALIDATING
+MEMBER's whiteSpace, not the raw lexical — the union itself has no whiteSpace, so
+the member determines normalization (cvc-pattern-valid; Saxon issue 2247). This
+makes unions consistent with atomics (which already do whiteSpace→pattern).
+ - xsd/facets.go parseValue: Stage-2 pattern check now SKIPS unions (deferred).
+ - buildValue VarietyUnion: after a DirectMember validates the value, the union's
+   EffectiveFacets().PatternGroups are checked against m's whiteSpace-normalized
+   value; a member that validates but fails the pattern is passed over. New
+   patternsMatch() helper (shared with Stage 2). simple085: union member is
+   xs:string whiteSpace=collapse, so "  Hello   world" → "Hello world" matches
+   pattern "Hello world". Low risk: differs from before only when a value has
+   excess whitespace AND a collapsing member — pinned by the instance ratchet.
+
 ## >>> DONE 2026-06-15 — xsi:schemaLocation hint loading (+2 targetNS) <<<
 Instance ratchet 21419 → 21421 (+2); schema held 5672. Closes the two multi-schema
 false-REJECTs (sun targetNS00101m1_p, ST_targetNS00101m2_p) where the instance's

@@ -20162,6 +20162,7 @@ saxonMeta/Simple.testSet#simple050#simple050.v01.xml	pass
 saxonMeta/Simple.testSet#simple050#simple050.v02.xml	pass
 saxonMeta/Simple.testSet#simple054#simple053.n01.xml	pass
 saxonMeta/Simple.testSet#simple055#simple055.n01.xml	pass
+saxonMeta/Simple.testSet#simple085#simple085.v01.xml	pass
 saxonMeta/Simple.testSet#simple086#simple086.n01.xml	pass
 saxonMeta/Simple.testSet#simple086#simple086.n02.xml	pass
 saxonMeta/Simple.testSet#simple086#simple086.v01.xml	pass

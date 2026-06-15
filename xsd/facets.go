@@ -320,19 +320,13 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 	// Stage 1: whiteSpace.
 	norm := f.WhiteSpace.Apply(lexical)
 
-	// Stage 2: patterns — at least one match per group.
-	for _, group := range f.PatternGroups {
-		matched := false
-		for i := range group {
-			if group[i].Re.MatchString(norm) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			// spec: cvc-pattern-valid — XSD 1.1 Part 2 §4.3.4.4 (xmlschema11-2.md#cvc-pattern-valid)
-			return nil, NewError(SpecPatternValid, Pos{}, "value %q does not match pattern facet of %s", norm, t.describe())
-		}
+	// Stage 2: patterns — at least one match per group. For a union, the pattern
+	// is applied to the value as normalized by the validating MEMBER's whiteSpace
+	// (the union has none of its own), so the check is deferred to buildValue,
+	// which knows which member matched (cvc-pattern-valid; Saxon issue 2247).
+	if t.Variety != VarietyUnion && !patternsMatch(f.PatternGroups, norm) {
+		// spec: cvc-pattern-valid — XSD 1.1 Part 2 §4.3.4.4 (xmlschema11-2.md#cvc-pattern-valid)
+		return nil, NewError(SpecPatternValid, Pos{}, "value %q does not match pattern facet of %s", norm, t.describe())
 	}
 
 	// Stage 3: lexical → value.
@@ -436,6 +430,25 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 	return v, nil
 }
 
+// patternsMatch reports whether s satisfies every pattern group (each group
+// requires at least one of its alternatives to match — a conjunction of
+// per-derivation-step disjunctions).
+func patternsMatch(groups []PatternGroup, s string) bool {
+	for _, group := range groups {
+		matched := false
+		for i := range group {
+			if group[i].Re.MatchString(s) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
 // buildValue is stage 3: variety-aware lexical→value mapping.
 func (t *SimpleType) buildValue(norm, raw string, ctx ValueContext) (Value, error) {
 	switch t.Variety {
@@ -462,18 +475,18 @@ func (t *SimpleType) buildValue(norm, raw string, ctx ValueContext) (Value, erro
 		// facets) must validate the value through its own facets, so an
 		// intervening restriction-of-union's pattern/enumeration is enforced
 		// (cvc-datatype-valid; e.g. union(restriction(union(string), pattern))).
-		var firstErr error
+		// The union's own pattern facets are applied here, against the value as
+		// normalized by the matching member's whiteSpace.
+		patterns := t.EffectiveFacets().PatternGroups
 		for _, m := range t.DirectMembers {
 			v, err := m.ParseValue(raw, ctx)
-			if err == nil {
-				return v, nil
+			if err != nil {
+				continue
 			}
-			if firstErr == nil {
-				firstErr = err
+			if !patternsMatch(patterns, m.EffectiveFacets().WhiteSpace.Apply(raw)) {
+				continue // member validates but the union pattern rejects its value
 			}
-		}
-		if firstErr == nil {
-			firstErr = NewError(SpecDatatypeValid, t.Pos, "union type %s has no member types", t.describe())
+			return v, nil
 		}
 		// spec: cvc-datatype-valid — XSD 1.1 Part 2 §4.1.4 (xmlschema11-2.md#cvc-datatype-valid)
 		return nil, NewError(SpecDatatypeValid, Pos{}, "value %q matches no member of union %s", raw, t.describe())
