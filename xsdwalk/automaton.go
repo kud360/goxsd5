@@ -195,17 +195,18 @@ func (m *Matcher) matchSeq(parts []*xsd.Particle, i, pos int, cont func(int) boo
 // have distinct acceptors (UPA/cos-all-limited), so a child is matched against
 // whichever member accepts it. Interleave open content is absorbed inline.
 func (m *Matcher) matchAll(g *xsd.ModelGroup, pos int, cont func(int) bool) bool {
-	used := make([]int, len(g.Particles))
+	parts := flattenAll(g.Particles)
+	used := make([]int, len(parts))
 	var rec func(cur int) bool
 	rec = func(cur int) bool {
-		if m.allMinSatisfied(g, used) && cont(cur) {
+		if allMinSatisfied(parts, used) && cont(cur) {
 			return true
 		}
 		if cur >= len(m.children) {
 			return false
 		}
 		name := m.children[cur]
-		for i, p := range g.Particles {
+		for i, p := range parts {
 			if p.MaxOccurs != xsd.UnboundedOccurs && used[i] >= p.MaxOccurs {
 				continue
 			}
@@ -232,8 +233,43 @@ func (m *Matcher) matchAll(g *xsd.ModelGroup, pos int, cont func(int) bool) bool
 	return rec(pos)
 }
 
-func (m *Matcher) allMinSatisfied(g *xsd.ModelGroup, used []int) bool {
-	for i, p := range g.Particles {
+// flattenAll expands an xs:all member list: a reference to a named group whose
+// content is itself an xs:all (the only nesting XSD 1.1 permits inside all, per
+// cos-all-limited) contributes that group's members directly, so each is matched
+// in any order alongside the outer members. An optional wrapping particle
+// (minOccurs=0) makes the contributed members optional.
+func flattenAll(parts []*xsd.Particle) []*xsd.Particle {
+	out := make([]*xsd.Particle, 0, len(parts))
+	for _, p := range parts {
+		var inner *xsd.ModelGroup
+		switch t := p.Term.(type) {
+		case *xsd.GroupRef:
+			if t.Ref != nil && t.Ref.Group != nil && t.Ref.Group.Compositor == xsd.CompositorAll {
+				inner = t.Ref.Group
+			}
+		case *xsd.ModelGroup:
+			if t.Compositor == xsd.CompositorAll {
+				inner = t
+			}
+		}
+		if inner == nil {
+			out = append(out, p)
+			continue
+		}
+		for _, sub := range flattenAll(inner.Particles) {
+			if p.MinOccurs == 0 && sub.MinOccurs != 0 {
+				s := *sub
+				s.MinOccurs = 0
+				sub = &s
+			}
+			out = append(out, sub)
+		}
+	}
+	return out
+}
+
+func allMinSatisfied(parts []*xsd.Particle, used []int) bool {
+	for i, p := range parts {
 		if used[i] < p.MinOccurs {
 			return false
 		}

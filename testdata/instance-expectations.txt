@@ -19681,6 +19681,7 @@ saxonMeta/All.testSet#all006#all006.v01.xml	pass
 saxonMeta/All.testSet#all007#all007.n01.xml	pass
 saxonMeta/All.testSet#all007#all007.n02.xml	pass
 saxonMeta/All.testSet#all007#all007.n03.xml	pass
+saxonMeta/All.testSet#all007#all007.v01.xml	pass
 saxonMeta/All.testSet#all301#all301.n01.xml	pass
 saxonMeta/All.testSet#all301#all301.n02.xml	pass
 saxonMeta/All.testSet#all301#all301.n03.xml	pass
