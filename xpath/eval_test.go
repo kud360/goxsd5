@@ -200,3 +200,45 @@ func TestEvalVars(t *testing.T) {
 		}
 	}
 }
+
+// TestEvalAxes covers the reverse and sibling axes (synthesized from the
+// positioned-node parent chain) plus quantified and for expressions. The tree:
+//
+//	game / { white(e4) black(e5) white(d4) white(c3) result(draw) }
+func TestEvalAxes(t *testing.T) {
+	mk := func(name, text string) *testNode { n := el(name); n.text = text; return n }
+	w1, b1 := mk("white", "e4"), mk("black", "e5")
+	w2, w3 := mk("white", "d4"), mk("white", "c3")
+	res := mk("result", "draw")
+	game := el("game")
+	game.children = []Node{w1, b1, w2, w3, res}
+
+	ec := EvalContext{Castable: castInt}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		// following-sibling: w2(d4) is immediately followed by w3, another white.
+		{"some $w in white satisfies $w/following-sibling::*[1][self::white]", true, true},
+		// every white is immediately followed by a white? no (w1 is followed by black).
+		{"every $w in white satisfies $w/following-sibling::*[1][self::white]", false, true},
+		// no two consecutive whites? false here (d4 then c3).
+		{"every $w in white satisfies not($w/following-sibling::*[1][self::white])", false, true},
+		{"count(white) = 3", true, true},
+		{"result/preceding-sibling::white[1] = 'c3'", true, true}, // nearest preceding white
+		{"count(white/..) = 1", true, true},                       // parent of all whites is the one game
+		{"every $w in white satisfies $w/.. = $w/parent::game", true, true},
+		{"result/parent::game/result = 'draw'", true, true},
+		{"count(result/preceding::white) = 3", true, true},     // preceding axis
+		{"count(white[1]/following::*) = 4", true, true},        // following axis from first white
+		{"(for $w in white return string-length($w)) = 2", true, true}, // for + string-length
+		{"some $w in white satisfies $w/ancestor::game", true, true},   // ancestor axis
+	}
+	for _, c := range cases {
+		got, ok := EvalBool(c.expr, game, ec)
+		if got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}

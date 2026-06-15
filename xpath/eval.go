@@ -13,6 +13,17 @@ package xpath
 // depending on it. Name tests match by local name; the static namespace context
 // of the expression is not threaded in (callers that need built-in casts supply
 // EvalContext.Castable).
+//
+// Tree navigation (parent, sibling and the other reverse axes) is NOT a property
+// of the Node interface — the infoset is walked downward only. Instead the
+// evaluator threads a positioned view (*nodeCtx: a node plus the parent it was
+// reached from and its index among siblings) as it descends. In a tree each
+// element has exactly one parent and downward navigation always reaches it via
+// that parent, so the synthesized parent matches the real one. This also
+// enforces the XSD assertion "stay in subtree" rule for free: the context
+// element is the parentless root, so following-sibling/parent/ancestor of it are
+// empty and an absolute path (rooted at the absent document node) selects
+// nothing.
 
 import (
 	"fmt"
@@ -53,14 +64,31 @@ type EvalContext struct {
 	// Vars binds XPath variables ("$name") to a sequence of atomic string
 	// values. A reference to an unbound variable is an evaluation error (fail
 	// open). Used by simple-type assertions to bind $value to the value being
-	// validated.
+	// validated. Runtime bindings introduced by for/some/every shadow these.
 	Vars map[string][]string
 }
 
-// item is one XPath item: float64, string, bool, Node, or NodeAttr.
+// item is one XPath item: float64, string, bool, *nodeCtx (a positioned element
+// node), or *attrItem (a positioned attribute).
 type item any
 
 type seq []item
+
+// nodeCtx is a node together with the position from which it was reached: the
+// parent it descends from (nil for the parentless root) and its index among the
+// parent's element children. This gives the reverse and sibling axes without
+// the Node interface exposing any upward links.
+type nodeCtx struct {
+	node   Node
+	parent *nodeCtx
+	index  int // position among parent.node.NodeChildren(); 0 for the root
+}
+
+// attrItem is an attribute together with its owner element node.
+type attrItem struct {
+	attr  NodeAttr
+	owner *nodeCtx
+}
 
 // errUnsupported marks a construct outside the supported subset.
 var errUnsupported = fmt.Errorf("xpath: unsupported construct")
@@ -85,8 +113,9 @@ func evalExpr(expr string, node Node, ec EvalContext) (seq, error) {
 	if p.cur().kind != tkEOF {
 		return nil, errUnsupported
 	}
-	ev := &evaluator{ec: ec}
-	return ev.eval(root, node)
+	ev := &evaluator{ec: ec, vars: map[string]seq{}}
+	rootCtx := &nodeCtx{node: node}
+	return ev.eval(root, &focus{item: rootCtx, pos: 1, size: 1})
 }
 
 func effectiveBool(s seq) bool {
@@ -150,6 +179,11 @@ func lexExpr(s string) []exprTok {
 		case xnameStart(c):
 			j := i
 			for j < len(s) && xnameChar(s[j]) {
+				// A "::" axis separator ends the name; a single ":" stays in the
+				// QName (prefix:local).
+				if s[j] == ':' && j+1 < len(s) && s[j+1] == ':' {
+					break
+				}
 				j++
 			}
 			toks = append(toks, exprTok{tkName, s[i:j]})
@@ -160,7 +194,7 @@ func lexExpr(s string) []exprTok {
 				two = s[i : i+2]
 			}
 			switch two {
-			case "//", "<=", ">=", "!=":
+			case "//", "<=", ">=", "!=", "::", "..":
 				toks = append(toks, exprTok{tkOp, two})
 				i += 2
 				continue
@@ -199,17 +233,6 @@ type call struct {
 	name string
 	args []exprNode
 }
-type pathExpr struct {
-	fromRoot bool // path begins with "/" or "//": rooted at the document node
-	steps    []pathStep
-}
-type pathStep struct {
-	axisAttr bool
-	name     string
-	dot      bool
-	descend  bool
-	preds    []exprNode
-}
 type typeOp struct {
 	x    exprNode
 	kind string // "castable" or "instance"
@@ -218,6 +241,86 @@ type typeOp struct {
 type seqExpr struct{ items []exprNode } // (e1, e2, ...) sequence construction
 type rangeExpr struct{ lo, hi exprNode } // e1 to e2
 type varRef struct{ name string }        // $name variable reference
+
+type filterExpr struct { // a primary followed by predicates: primary[p1][p2]
+	x     exprNode
+	preds []exprNode
+}
+
+// pathExpr is a (possibly absolute) path of location steps. start, when set, is
+// a primary expression the path navigates from (e.g. $w/following-sibling::*);
+// otherwise the path starts from the context node.
+type pathExpr struct {
+	fromRoot bool
+	start    exprNode
+	steps    []pathStep
+}
+
+type axisKind int
+
+const (
+	axChild axisKind = iota
+	axDescendant
+	axDescendantOrSelf
+	axAttribute
+	axSelf
+	axParent
+	axAncestor
+	axAncestorOrSelf
+	axFollowingSibling
+	axPrecedingSibling
+	axFollowing
+	axPreceding
+)
+
+var axisNames = map[string]axisKind{
+	"child":              axChild,
+	"descendant":         axDescendant,
+	"descendant-or-self": axDescendantOrSelf,
+	"attribute":          axAttribute,
+	"self":               axSelf,
+	"parent":             axParent,
+	"ancestor":           axAncestor,
+	"ancestor-or-self":   axAncestorOrSelf,
+	"following-sibling":  axFollowingSibling,
+	"preceding-sibling":  axPrecedingSibling,
+	"following":          axFollowing,
+	"preceding":          axPreceding,
+}
+
+type testKind int
+
+const (
+	tnName testKind = iota // a specific local name
+	tnStar                 // "*": any element (or any attribute on the attribute axis)
+	tnNode                 // node(): any node
+	tnText                 // text(): a text node (not modelled; matches nothing)
+)
+
+type nodeTest struct {
+	kind testKind
+	name string
+}
+
+type pathStep struct {
+	axis  axisKind
+	test  nodeTest
+	preds []exprNode
+}
+
+type binding struct {
+	name string
+	seq  exprNode
+}
+type quantified struct {
+	every bool // "every" vs "some"
+	binds []binding
+	body  exprNode
+}
+type forExpr struct {
+	binds []binding
+	body  exprNode
+}
 
 // ---- parser ----
 
@@ -228,6 +331,12 @@ type exprParser struct {
 
 func (p *exprParser) cur() exprTok  { return p.toks[p.pos] }
 func (p *exprParser) next() exprTok { t := p.toks[p.pos]; p.pos++; return t }
+func (p *exprParser) peekKind(n int) exprTok {
+	if p.pos+n < len(p.toks) {
+		return p.toks[p.pos+n]
+	}
+	return p.toks[len(p.toks)-1]
+}
 func (p *exprParser) isOp(s string) bool {
 	return p.cur().kind == tkOp && p.cur().text == s
 }
@@ -235,7 +344,83 @@ func (p *exprParser) isKw(s string) bool {
 	return p.cur().kind == tkName && p.cur().text == s
 }
 
-func (p *exprParser) parseExpr() (exprNode, error) { return p.parseOr() }
+// parseExpr parses an ExprSingle (for / quantified / if / OrExpr). The
+// comma-separated top-level sequence is handled where it can occur: inside
+// parentheses and function arguments.
+func (p *exprParser) parseExpr() (exprNode, error) {
+	switch {
+	case (p.isKw("some") || p.isKw("every")) && p.peekKind(1).kind == tkOp && p.peekKind(1).text == "$":
+		return p.parseQuantified()
+	case p.isKw("for") && p.peekKind(1).kind == tkOp && p.peekKind(1).text == "$":
+		return p.parseFor()
+	case p.isKw("if") && p.peekKind(1).kind == tkOp && p.peekKind(1).text == "(":
+		return p.parseIf()
+	}
+	return p.parseOr()
+}
+
+// parseBindings parses one or more "$name in ExprSingle" clauses.
+func (p *exprParser) parseBindings() ([]binding, error) {
+	var binds []binding
+	for {
+		if !p.isOp("$") {
+			return nil, errUnsupported
+		}
+		p.next()
+		if p.cur().kind != tkName {
+			return nil, errUnsupported
+		}
+		name := localPart(p.next().text)
+		if !p.isKw("in") {
+			return nil, errUnsupported
+		}
+		p.next()
+		s, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		binds = append(binds, binding{name, s})
+		if p.isOp(",") {
+			p.next()
+			continue
+		}
+		return binds, nil
+	}
+}
+
+func (p *exprParser) parseQuantified() (exprNode, error) {
+	every := p.next().text == "every"
+	binds, err := p.parseBindings()
+	if err != nil {
+		return nil, err
+	}
+	if !p.isKw("satisfies") {
+		return nil, errUnsupported
+	}
+	p.next()
+	body, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &quantified{every, binds, body}, nil
+}
+
+func (p *exprParser) parseFor() (exprNode, error) {
+	p.next() // for
+	binds, err := p.parseBindings()
+	if err != nil {
+		return nil, err
+	}
+	if !p.isKw("return") {
+		return nil, errUnsupported
+	}
+	p.next()
+	body, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &forExpr{binds, body}, nil
+}
 
 func (p *exprParser) parseOr() (exprNode, error) {
 	l, err := p.parseAnd()
@@ -376,7 +561,7 @@ func (p *exprParser) parseUnary() (exprNode, error) {
 }
 
 func (p *exprParser) parseTypeExpr() (exprNode, error) {
-	x, err := p.parsePrimary()
+	x, err := p.parsePathExpr()
 	if err != nil {
 		return nil, err
 	}
@@ -415,6 +600,208 @@ func (p *exprParser) parseTypeName() (string, error) {
 		return "", errUnsupported
 	}
 	return localPart(p.next().text), nil
+}
+
+// ---- path / step parsing ----
+
+// parsePathExpr parses an absolute or relative path, or a bare primary (when no
+// location steps follow it).
+func (p *exprParser) parsePathExpr() (exprNode, error) {
+	if p.isOp("/") || p.isOp("//") {
+		return p.parseAbsolutePath()
+	}
+	return p.parseRelativePath()
+}
+
+func (p *exprParser) parseAbsolutePath() (exprNode, error) {
+	// In an XSD assertion the XDM root is the parentless element being assessed,
+	// so a path rooted at the (absent) document node selects nothing. The steps
+	// are still parsed for syntactic validity; evalPath returns empty.
+	path := &pathExpr{fromRoot: true}
+	leadingDouble := p.isOp("//")
+	p.next()
+	if leadingDouble {
+		path.steps = append(path.steps, pathStep{axis: axDescendantOrSelf, test: nodeTest{kind: tnNode}})
+	} else if !p.startsAxisStep() {
+		return path, nil // bare "/"
+	}
+	// The first step directly follows the leading separator.
+	st, err := p.parseStep()
+	if err != nil {
+		return nil, err
+	}
+	path.steps = append(path.steps, st)
+	if err := p.parseStepsInto(path); err != nil {
+		return nil, err
+	}
+	return path, nil
+}
+
+func (p *exprParser) parseRelativePath() (exprNode, error) {
+	path := &pathExpr{}
+	if p.startsAxisStep() {
+		st, err := p.parseStep()
+		if err != nil {
+			return nil, err
+		}
+		path.steps = append(path.steps, st)
+	} else {
+		prim, err := p.parsePrimary()
+		if err != nil {
+			return nil, err
+		}
+		prim, err = p.parseFilter(prim)
+		if err != nil {
+			return nil, err
+		}
+		if !p.isOp("/") && !p.isOp("//") {
+			return prim, nil // a primary with no following steps
+		}
+		path.start = prim
+	}
+	if err := p.parseStepsInto(path); err != nil {
+		return nil, err
+	}
+	return path, nil
+}
+
+// parseStepsInto appends the "/" and "//" separated steps that follow the first
+// step (already in path).
+func (p *exprParser) parseStepsInto(path *pathExpr) error {
+	for {
+		switch {
+		case p.isOp("//"):
+			p.next()
+			path.steps = append(path.steps, pathStep{axis: axDescendantOrSelf, test: nodeTest{kind: tnNode}})
+		case p.isOp("/"):
+			p.next()
+		default:
+			return nil
+		}
+		st, err := p.parseStep()
+		if err != nil {
+			return err
+		}
+		path.steps = append(path.steps, st)
+	}
+}
+
+// parseFilter wraps a primary in its trailing predicates ("primary[p]...").
+func (p *exprParser) parseFilter(prim exprNode) (exprNode, error) {
+	var preds []exprNode
+	for p.isOp("[") {
+		p.next()
+		pred, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if !p.isOp("]") {
+			return nil, errUnsupported
+		}
+		p.next()
+		preds = append(preds, pred)
+	}
+	if len(preds) == 0 {
+		return prim, nil
+	}
+	return &filterExpr{prim, preds}, nil
+}
+
+// startsAxisStep reports whether the current token begins a location step (as
+// opposed to a primary expression).
+func (p *exprParser) startsAxisStep() bool {
+	if p.isOp("@") || p.isOp(".") || p.isOp("..") || p.isOp("*") {
+		return true
+	}
+	if p.cur().kind == tkName {
+		return !p.peekIsCall() // a function call is a primary, not a step
+	}
+	return false
+}
+
+func (p *exprParser) parseStep() (pathStep, error) {
+	st := pathStep{axis: axChild}
+	switch {
+	case p.isOp("@"):
+		p.next()
+		st.axis = axAttribute
+		t, err := p.parseNodeTest()
+		if err != nil {
+			return st, err
+		}
+		st.test = t
+	case p.isOp(".."):
+		p.next()
+		st.axis = axParent
+		st.test = nodeTest{kind: tnNode}
+	case p.isOp("."):
+		p.next()
+		st.axis = axSelf
+		st.test = nodeTest{kind: tnNode}
+	case p.isAxisAt():
+		st.axis = axisNames[p.next().text]
+		p.next() // "::"
+		t, err := p.parseNodeTest()
+		if err != nil {
+			return st, err
+		}
+		st.test = t
+	default:
+		t, err := p.parseNodeTest()
+		if err != nil {
+			return st, err
+		}
+		st.test = t
+	}
+	for p.isOp("[") {
+		p.next()
+		pred, err := p.parseExpr()
+		if err != nil {
+			return st, err
+		}
+		if !p.isOp("]") {
+			return st, errUnsupported
+		}
+		p.next()
+		st.preds = append(st.preds, pred)
+	}
+	return st, nil
+}
+
+// isAxisAt reports whether the current token is an axis name followed by "::".
+func (p *exprParser) isAxisAt() bool {
+	if p.cur().kind != tkName {
+		return false
+	}
+	if _, ok := axisNames[p.cur().text]; !ok {
+		return false
+	}
+	nx := p.peekKind(1)
+	return nx.kind == tkOp && nx.text == "::"
+}
+
+func (p *exprParser) parseNodeTest() (nodeTest, error) {
+	switch {
+	case p.isOp("*"):
+		p.next()
+		return nodeTest{kind: tnStar}, nil
+	case p.cur().kind == tkName:
+		name := p.next().text
+		// node() / text() kind tests
+		if (name == "node" || name == "text") && p.isOp("(") {
+			p.next()
+			if !p.isOp(")") {
+				return nodeTest{}, errUnsupported
+			}
+			p.next()
+			if name == "node" {
+				return nodeTest{kind: tnNode}, nil
+			}
+			return nodeTest{kind: tnText}, nil
+		}
+		return nodeTest{kind: tnName, name: localPart(name)}, nil
+	}
+	return nodeTest{}, errUnsupported
 }
 
 func (p *exprParser) parsePrimary() (exprNode, error) {
@@ -463,19 +850,14 @@ func (p *exprParser) parsePrimary() (exprNode, error) {
 			return nil, errUnsupported
 		}
 		return &varRef{localPart(p.next().text)}, nil
-	case p.isKw("if"):
-		return p.parseIf()
 	case t.kind == tkName && p.peekIsCall():
 		return p.parseCall()
-	case t.kind == tkName, p.isOp("@"), p.isOp("."), p.isOp("*"), p.isOp("//"), p.isOp("/"):
-		return p.parsePath()
 	}
 	return nil, errUnsupported
 }
 
 func (p *exprParser) peekIsCall() bool {
-	return p.cur().kind == tkName && p.pos+1 < len(p.toks) &&
-		p.toks[p.pos+1].kind == tkOp && p.toks[p.pos+1].text == "("
+	return p.cur().kind == tkName && p.peekKind(1).kind == tkOp && p.peekKind(1).text == "("
 }
 
 func (p *exprParser) parseIf() (exprNode, error) {
@@ -538,232 +920,275 @@ func (p *exprParser) parseCall() (exprNode, error) {
 	return c, nil
 }
 
-func (p *exprParser) parsePath() (exprNode, error) {
-	path := &pathExpr{}
-	if p.isOp("/") {
-		// A leading "/" is rooted at the document node. In an XSD assertion the
-		// XDM root is the (parentless) element being assessed, so there is no
-		// document node and the path selects nothing; a bare "/" is the root
-		// itself, equally absent. Either way evalPath yields the empty sequence.
-		p.next()
-		path.fromRoot = true
-		if !p.stepStarts() {
-			return path, nil
-		}
-	} else if p.isOp("//") {
-		p.next()
-		path.fromRoot = true
-	}
-	for {
-		st, err := p.parseStep()
-		if err != nil {
-			return nil, err
-		}
-		path.steps = append(path.steps, st)
-		if p.isOp("/") {
-			p.next()
-			continue
-		}
-		if p.isOp("//") {
-			p.next()
-			next, err := p.parseStep()
-			if err != nil {
-				return nil, err
-			}
-			next.descend = true
-			path.steps = append(path.steps, next)
-			if p.isOp("/") {
-				p.next()
-				continue
-			}
-			break
-		}
-		break
-	}
-	return path, nil
-}
-
-// stepStarts reports whether the current token can begin a path step.
-func (p *exprParser) stepStarts() bool {
-	return p.cur().kind == tkName || p.isOp("@") || p.isOp(".") || p.isOp("*")
-}
-
-func (p *exprParser) parseStep() (pathStep, error) {
-	st := pathStep{}
-	switch {
-	case p.isOp("@"):
-		p.next()
-		if p.cur().kind == tkName {
-			st.axisAttr = true
-			st.name = localPart(p.next().text)
-		} else if p.isOp("*") {
-			p.next()
-			st.axisAttr = true
-			st.name = "*"
-		} else {
-			return st, errUnsupported
-		}
-	case p.isOp("."):
-		p.next()
-		if p.isOp(".") {
-			return st, errUnsupported
-		}
-		st.dot = true
-	case p.isOp("*"):
-		p.next()
-		st.name = "*"
-	case p.cur().kind == tkName:
-		st.name = localPart(p.next().text)
-	default:
-		return st, errUnsupported
-	}
-	for p.isOp("[") {
-		p.next()
-		pred, err := p.parseExpr()
-		if err != nil {
-			return st, err
-		}
-		if !p.isOp("]") {
-			return st, errUnsupported
-		}
-		p.next()
-		st.preds = append(st.preds, pred)
-	}
-	return st, nil
-}
-
 // ---- evaluator ----
 
-type evaluator struct {
-	ec EvalContext
+// focus is the XPath dynamic focus: the context item plus its position and size
+// within the sequence currently being processed (for position()/last()).
+type focus struct {
+	item item
+	pos  int
+	size int
 }
 
-func (e *evaluator) eval(node exprNode, ctx Node) (seq, error) {
+func (f *focus) node() (*nodeCtx, bool) {
+	if f == nil {
+		return nil, false
+	}
+	switch v := f.item.(type) {
+	case *nodeCtx:
+		return v, true
+	case *attrItem:
+		return v.owner, true
+	}
+	return nil, false
+}
+
+type evaluator struct {
+	ec   EvalContext
+	vars map[string]seq
+}
+
+func (e *evaluator) eval(node exprNode, f *focus) (seq, error) {
 	switch n := node.(type) {
 	case *litNum:
 		return seq{n.v}, nil
 	case *litStr:
 		return seq{n.v}, nil
 	case *unary:
-		v, err := e.eval(n.x, ctx)
+		v, err := e.eval(n.x, f)
 		if err != nil {
 			return nil, err
 		}
-		f, err := toNumber(v)
+		fl, err := toNumber(v)
 		if err != nil {
 			return nil, err
 		}
 		if n.op == "-" {
-			f = -f
+			fl = -fl
 		}
-		return seq{f}, nil
+		return seq{fl}, nil
 	case *binary:
-		return e.evalBinary(n, ctx)
+		return e.evalBinary(n, f)
 	case *ifExpr:
-		c, err := e.eval(n.cond, ctx)
+		c, err := e.eval(n.cond, f)
 		if err != nil {
 			return nil, err
 		}
 		if effectiveBool(c) {
-			return e.eval(n.then, ctx)
+			return e.eval(n.then, f)
 		}
-		return e.eval(n.els, ctx)
+		return e.eval(n.els, f)
 	case *call:
-		return e.evalCall(n, ctx)
+		return e.evalCall(n, f)
 	case *pathExpr:
-		return e.evalPath(n, ctx)
+		return e.evalPath(n, f)
+	case *filterExpr:
+		return e.evalFilter(n, f)
 	case *typeOp:
-		return e.evalTypeOp(n, ctx)
+		return e.evalTypeOp(n, f)
+	case *varRef:
+		return e.evalVar(n)
 	case *seqExpr:
 		var out seq
 		for _, it := range n.items {
-			v, err := e.eval(it, ctx)
+			v, err := e.eval(it, f)
 			if err != nil {
 				return nil, err
 			}
 			out = append(out, v...)
 		}
 		return out, nil
-	case *varRef:
-		vals, ok := e.ec.Vars[n.name]
-		if !ok {
-			return nil, errUnsupported
-		}
-		out := make(seq, len(vals))
-		for i, v := range vals {
-			out[i] = v
-		}
-		return out, nil
 	case *rangeExpr:
-		lo, err := e.eval(n.lo, ctx)
-		if err != nil {
-			return nil, err
-		}
-		hi, err := e.eval(n.hi, ctx)
-		if err != nil {
-			return nil, err
-		}
-		lf, err := toNumber(lo)
-		if err != nil {
-			return nil, err
-		}
-		hf, err := toNumber(hi)
-		if err != nil {
-			return nil, err
-		}
-		var out seq
-		for i := int64(lf); i <= int64(hf); i++ {
-			out = append(out, float64(i))
-		}
-		return out, nil
+		return e.evalRange(n, f)
+	case *quantified:
+		return e.evalQuantified(n, f)
+	case *forExpr:
+		return e.evalFor(n, f)
 	}
 	return nil, errUnsupported
 }
 
-func (e *evaluator) evalBinary(n *binary, ctx Node) (seq, error) {
+func (e *evaluator) evalVar(n *varRef) (seq, error) {
+	if v, ok := e.vars[n.name]; ok {
+		return v, nil
+	}
+	vals, ok := e.ec.Vars[n.name]
+	if !ok {
+		return nil, errUnsupported
+	}
+	out := make(seq, len(vals))
+	for i, v := range vals {
+		out[i] = v
+	}
+	return out, nil
+}
+
+func (e *evaluator) evalRange(n *rangeExpr, f *focus) (seq, error) {
+	lo, err := e.eval(n.lo, f)
+	if err != nil {
+		return nil, err
+	}
+	hi, err := e.eval(n.hi, f)
+	if err != nil {
+		return nil, err
+	}
+	lf, err := toNumber(lo)
+	if err != nil {
+		return nil, err
+	}
+	hf, err := toNumber(hi)
+	if err != nil {
+		return nil, err
+	}
+	var out seq
+	for i := int64(lf); i <= int64(hf); i++ {
+		out = append(out, float64(i))
+	}
+	return out, nil
+}
+
+// evalQuantified evaluates "some/every $v in E ... satisfies B" by iterating the
+// cartesian product of the binding sequences, binding the variables in the
+// runtime scope. "every" is true unless some tuple makes B false; "some" is true
+// as soon as one tuple makes B true.
+func (e *evaluator) evalQuantified(n *quantified, f *focus) (seq, error) {
+	res, err := e.iterateBindings(n.binds, 0, f, func() (bool, bool, error) {
+		v, err := e.eval(n.body, f)
+		if err != nil {
+			return false, false, err
+		}
+		b := effectiveBool(v)
+		// stop early: "every" stops on the first false, "some" on the first true.
+		return b, b != n.every, nil
+	}, n.every)
+	if err != nil {
+		return nil, err
+	}
+	return seq{res}, nil
+}
+
+// iterateBindings recurses over the binding clauses, calling visit for each
+// tuple. visit returns (result, stop, err): result is the tuple's boolean, stop
+// requests early termination. seed is the starting accumulator (true for every,
+// false for some); the accumulator folds with "every"⇒AND, "some"⇒OR.
+func (e *evaluator) iterateBindings(binds []binding, i int, f *focus, visit func() (bool, bool, error), every bool) (bool, error) {
+	if i == len(binds) {
+		r, _, err := visit()
+		return r, err
+	}
+	s, err := e.eval(binds[i].seq, f)
+	if err != nil {
+		return false, err
+	}
+	acc := every
+	saved, had := e.vars[binds[i].name], hasKey(e.vars, binds[i].name)
+	defer func() {
+		if had {
+			e.vars[binds[i].name] = saved
+		} else {
+			delete(e.vars, binds[i].name)
+		}
+	}()
+	for _, it := range s {
+		e.vars[binds[i].name] = seq{it}
+		r, err := e.iterateBindings(binds, i+1, f, visit, every)
+		if err != nil {
+			return false, err
+		}
+		if every {
+			acc = acc && r
+			if !acc {
+				return false, nil
+			}
+		} else {
+			acc = acc || r
+			if acc {
+				return true, nil
+			}
+		}
+	}
+	return acc, nil
+}
+
+// evalFor evaluates "for $v in E return B", concatenating B over each binding.
+func (e *evaluator) evalFor(n *forExpr, f *focus) (seq, error) {
+	return e.forProduct(n.binds, 0, f, n.body)
+}
+
+func (e *evaluator) forProduct(binds []binding, i int, f *focus, body exprNode) (seq, error) {
+	if i == len(binds) {
+		return e.eval(body, f)
+	}
+	s, err := e.eval(binds[i].seq, f)
+	if err != nil {
+		return nil, err
+	}
+	saved, had := e.vars[binds[i].name], hasKey(e.vars, binds[i].name)
+	defer func() {
+		if had {
+			e.vars[binds[i].name] = saved
+		} else {
+			delete(e.vars, binds[i].name)
+		}
+	}()
+	var out seq
+	for _, it := range s {
+		e.vars[binds[i].name] = seq{it}
+		r, err := e.forProduct(binds, i+1, f, body)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r...)
+	}
+	return out, nil
+}
+
+func hasKey(m map[string]seq, k string) bool { _, ok := m[k]; return ok }
+
+func (e *evaluator) evalBinary(n *binary, f *focus) (seq, error) {
 	switch n.op {
 	case "and":
-		l, err := e.eval(n.l, ctx)
+		l, err := e.eval(n.l, f)
 		if err != nil {
 			return nil, err
 		}
 		if !effectiveBool(l) {
 			return seq{false}, nil
 		}
-		r, err := e.eval(n.r, ctx)
+		r, err := e.eval(n.r, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{effectiveBool(r)}, nil
 	case "or":
-		l, err := e.eval(n.l, ctx)
+		l, err := e.eval(n.l, f)
 		if err != nil {
 			return nil, err
 		}
 		if effectiveBool(l) {
 			return seq{true}, nil
 		}
-		r, err := e.eval(n.r, ctx)
+		r, err := e.eval(n.r, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{effectiveBool(r)}, nil
 	case "|":
-		l, err := e.eval(n.l, ctx)
+		l, err := e.eval(n.l, f)
 		if err != nil {
 			return nil, err
 		}
-		r, err := e.eval(n.r, ctx)
+		r, err := e.eval(n.r, f)
 		if err != nil {
 			return nil, err
 		}
 		return unionNodes(l, r)
 	case "+", "-", "*", "div", "mod", "idiv":
-		l, err := e.eval(n.l, ctx)
+		l, err := e.eval(n.l, f)
 		if err != nil {
 			return nil, err
 		}
-		r, err := e.eval(n.r, ctx)
+		r, err := e.eval(n.r, f)
 		if err != nil {
 			return nil, err
 		}
@@ -777,11 +1202,11 @@ func (e *evaluator) evalBinary(n *binary, ctx Node) (seq, error) {
 		}
 		return seq{arith(n.op, lf, rf)}, nil
 	default:
-		l, err := e.eval(n.l, ctx)
+		l, err := e.eval(n.l, f)
 		if err != nil {
 			return nil, err
 		}
-		r, err := e.eval(n.r, ctx)
+		r, err := e.eval(n.r, f)
 		if err != nil {
 			return nil, err
 		}
@@ -794,20 +1219,19 @@ func (e *evaluator) evalBinary(n *binary, ctx Node) (seq, error) {
 }
 
 // unionNodes is the "|" operator: the union of two node sequences, de-duplicated
-// by node identity. Both operands must contain only nodes (Node/NodeAttr); any
-// atomic value makes it a type error, so the caller fails open.
+// by node identity. Both operands must contain only nodes; any atomic value
+// makes it a type error, so the caller fails open.
 func unionNodes(l, r seq) (seq, error) {
-	seen := map[item]bool{}
+	seen := map[any]bool{}
 	var out seq
 	add := func(s seq) error {
 		for _, it := range s {
-			switch it.(type) {
-			case Node, NodeAttr:
-			default:
+			id := nodeIdentity(it)
+			if id == nil {
 				return errUnsupported
 			}
-			if !seen[it] {
-				seen[it] = true
+			if !seen[id] {
+				seen[id] = true
 				out = append(out, it)
 			}
 		}
@@ -820,6 +1244,18 @@ func unionNodes(l, r seq) (seq, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// nodeIdentity returns a comparable identity for a node item, or nil if it is
+// not a node.
+func nodeIdentity(it item) any {
+	switch v := it.(type) {
+	case *nodeCtx:
+		return v.node
+	case *attrItem:
+		return v.attr
+	}
+	return nil
 }
 
 func arith(op string, a, b float64) float64 {
@@ -928,89 +1364,300 @@ func cmpNum(op string, a, b float64) bool {
 	return false
 }
 
-func (e *evaluator) evalPath(n *pathExpr, ctx Node) (seq, error) {
+// ---- path evaluation ----
+
+func (e *evaluator) evalPath(n *pathExpr, f *focus) (seq, error) {
 	if n.fromRoot {
 		// No document node exists above the assertion's root element, so an
 		// absolute path selects nothing (XSD 1.1 §3.13.4.1 "stay in subtree").
 		return seq{}, nil
 	}
-	cur := []Node{ctx}
-	for si, st := range n.steps {
-		if st.dot {
-			if err := e.applyPreds(&cur, st.preds); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if st.axisAttr {
-			if si != len(n.steps)-1 {
-				return nil, errUnsupported
-			}
-			base := cur
-			if st.descend {
-				base = descendOrSelfAll(cur)
-			}
-			var out seq
-			for _, el := range base {
-				for _, at := range el.NodeAttrs() {
-					if st.name == "*" || at.AttrName().Local == st.name {
-						out = append(out, at)
-					}
-				}
-			}
-			return out, nil
-		}
-		var next []Node
-		base := cur
-		if st.descend {
-			base = descendOrSelfAll(cur)
-		}
-		for _, el := range base {
-			for _, c := range el.NodeChildren() {
-				if st.name == "*" || c.NodeName().Local == st.name {
-					next = append(next, c)
-				}
-			}
-		}
-		cur = next
-		if err := e.applyPreds(&cur, st.preds); err != nil {
+	var ctxItems seq
+	if n.start != nil {
+		s, err := e.eval(n.start, f)
+		if err != nil {
 			return nil, err
 		}
+		ctxItems = s
+	} else {
+		if f == nil || f.item == nil {
+			return nil, errUnsupported
+		}
+		ctxItems = seq{f.item}
 	}
-	out := make(seq, len(cur))
-	for i, el := range cur {
-		out[i] = el
+	for _, st := range n.steps {
+		next, err := e.evalStep(st, ctxItems)
+		if err != nil {
+			return nil, err
+		}
+		ctxItems = next
+	}
+	return ctxItems, nil
+}
+
+func (e *evaluator) evalFilter(n *filterExpr, f *focus) (seq, error) {
+	v, err := e.eval(n.x, f)
+	if err != nil {
+		return nil, err
+	}
+	return e.applyPreds(v, n.preds)
+}
+
+// evalStep applies a location step to every context item: the axis and node
+// test, then the predicates per context node (so positional predicates count
+// within each node's own axis result), and finally a union that de-duplicates
+// the combined result by node identity (XPath path-step semantics).
+func (e *evaluator) evalStep(st pathStep, ctxItems seq) (seq, error) {
+	var out seq
+	seen := map[any]bool{}
+	for _, it := range ctxItems {
+		nodes, err := axisCandidates(st.axis, it)
+		if err != nil {
+			return nil, err
+		}
+		var matched seq
+		for _, c := range nodes {
+			if matchesTest(st.test, c) {
+				matched = append(matched, c)
+			}
+		}
+		kept, err := e.applyPreds(matched, st.preds)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range kept {
+			id := nodeIdentity(c)
+			if id == nil {
+				out = append(out, c)
+				continue
+			}
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, c)
+			}
+		}
 	}
 	return out, nil
 }
 
-func (e *evaluator) applyPreds(set *[]Node, preds []exprNode) error {
+// axisCandidates returns the items on the given axis from a context item (before
+// the node test). Attributes only support self and parent.
+func axisCandidates(ax axisKind, it item) (seq, error) {
+	switch v := it.(type) {
+	case *attrItem:
+		switch ax {
+		case axSelf:
+			return seq{v}, nil
+		case axParent, axAncestor, axAncestorOrSelf:
+			if v.owner == nil {
+				return nil, nil
+			}
+			anc := ancestorsOf(v.owner, ax == axAncestorOrSelf)
+			if ax == axParent {
+				return seq{wrap(v.owner)}, nil
+			}
+			return anc, nil
+		}
+		return nil, errUnsupported
+	case *nodeCtx:
+		return axisFromNode(ax, v), nil
+	}
+	return nil, errUnsupported
+}
+
+func axisFromNode(ax axisKind, c *nodeCtx) seq {
+	switch ax {
+	case axSelf:
+		return seq{c}
+	case axChild:
+		return wrapAll(childrenOf(c))
+	case axAttribute:
+		var out seq
+		for _, a := range c.node.NodeAttrs() {
+			out = append(out, &attrItem{attr: a, owner: c})
+		}
+		return out
+	case axDescendant:
+		return wrapAll(descendantsOf(c))
+	case axDescendantOrSelf:
+		return append(seq{c}, wrapAll(descendantsOf(c))...)
+	case axParent:
+		if c.parent == nil {
+			return nil
+		}
+		return seq{c.parent}
+	case axAncestor:
+		return ancestorsOf(c, false)
+	case axAncestorOrSelf:
+		return ancestorsOf(c, true)
+	case axFollowingSibling:
+		return siblings(c, true)
+	case axPrecedingSibling:
+		return siblings(c, false)
+	case axFollowing:
+		return followingOf(c)
+	case axPreceding:
+		return precedingOf(c)
+	}
+	return nil
+}
+
+func matchesTest(t nodeTest, it item) bool {
+	switch v := it.(type) {
+	case *nodeCtx:
+		switch t.kind {
+		case tnStar, tnNode:
+			return true
+		case tnName:
+			return v.node.NodeName().Local == t.name
+		case tnText:
+			return false // text nodes are not modelled as Nodes
+		}
+	case *attrItem:
+		switch t.kind {
+		case tnStar, tnNode:
+			return true
+		case tnName:
+			return v.attr.AttrName().Local == t.name
+		case tnText:
+			return false
+		}
+	}
+	return false
+}
+
+// applyPreds filters set by each predicate in turn, threading position/size so
+// numeric predicates select by position and others by effective boolean.
+func (e *evaluator) applyPreds(set seq, preds []exprNode) (seq, error) {
 	for _, pred := range preds {
-		var kept []Node
-		for idx, el := range *set {
-			v, err := e.eval(pred, el)
+		var kept seq
+		size := len(set)
+		for idx, it := range set {
+			f := &focus{item: it, pos: idx + 1, size: size}
+			v, err := e.eval(pred, f)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if len(v) == 1 {
-				if f, ok := v[0].(float64); ok {
-					if int(f) == idx+1 {
-						kept = append(kept, el)
+				if fl, ok := v[0].(float64); ok {
+					if int(fl) == idx+1 {
+						kept = append(kept, it)
 					}
 					continue
 				}
 			}
 			if effectiveBool(v) {
-				kept = append(kept, el)
+				kept = append(kept, it)
 			}
 		}
-		*set = kept
+		set = kept
 	}
-	return nil
+	return set, nil
 }
 
-func (e *evaluator) evalTypeOp(n *typeOp, ctx Node) (seq, error) {
-	v, err := e.eval(n.x, ctx)
+// ---- tree navigation over positioned nodes ----
+
+func wrap(c *nodeCtx) item { return c }
+
+func wrapAll(cs []*nodeCtx) seq {
+	out := make(seq, len(cs))
+	for i, c := range cs {
+		out[i] = c
+	}
+	return out
+}
+
+// childrenOf returns c's element children, each positioned with c as parent and
+// its index among them.
+func childrenOf(c *nodeCtx) []*nodeCtx {
+	kids := c.node.NodeChildren()
+	out := make([]*nodeCtx, len(kids))
+	for i, k := range kids {
+		out[i] = &nodeCtx{node: k, parent: c, index: i}
+	}
+	return out
+}
+
+// descendantsOf returns c's descendants in document order (preorder).
+func descendantsOf(c *nodeCtx) []*nodeCtx {
+	var out []*nodeCtx
+	for _, k := range childrenOf(c) {
+		out = append(out, k)
+		out = append(out, descendantsOf(k)...)
+	}
+	return out
+}
+
+// ancestorsOf returns c's ancestors nearest-first (reverse document order); when
+// orSelf is set, c precedes them.
+func ancestorsOf(c *nodeCtx, orSelf bool) seq {
+	var out seq
+	if orSelf {
+		out = append(out, c)
+	}
+	for a := c.parent; a != nil; a = a.parent {
+		out = append(out, a)
+	}
+	return out
+}
+
+// siblings returns c's following (forward=true) or preceding (forward=false)
+// siblings; preceding siblings are returned in reverse document order, as the
+// reverse axis requires.
+func siblings(c *nodeCtx, forward bool) seq {
+	if c.parent == nil {
+		return nil
+	}
+	all := childrenOf(c.parent)
+	var out seq
+	if forward {
+		for i := c.index + 1; i < len(all); i++ {
+			out = append(out, all[i])
+		}
+	} else {
+		for i := c.index - 1; i >= 0; i-- {
+			out = append(out, all[i])
+		}
+	}
+	return out
+}
+
+// followingOf returns the following axis: every node after c in document order,
+// excluding c's descendants and ancestors.
+func followingOf(c *nodeCtx) seq {
+	var out seq
+	for a := c; a != nil; a = a.parent {
+		for _, sib := range siblings(a, true) {
+			s := sib.(*nodeCtx)
+			out = append(out, s)
+			out = append(out, wrapAll(descendantsOf(s))...)
+		}
+	}
+	return out
+}
+
+// precedingOf returns the preceding axis: every node before c in document order,
+// excluding c's ancestors (reverse document order).
+func precedingOf(c *nodeCtx) seq {
+	var out seq
+	for a := c; a != nil; a = a.parent {
+		for _, sib := range siblings(a, false) {
+			s := sib.(*nodeCtx)
+			// the subtree in reverse document order: descendants (reverse) then self
+			ds := descendantsOf(s)
+			for i := len(ds) - 1; i >= 0; i-- {
+				out = append(out, ds[i])
+			}
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// ---- type operators / functions ----
+
+func (e *evaluator) evalTypeOp(n *typeOp, f *focus) (seq, error) {
+	v, err := e.eval(n.x, f)
 	if err != nil {
 		return nil, err
 	}
@@ -1024,7 +1671,7 @@ func (e *evaluator) evalTypeOp(n *typeOp, ctx Node) (seq, error) {
 	return seq{e.ec.Castable(n.typ, atomString(atoms[0]))}, nil
 }
 
-func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
+func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
 	switch n.name {
 	case "__empty__":
 		return seq{}, nil
@@ -1033,72 +1680,82 @@ func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 	case "false":
 		return seq{false}, nil
 	case "not":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{!effectiveBool(v)}, nil
 	case "boolean":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{effectiveBool(v)}, nil
 	case "exists":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{len(v) > 0}, nil
 	case "empty":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{len(v) == 0}, nil
 	case "count":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{float64(len(v))}, nil
+	case "position":
+		if f == nil {
+			return nil, errUnsupported
+		}
+		return seq{float64(f.pos)}, nil
+	case "last":
+		if f == nil {
+			return nil, errUnsupported
+		}
+		return seq{float64(f.size)}, nil
 	case "string":
 		if len(n.args) == 0 {
-			return seq{ctx.StringValue()}, nil
+			return seq{focusString(f)}, nil
 		}
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{seqString(v)}, nil
 	case "number":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
-		f, err := toNumber(v)
+		fl, err := toNumber(v)
 		if err != nil {
 			return nil, err
 		}
-		return seq{f}, nil
+		return seq{fl}, nil
 	case "string-length":
-		s, err := e.strArgOrCtx(n, ctx)
+		s, err := e.strArgOrCtx(n, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{float64(len([]rune(s)))}, nil
 	case "normalize-space":
-		s, err := e.strArgOrCtx(n, ctx)
+		s, err := e.strArgOrCtx(n, f)
 		if err != nil {
 			return nil, err
 		}
 		return seq{collapse(s)}, nil
 	case "contains", "starts-with", "ends-with":
-		a, err := e.arg(n, 0, ctx)
+		a, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
-		b, err := e.arg(n, 1, ctx)
+		b, err := e.arg(n, 1, f)
 		if err != nil {
 			return nil, err
 		}
@@ -1114,7 +1771,7 @@ func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 	case "concat":
 		var b strings.Builder
 		for i := range n.args {
-			v, err := e.arg(n, i, ctx)
+			v, err := e.arg(n, i, f)
 			if err != nil {
 				return nil, err
 			}
@@ -1122,19 +1779,34 @@ func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 		}
 		return seq{b.String()}, nil
 	case "sum":
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
 		var sum float64
 		for _, it := range atomizeAll(v) {
-			f, ok := asNumber(it)
+			fl, ok := asNumber(it)
 			if !ok {
 				return nil, errUnsupported
 			}
-			sum += f
+			sum += fl
 		}
 		return seq{sum}, nil
+	case "distinct-values":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, err
+		}
+		seen := map[string]bool{}
+		var out seq
+		for _, it := range atomizeAll(v) {
+			s := atomString(it)
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, it)
+			}
+		}
+		return out, nil
 	case "current-date":
 		return seq{time.Now().Format("2006-01-02")}, nil
 	case "current-dateTime":
@@ -1142,30 +1814,34 @@ func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 	case "current-time":
 		return seq{time.Now().Format("15:04:05")}, nil
 	case "local-name", "name":
-		var el Node
+		var el *nodeCtx
 		if len(n.args) == 0 {
-			el = ctx
+			c, ok := f.node()
+			if !ok {
+				return seq{""}, nil
+			}
+			el = c
 		} else {
-			v, err := e.arg(n, 0, ctx)
+			v, err := e.arg(n, 0, f)
 			if err != nil {
 				return nil, err
 			}
 			if len(v) == 0 {
 				return seq{""}, nil
 			}
-			e2, ok := v[0].(Node)
+			c, ok := v[0].(*nodeCtx)
 			if !ok {
 				return seq{""}, nil
 			}
-			el = e2
+			el = c
 		}
-		return seq{el.NodeName().Local}, nil
+		return seq{el.node.NodeName().Local}, nil
 	}
 	// Constructor functions: xs:integer(…), xs:decimal(…), etc. — the argument
 	// must be castable to the named built-in type; the cast value is carried as
 	// its lexical form, which numeric/string comparisons coerce as needed.
 	if strings.IndexByte(n.name, ':') >= 0 && len(n.args) == 1 && e.ec.Castable != nil {
-		v, err := e.arg(n, 0, ctx)
+		v, err := e.arg(n, 0, f)
 		if err != nil {
 			return nil, err
 		}
@@ -1178,22 +1854,30 @@ func (e *evaluator) evalCall(n *call, ctx Node) (seq, error) {
 	return nil, errUnsupported
 }
 
-func (e *evaluator) arg(n *call, i int, ctx Node) (seq, error) {
+func (e *evaluator) arg(n *call, i int, f *focus) (seq, error) {
 	if i >= len(n.args) {
 		return nil, errUnsupported
 	}
-	return e.eval(n.args[i], ctx)
+	return e.eval(n.args[i], f)
 }
 
-func (e *evaluator) strArgOrCtx(n *call, ctx Node) (string, error) {
+func (e *evaluator) strArgOrCtx(n *call, f *focus) (string, error) {
 	if len(n.args) == 0 {
-		return ctx.StringValue(), nil
+		return focusString(f), nil
 	}
-	v, err := e.arg(n, 0, ctx)
+	v, err := e.arg(n, 0, f)
 	if err != nil {
 		return "", err
 	}
 	return seqString(v), nil
+}
+
+// focusString is the string value of the context item.
+func focusString(f *focus) string {
+	if f == nil || f.item == nil {
+		return ""
+	}
+	return atomString(f.item)
 }
 
 // ---- atomization / coercion ----
@@ -1202,10 +1886,10 @@ func atomizeAll(s seq) []item {
 	out := make([]item, 0, len(s))
 	for _, it := range s {
 		switch v := it.(type) {
-		case Node:
-			out = append(out, v.StringValue())
-		case NodeAttr:
-			out = append(out, v.AttrValue())
+		case *nodeCtx:
+			out = append(out, v.node.StringValue())
+		case *attrItem:
+			out = append(out, v.attr.AttrValue())
 		default:
 			out = append(out, it)
 		}
@@ -1224,10 +1908,10 @@ func atomString(it item) string {
 			return "true"
 		}
 		return "false"
-	case Node:
-		return v.StringValue()
-	case NodeAttr:
-		return v.AttrValue()
+	case *nodeCtx:
+		return v.node.StringValue()
+	case *attrItem:
+		return v.attr.AttrValue()
 	}
 	return ""
 }
@@ -1270,29 +1954,6 @@ func formatNumber(f float64) string {
 		return strconv.FormatInt(int64(f), 10)
 	}
 	return strconv.FormatFloat(f, 'g', -1, 64)
-}
-
-func descendants(el Node) []Node {
-	var out []Node
-	for _, c := range el.NodeChildren() {
-		out = append(out, c)
-		out = append(out, descendants(c)...)
-	}
-	return out
-}
-
-func descendantsOrSelf(el Node) []Node {
-	return append([]Node{el}, descendants(el)...)
-}
-
-// descendOrSelfAll is the "//" step expansion: descendant-or-self::node() over
-// every node in the input set, preserving document order (self before descendants).
-func descendOrSelfAll(set []Node) []Node {
-	var out []Node
-	for _, el := range set {
-		out = append(out, descendantsOrSelf(el)...)
-	}
-	return out
 }
 
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
