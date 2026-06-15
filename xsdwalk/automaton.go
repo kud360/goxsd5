@@ -26,6 +26,7 @@ type Matcher struct {
 	terms      []MatchedTerm
 	interleave bool
 	openW      *xsd.Wildcard
+	siblings   []*xsd.ElementDecl // element decls in the content model (for ##definedSibling)
 }
 
 // Match attempts to account for every name in children using the particle p
@@ -36,6 +37,10 @@ func (m *Matcher) Match(p *xsd.Particle, children []xsd.QName, open *xsd.OpenCon
 	m.children = children
 	m.terms = make([]MatchedTerm, len(children))
 	m.openW, m.interleave = nil, false
+	m.siblings = nil
+	if p != nil {
+		m.collectSiblings(p)
+	}
 	if open != nil && open.Wildcard != nil {
 		switch open.Mode {
 		case xsd.OpenContentInterleave:
@@ -65,7 +70,7 @@ func (m *Matcher) finish(pos int) bool {
 		return pos == len(m.children)
 	}
 	for pos < len(m.children) {
-		if !WildcardAllows(m.openW, m.children[pos]) {
+		if !m.wildcardOK(m.openW, m.children[pos]) {
 			return false
 		}
 		m.terms[pos] = MatchedTerm{Wildcard: m.openW}
@@ -119,7 +124,7 @@ func (m *Matcher) matchTerm(t xsd.Term, pos int, cont func(int) bool) bool {
 		})
 	case *xsd.Wildcard:
 		return m.matchLeaf(pos, cont, func(name xsd.QName) (MatchedTerm, bool) {
-			if WildcardAllows(t, name) {
+			if m.wildcardOK(t, name) {
 				return MatchedTerm{Wildcard: t}, true
 			}
 			return MatchedTerm{}, false
@@ -146,7 +151,7 @@ func (m *Matcher) matchLeaf(pos int, cont func(int) bool, accept func(xsd.QName)
 			}
 		}
 	}
-	if m.interleave && pos < len(m.children) && WildcardAllows(m.openW, m.children[pos]) {
+	if m.interleave && pos < len(m.children) && m.wildcardOK(m.openW, m.children[pos]) {
 		m.terms[pos] = MatchedTerm{Wildcard: m.openW}
 		if m.matchLeaf(pos+1, cont, accept) {
 			return true
@@ -213,7 +218,7 @@ func (m *Matcher) matchAll(g *xsd.ModelGroup, pos int, cont func(int) bool) bool
 			used[i]--
 		}
 		// Interleave open content: skip a child the model can't place here.
-		if m.interleave && WildcardAllows(m.openW, name) {
+		if m.interleave && m.wildcardOK(m.openW, name) {
 			m.terms[cur] = MatchedTerm{Wildcard: m.openW}
 			if rec(cur + 1) {
 				return true
@@ -240,7 +245,7 @@ func (m *Matcher) allAccept(t xsd.Term, name xsd.QName) (MatchedTerm, bool) {
 			return MatchedTerm{Elem: d}, true
 		}
 	case *xsd.Wildcard:
-		if WildcardAllows(t, name) {
+		if m.wildcardOK(t, name) {
 			return MatchedTerm{Wildcard: t}, true
 		}
 	}
@@ -260,4 +265,70 @@ func (m *Matcher) acceptElement(term *xsd.ElementDecl, name xsd.QName) *xsd.Elem
 		}
 	}
 	return nil
+}
+
+// wildcardOK reports whether the wildcard w admits an element named q in the
+// current content model, applying the context-dependent ##defined/##definedSibling
+// keyword exclusions (cvc-wildcard clauses 2 & 3) on top of WildcardAllows.
+func (m *Matcher) wildcardOK(w *xsd.Wildcard, q xsd.QName) bool {
+	if w == nil || !WildcardAllows(w, q) {
+		return false
+	}
+	for _, d := range w.NotQName {
+		if d.Namespace != "" {
+			continue
+		}
+		switch d.Local {
+		case "##defined":
+			// clause 2.1: q must not resolve to a global element declaration.
+			if m.LookupGlobal != nil && m.LookupGlobal(q) != nil {
+				return false
+			}
+		case "##definedSibling":
+			// clause 3: q must not match any element declaration contained in the
+			// content model (directly, or implicitly via substitution groups).
+			if m.matchesSibling(q) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// matchesSibling reports whether q is the name of, or is substitutable for, any
+// element declaration appearing in the content model being matched.
+func (m *Matcher) matchesSibling(q xsd.QName) bool {
+	var g *xsd.ElementDecl
+	resolved := false
+	for _, d := range m.siblings {
+		if q == d.Name {
+			return true
+		}
+		if !resolved && m.LookupGlobal != nil {
+			g, resolved = m.LookupGlobal(q), true
+		}
+		if g != nil && SubstitutableFor(g, d, d.Block) {
+			return true
+		}
+	}
+	return false
+}
+
+// collectSiblings gathers every element declaration appearing in the content
+// model particle p (recursing through groups), for the ##definedSibling check.
+func (m *Matcher) collectSiblings(p *xsd.Particle) {
+	switch t := p.Term.(type) {
+	case *xsd.ElementDecl:
+		m.siblings = append(m.siblings, t)
+	case *xsd.ModelGroup:
+		for _, sub := range t.Particles {
+			m.collectSiblings(sub)
+		}
+	case *xsd.GroupRef:
+		if t.Ref != nil && t.Ref.Group != nil {
+			for _, sub := range t.Ref.Group.Particles {
+				m.collectSiblings(sub)
+			}
+		}
+	}
 }

@@ -88,6 +88,40 @@ func TestMatcher(t *testing.T) {
 	}
 }
 
+func TestMatcherDefinedSiblingWildcard(t *testing.T) {
+	// Model: sequence(s, n, any[notQName=##definedSibling]*), with s1
+	// substitutable for s. The trailing wildcard must exclude s, n, and s1
+	// (definedSibling + substitutables) but admit unrelated names like n1/x.
+	s := &xsd.ElementDecl{Name: qn("s"), Global: true}
+	n := &xsd.ElementDecl{Name: qn("n"), Global: true}
+	s1 := &xsd.ElementDecl{Name: qn("s1"), Global: true, SubstitutionGroups: []*xsd.ElementDecl{s}}
+	n1 := &xsd.ElementDecl{Name: qn("n1"), Global: true}
+	globals := map[xsd.QName]*xsd.ElementDecl{
+		qn("s"): s, qn("n"): n, qn("s1"): s1, qn("n1"): n1,
+	}
+	m := &Matcher{LookupGlobal: func(q xsd.QName) *xsd.ElementDecl { return globals[q] }}
+	wc := &xsd.Wildcard{Mode: xsd.NSConstraintAny, ProcessContents: xsd.ProcessLax,
+		NotQName: []xsd.QName{{Local: "##definedSibling"}}}
+	p := part(1, 1, seqGroup(part(1, 1, s), part(1, 1, n), part(0, xsd.UnboundedOccurs, wc)))
+
+	cases := []struct {
+		name string
+		in   []xsd.QName
+		want bool
+	}{
+		{"trailing n1 allowed", names("s", "n", "n1"), true},
+		{"trailing x allowed", names("s", "n", "x"), true},
+		{"trailing s excluded (sibling)", names("s", "n", "s"), false},
+		{"trailing n excluded (sibling)", names("s", "n", "n"), false},
+		{"trailing s1 excluded (substitutable for s)", names("s", "n", "s1"), false},
+	}
+	for _, c := range cases {
+		if _, ok := m.Match(p, c.in, nil); ok != c.want {
+			t.Errorf("%s: Match=%v want %v", c.name, ok, c.want)
+		}
+	}
+}
+
 func TestMatcherWildcardAndTerms(t *testing.T) {
 	m := &Matcher{}
 	// sequence (a, any*)
