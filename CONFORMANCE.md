@@ -80,6 +80,24 @@ constant name in code.
 | cos-valid-default | §3.3.6 | M6 | done (mixed-emptiable clause deferred) | parser/buildterms.go:110 |
 | enumeration-required-notation | Part 2 §3.3.19 | M6 | done | parser/buildterms.go:226 |
 
+### Instance validation rules (`cvc-*`, the xsdvalidate engine)
+
+These govern schema-validity assessment of an instance document and are enforced
+by the `xsdvalidate` package (PLAN-validate.md), not the schema processor.
+
+| Constraint ID | Section | Milestone | Status | Impl (file:line) |
+|---------------|---------|-----------|--------|------------------|
+| cvc-elt | §3.3.4 | V1 | wip (abstract, xsi:nil, xsi:type derivation-OK, fixed; uniqueness-per-mixed deferred) | xsdvalidate/assess.go |
+| cvc-type | §3.4.4 | V1 | wip (simple/complex dispatch; simple-typed element restrictions) | xsdvalidate/assess.go |
+| cvc-complex-type | §3.4.4 | V1/V2 | wip (attributes, simple/empty/element content, content-model match) | xsdvalidate/assess.go |
+| cvc-attribute | §3.2.4 | V1 | wip (value validity, wildcard processContents) | xsdvalidate/assess.go |
+| cvc-au | §3.5.4 | V1 | wip (fixed-value constraint) | xsdvalidate/assess.go |
+| cvc-particle | §3.9.4 | V2 | wip (occurrence/sequence/choice/all, wildcards, substitution groups, open/mixed) | xsdwalk/automaton.go |
+| cvc-wildcard | §3.10.4 | V2 | wip (namespace constraint + processContents) | xsdvalidate/assess.go |
+| cvc-id | §3.4.4 | V1 | wip (ID uniqueness + IDREF/IDREFS resolution) | xsdvalidate/assess.go |
+| cvc-identity-constraint | §3.11.4 | V3 | deferred (unique/key/keyref — next milestone) | |
+| cvc-assertion | §3.13.4 | V4 | deferred (xs:assert — next milestone) | |
+
 ---
 
 ## Part 2 — Datatypes
