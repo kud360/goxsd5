@@ -501,7 +501,7 @@ func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xs
 		}
 		matched := false
 		for _, w := range wildcards {
-			if wildcardAllowsName(w, name) {
+			if w.AllowsName(name) {
 				matched = true
 				break
 			}

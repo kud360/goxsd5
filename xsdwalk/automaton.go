@@ -311,30 +311,18 @@ func (m *Matcher) acceptElement(term *xsd.ElementDecl, name xsd.QName) *xsd.Elem
 
 // wildcardOK reports whether the wildcard w admits an element named q in the
 // current content model, applying the context-dependent ##defined/##definedSibling
-// keyword exclusions (cvc-wildcard clauses 2 & 3) on top of WildcardAllows.
+// keyword exclusions (cvc-wildcard clauses 2 & 3) on top of the static name check.
+// clause 2.1: ##defined excludes q if it resolves to a global element declaration.
+// clause 3: ##definedSibling excludes q if it matches an element declaration in the
+// content model (directly or via substitution groups).
 func (m *Matcher) wildcardOK(w *xsd.Wildcard, q xsd.QName) bool {
-	if w == nil || !WildcardAllows(w, q) {
+	if w == nil {
 		return false
 	}
-	for _, d := range w.NotQName {
-		if d.Namespace != "" {
-			continue
-		}
-		switch d.Local {
-		case "##defined":
-			// clause 2.1: q must not resolve to a global element declaration.
-			if m.LookupGlobal != nil && m.LookupGlobal(q) != nil {
-				return false
-			}
-		case "##definedSibling":
-			// clause 3: q must not match any element declaration contained in the
-			// content model (directly, or implicitly via substitution groups).
-			if m.matchesSibling(q) {
-				return false
-			}
-		}
-	}
-	return true
+	return w.Allows(q, xsd.WildcardContext{
+		Defined:        func(q xsd.QName) bool { return m.LookupGlobal != nil && m.LookupGlobal(q) != nil },
+		DefinedSibling: m.matchesSibling,
+	})
 }
 
 // matchesSibling reports whether q is the name of, or is substitutable for, any

@@ -16,8 +16,8 @@ import (
 // ##definedSibling token is stored in a wildcard's {disallowed names}: a QName
 // with an empty namespace and the literal token in Local.
 const (
-	definedKeyword = "##defined"
-	siblingKeyword = "##definedSibling"
+	definedKeyword = xsd.WildcardDefined
+	siblingKeyword = xsd.WildcardDefinedSibling
 )
 
 // namespaceConstraintSubset reports whether wildcard sub's namespace
@@ -41,7 +41,7 @@ func namespaceConstraintSubset(sub, super *xsd.Wildcard) bool {
 				return false
 			}
 		default:
-			if wildcardAllowsName(sub, d) {
+			if sub.AllowsName(d) {
 				return false
 			}
 		}
@@ -69,21 +69,6 @@ func namespaceVarietySubset(sub, super *xsd.Wildcard) bool {
 		// sub admits names super does not.
 		return false
 	}
-}
-
-// wildcardAllowsName reports whether w allows the expanded name q, per
-// Wildcard allows Expanded Name (cvc-wildcard-name, §3.10.4.2), for an explicit
-// QName q (the ##defined/##definedSibling keywords are handled by the caller).
-func wildcardAllowsName(w *xsd.Wildcard, q xsd.QName) bool {
-	if !namespaceAllowed(w, q.Namespace) {
-		return false
-	}
-	for _, d := range w.NotQName {
-		if d.Local != definedKeyword && d.Local != siblingKeyword && d == q {
-			return false
-		}
-	}
-	return true
 }
 
 // hasDisallowedKeyword reports whether w's notQName carries the given keyword.
@@ -211,7 +196,7 @@ func notQNameUnionDisallowed(w1, w2 *xsd.Wildcard) []xsd.QName {
 			if hasDisallowedKeyword(w2, d.Local) {
 				add(d)
 			}
-		} else if !wildcardAllowsName(w2, d) {
+		} else if !w2.AllowsName(d) {
 			add(d)
 		}
 	}
@@ -219,7 +204,7 @@ func notQNameUnionDisallowed(w1, w2 *xsd.Wildcard) []xsd.QName {
 		if isDisallowedKeyword(d) {
 			continue // keyword case already settled from w1's side
 		}
-		if !wildcardAllowsName(w1, d) {
+		if !w1.AllowsName(d) {
 			add(d)
 		}
 	}

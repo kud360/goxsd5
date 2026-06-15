@@ -495,17 +495,12 @@ func (a *assessor) assessLocallyTyped(el Element, declared xsd.Type, inherited m
 // attrWildcardAllows applies the ##defined keyword exclusion (cvc-wildcard
 // clause 2.2) on top of the namespace/notQName check for an attribute wildcard:
 // a name that resolves to a global attribute declaration is excluded.
-// (##definedSibling is not permitted on attribute wildcards, w-props-correct.5.)
+// (##definedSibling is not permitted on attribute wildcards, w-props-correct.5,
+// so DefinedSibling is left nil.)
 func (a *assessor) attrWildcardAllows(w *xsd.Wildcard, name xsd.QName) bool {
-	if !xsdwalk.WildcardAllows(w, name) {
-		return false
-	}
-	for _, d := range w.NotQName {
-		if d.Namespace == "" && d.Local == "##defined" && a.v.attrs[name] != nil {
-			return false
-		}
-	}
-	return true
+	return w.Allows(name, xsd.WildcardContext{
+		Defined: func(q xsd.QName) bool { return a.v.attrs[q] != nil },
+	})
 }
 
 // assessAttributes implements cvc-complex-type.3 / cvc-attribute / cvc-au.

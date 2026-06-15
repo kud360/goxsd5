@@ -99,7 +99,7 @@ func (b *builder) particleRestrictUnified(ct *xsd.ComplexType, accepted func(*xs
 
 	rep := &rreport{}
 	if nBaseWC >= 2 {
-		// wildcardAllowsName ignores the dynamic ##defined/##definedSibling
+		// AllowsName ignores the dynamic ##defined/##definedSibling
 		// sentinels, so a base wildcard carrying one would be treated as accepting
 		// more names than it really does and a witness built on it could be unsound.
 		for _, bp := range bParts {
@@ -179,9 +179,8 @@ func buildBaseRegions(bParts []*xsd.Particle, bTop *xsd.Particle, accepted func(
 			r.name = "element " + term.Name.String()
 			r.accepts = func(q xsd.QName) bool { return names[q] }
 		case *xsd.Wildcard:
-			w := term
 			r.name = "a wildcard"
-			r.accepts = func(q xsd.QName) bool { return wildcardAllowsName(w, q) }
+			r.accepts = term.AllowsName
 		}
 		regions = append(regions, r)
 	}
@@ -244,7 +243,7 @@ func (b *builder) slotRun(rep *rreport, ct *xsd.ComplexType, slots []*baseSlot, 
 			// No base element matches: the element must be accepted by the base
 			// wildcard (NSCompat), else the restriction introduces a name the base
 			// disallows.
-			if baseWC >= 0 && wildcardAllowsName(slots[baseWC].wc, term.Name) {
+			if baseWC >= 0 && slots[baseWC].wc.AllowsName(term.Name) {
 				mapTo(baseWC, rp)
 				continue
 			}
@@ -305,8 +304,7 @@ func (b *builder) regionRun(rep *rreport, ct *xsd.ComplexType, regions []baseReg
 			if wildcardHasSentinel(term) {
 				return // a restriction sentinel would make our witnesses unsound
 			}
-			w := term
-			e.accepts = func(q xsd.QName) bool { return wildcardAllowsName(w, q) }
+			e.accepts = term.AllowsName
 		}
 		rps = append(rps, e)
 	}
@@ -412,7 +410,7 @@ func (b *builder) unifiedShadow(rep *rreport, ct *xsd.ComplexType, baseNamed []*
 		}
 		for _, rp := range rWild {
 			w := rp.Term.(*xsd.Wildcard)
-			if !wildcardAllowsName(w, n) {
+			if !w.AllowsName(n) {
 				continue
 			}
 			t, unconstrained, hasInstance := b.wildcardBoundType(w, n, globalsByName)

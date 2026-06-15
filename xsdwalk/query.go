@@ -199,47 +199,6 @@ func typeBlock(t xsd.Type) xsd.DerivationSet {
 	return 0
 }
 
-// WildcardAllows reports whether the wildcard w admits an element/attribute of
-// the given expanded name (the namespace constraint plus 1.1 notQName, Part 1
-// §3.10.4 cvc-wildcard-namespace). The ##defined / ##definedSibling notQName
-// keywords are context-dependent and handled by the caller; here only literal
-// disallowed names are honored.
-func WildcardAllows(w *xsd.Wildcard, q xsd.QName) bool {
-	if !namespaceAllowed(w, q.Namespace) {
-		return false
-	}
-	for _, d := range w.NotQName {
-		if d.Namespace == "" && (d.Local == "##defined" || d.Local == "##definedSibling") {
-			continue
-		}
-		if d == q {
-			return false
-		}
-	}
-	return true
-}
-
-func namespaceAllowed(w *xsd.Wildcard, ns string) bool {
-	switch w.Mode {
-	case xsd.NSConstraintAny:
-		return true
-	case xsd.NSConstraintEnumeration:
-		return contains(w.Namespaces, ns)
-	case xsd.NSConstraintNot:
-		return !contains(w.Namespaces, ns)
-	}
-	return true
-}
-
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
-
 // AttributeUse finds the attribute use in uses whose declaration matches name,
 // or nil. Prohibited uses are represented as absent in the compiled model, so
 // every entry here is a real use.
