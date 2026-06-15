@@ -20521,6 +20521,7 @@ sunMeta/CType.testSet#psubstitutions00104m#pSubstitutions00104m1_p	pass
 sunMeta/CType.testSet#psubstitutions00104m#pSubstitutions00104m2_n	pass
 sunMeta/CType.testSet#psubstitutions00104m#pSubstitutions00104m2_p	pass
 sunMeta/CType.testSet#targetns00101m#targetNS00101m1_n	pass
+sunMeta/CType.testSet#targetns00101m#targetNS00101m1_p	pass
 sunMeta/ElemDecl.testSet#abstract00101m#abstract00101m1_n	pass
 sunMeta/ElemDecl.testSet#abstract00101m#abstract00101m1_p	pass
 sunMeta/ElemDecl.testSet#abstract00201m1#Negative	pass
@@ -21024,8 +21025,11 @@ sunMeta/SType.testSet#st_final00103m3#Negative	pass
 sunMeta/SType.testSet#st_final00103m3#Positive	pass
 sunMeta/SType.testSet#st_name00101m#ST_name00101m1_n	pass
 sunMeta/SType.testSet#st_name00101m#ST_name00101m1_p	pass
+sunMeta/SType.testSet#st_name00401m#ST_name00401m1_p	pass
 sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m1_n	pass
+sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m1_p	pass
 sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m2_n	pass
+sunMeta/SType.testSet#st_targetns00201m#ST_targetNS00201m1_p	pass
 sunMeta/SType.testSet#st_variety00101m1#Negative	pass
 sunMeta/SType.testSet#st_variety00101m1#Positive	pass
 sunMeta/SType.testSet#st_variety00101m2#Negative	pass

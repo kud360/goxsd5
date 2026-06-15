@@ -85,11 +85,39 @@ func (a *assessor) assessRoot(root Element) {
 	}
 	decl := a.v.elements[root.Name()]
 	if decl == nil {
+		// No governing element declaration. Per cvc-assess-elt, if xsi:type names
+		// a type that becomes the governing type definition (clause 8) and the
+		// root is strictly assessed against it; otherwise there is nothing to
+		// validate the root against and the document is treated as invalid.
+		if typeStr, ok := a.xsiValue(root, "type"); ok {
+			if t := a.resolveRootXSIType(root, typeStr); t != nil {
+				a.res.Types[root] = t
+				a.assessType(root, t, nil, nil, nil)
+			}
+			return
+		}
 		// spec: cvc-elt — XSD 1.1 Part 1 §3.3.4 (xmlschema11-1.md#cvc-elt)
 		a.addf(xsd.SpecCvcElt, root.Pos(), "no global element declaration for root element %s", root.Name())
 		return
 	}
 	a.assessElement(root, decl, nil, nil)
+}
+
+// resolveRootXSIType resolves an xsi:type on a root element that has no
+// governing element declaration; with no declared type there is no derivation
+// constraint (cvc-elt.4.3 is vacuous). It returns nil on an unresolvable or
+// unknown type, after recording the error.
+func (a *assessor) resolveRootXSIType(root Element, lexical string) xsd.Type {
+	tn, err := resolveQNameInScope(root, lexical)
+	if err != nil {
+		a.addf(xsd.SpecCvcElt, root.Pos(), "xsi:type %q is not a resolvable QName", lexical)
+		return nil
+	}
+	t := a.v.typeByName(tn)
+	if t == nil {
+		a.addf(xsd.SpecCvcElt, root.Pos(), "xsi:type names unknown type %s", tn)
+	}
+	return t
 }
 
 // assessElement implements cvc-elt (Element Locally Valid (Element), §3.3.4).
@@ -216,7 +244,7 @@ func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl, inh
 		// and only xsi:* attributes.
 		a.assessAttributes(el, nil, nil)
 		if hasElementChildren(el) {
-			a.addf(xsd.SpecCvcType, el.Pos(), "element %s has a simple type but contains element children", decl.Name)
+			a.addf(xsd.SpecCvcType, el.Pos(), "element %s has a simple type but contains element children", el.Name())
 		}
 		a.validateSimpleContent(el, t, charContent(el), decl, parent)
 	case *xsd.ComplexType:
