@@ -224,13 +224,17 @@ func (a *assessor) resolveXSIType(el Element, decl *xsd.ElementDecl, declared xs
 	}
 	// cvc-elt.4.3: t must be validly derived from the declared type given the
 	// blocking set (element {disallowed substitutions} plus the declared type's
-	// {prohibited substitutions}).
-	block := decl.Block
+	// {prohibited substitutions}). decl may be nil for a wildcard-matched element
+	// governed only by a locally declared type.
+	var block xsd.DerivationSet
+	if decl != nil {
+		block = decl.Block
+	}
 	if ct, ok := declared.(*xsd.ComplexType); ok {
 		block |= ct.Block
 	}
 	if !xsdwalk.DerivationOK(t, declared, block) {
-		a.addf(xsd.SpecCvcElt, el.Pos(), "xsi:type %s is not validly derived from the declared type of %s", tn, decl.Name)
+		a.addf(xsd.SpecCvcElt, el.Pos(), "xsi:type %s is not validly derived from the declared type of %s", tn, el.Name())
 		return declared
 	}
 	return t
@@ -301,14 +305,48 @@ func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent, inhe
 		// Still recurse into children we can place, for ID collection etc.
 		return
 	}
+	local := localDeclTypes(ec.Particle)
 	for i, k := range kids {
-		a.assessChild(k, terms[i], inherited, el)
+		a.assessChild(k, terms[i], inherited, el, local)
 	}
 }
 
+// localDeclTypes maps each element name appearing in the content model particle
+// to its declared {type definition} — the "locally declared type" of §3.9. Used
+// to govern a wildcard-matched element whose name collides with a model element
+// (XSD 1.1 tighter EDC matching: cvc-assess-elt governing-type clause 7).
+func localDeclTypes(p *xsd.Particle) map[xsd.QName]xsd.Type {
+	out := map[xsd.QName]xsd.Type{}
+	var walk func(*xsd.Particle)
+	walk = func(p *xsd.Particle) {
+		if p == nil {
+			return
+		}
+		switch t := p.Term.(type) {
+		case *xsd.ElementDecl:
+			if _, seen := out[t.Name]; !seen {
+				out[t.Name] = t.Type
+			}
+		case *xsd.ModelGroup:
+			for _, sub := range t.Particles {
+				walk(sub)
+			}
+		case *xsd.GroupRef:
+			if t.Ref != nil && t.Ref.Group != nil {
+				for _, sub := range t.Ref.Group.Particles {
+					walk(sub)
+				}
+			}
+		}
+	}
+	walk(p)
+	return out
+}
+
 // assessChild recurses into one matched child element. parent is the element
-// whose content model placed child (child's binding parent for cvc-id).
-func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited map[xsd.QName]string, parent Element) {
+// whose content model placed child (child's binding parent for cvc-id); local
+// maps model element names to their locally declared types (§3.9).
+func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited map[xsd.QName]string, parent Element, local map[xsd.QName]xsd.Type) {
 	if mt.Elem != nil {
 		a.assessElement(child, mt.Elem, inherited, parent)
 		return
@@ -327,16 +365,60 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited 
 	case xsd.ProcessLax:
 		if d := a.v.elements[child.Name()]; d != nil {
 			a.assessElement(child, d, inherited, parent)
+			a.checkDynamicEDC(child, local)
+		} else if t, ok := local[child.Name()]; ok {
+			// No global declaration, but the name has a locally declared type: it
+			// governs the element (cvc-assess-elt clause 7), xsi:type-overridable.
+			a.assessLocallyTyped(child, t, inherited, parent)
 		}
 	case xsd.ProcessStrict:
 		d := a.v.elements[child.Name()]
 		if d == nil {
+			if t, ok := local[child.Name()]; ok {
+				a.assessLocallyTyped(child, t, inherited, parent)
+				return
+			}
 			// spec: cvc-wildcard — XSD 1.1 Part 1 §3.10.4 (xmlschema11-1.md#cvc-wildcard)
 			a.addf(xsd.SpecCvcWildcard, child.Pos(), "no declaration for element %s matched by a strict wildcard", child.Name())
 			return
 		}
 		a.assessElement(child, d, inherited, parent)
+		a.checkDynamicEDC(child, local)
 	}
+}
+
+// checkDynamicEDC enforces XSD 1.1's tighter Element Declarations Consistent
+// rule for a wildcard-matched element: when its name also has a locally declared
+// type in the content model, the element's actual governing type (after any
+// xsi:type / substitution, recorded in res.Types) must be validly derived from
+// that locally declared type — else the model would type the same name two
+// inconsistent ways. saxon Wild062/063/064 et al.
+func (a *assessor) checkDynamicEDC(el Element, local map[xsd.QName]xsd.Type) {
+	lt, ok := local[el.Name()]
+	if !ok || lt == nil {
+		return
+	}
+	gov := a.res.Types[el]
+	if gov == nil {
+		return
+	}
+	if !xsdwalk.DerivationOK(gov, lt, 0) {
+		a.addf(xsd.SpecCvcParticle, el.Pos(),
+			"element %s matched by a wildcard is not consistent with its locally declared type", el.Name())
+	}
+}
+
+// assessLocallyTyped assesses a wildcard-matched element governed by a locally
+// declared type (no governing element declaration). xsi:type may override the
+// type if validly derived from it (cvc-elt.4); there is no nillable/fixed/IDC
+// context because the governing declaration is absent.
+func (a *assessor) assessLocallyTyped(el Element, declared xsd.Type, inherited map[xsd.QName]string, parent Element) {
+	gov := declared
+	if typeStr, ok := a.xsiValue(el, "type"); ok {
+		gov = a.resolveXSIType(el, nil, declared, typeStr)
+	}
+	a.res.Types[el] = gov
+	a.assessType(el, gov, nil, childInherited(el, gov, inherited), parent)
 }
 
 // attrWildcardAllows applies the ##defined keyword exclusion (cvc-wildcard
