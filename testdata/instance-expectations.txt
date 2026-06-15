@@ -20351,6 +20351,7 @@ saxonMeta/Wild.testSet#wild065#wild065.n1.xml	pass
 saxonMeta/Wild.testSet#wild065#wild065.v1.xml	pass
 saxonMeta/Wild.testSet#wild066#wild066.v1.xml	pass
 saxonMeta/Wild.testSet#wild067#wild067.n1.xml	pass
+saxonMeta/Wild.testSet#wild068#wild068.n1.xml	pass
 saxonMeta/Wild.testSet#wild070#wild070.n1.xml	pass
 saxonMeta/Wild.testSet#wild070#wild070.n2.xml	pass
 saxonMeta/Wild.testSet#wild070#wild070.v1.xml	pass

@@ -7,6 +7,20 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — EDC against base-type local decls (+1 wild068) <<<
+Instance ratchet 21422 → 21423 (+1); schema held 5672. Extends the dynamic EDC
+check (checkDynamicEDC) to the BASE-type chain: when a restriction drops an
+element the base declared and lets a wildcard absorb it, the element keeps the
+base's locally declared type, so a wildcard-matched <e> must be validly derived
+from that type. zang restricts zing dropping zing's local `e`=union(date|time)
+onto a ##local lax wildcard; the global `e` is xs:duration, so `<e>PT12H</e>`
+(duration, NOT date/time) is now correctly INVALID (was accepted via the global).
+ - xsdvalidate/assess.go: new baseLocalDeclTypes(ct) walks ct + its BaseType
+   chain, unioning each level's localDeclTypes (most-derived name wins).
+   assessElementContent now takes ct and uses it; checkDynamicEDC unchanged.
+   Safe for extensions (base elements already in the merged particle) — only
+   restriction-absorbed names gain a constraint. Pinned by the instance ratchet.
+
 ## >>> DONE 2026-06-15 — union pattern vs member whiteSpace (+1 simple085) <<<
 Instance ratchet 21421 → 21422 (+1); schema held 5672. A pattern facet on a union
 (restriction) is matched against the value as normalized by the VALIDATING

@@ -275,7 +275,7 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 		}
 		a.validateSimpleContent(el, content.Type, charContent(el), decl, parent)
 	case *xsd.ElementContent:
-		a.assessElementContent(el, content, inherited)
+		a.assessElementContent(el, ct, content, inherited)
 		// cvc-elt.5.2.2.1: a fixed value on a mixed content type forbids element
 		// children and requires the character content to equal the fixed value.
 		if decl != nil && decl.Fixed != nil && content.Mixed {
@@ -299,7 +299,7 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 
 // assessElementContent matches the children against the content model and
 // recurses (cvc-complex-type.2.3/.4, cvc-particle).
-func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent, inherited map[xsd.QName]string) {
+func (a *assessor) assessElementContent(el Element, ct *xsd.ComplexType, ec *xsd.ElementContent, inherited map[xsd.QName]string) {
 	// cvc-complex-type.2.3: element-only content admits only whitespace text.
 	if !ec.Mixed && hasNonWhitespace(charContent(el)) {
 		a.addf(xsd.SpecCvcComplexType, el.Pos(), "element-only content has character data")
@@ -316,10 +316,32 @@ func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent, inhe
 		// Still recurse into children we can place, for ID collection etc.
 		return
 	}
-	local := localDeclTypes(ec.Particle)
+	local := baseLocalDeclTypes(ct)
 	for i, k := range kids {
 		a.assessChild(k, terms[i], inherited, el, local)
 	}
+}
+
+// baseLocalDeclTypes is localDeclTypes accumulated over a complex type and its
+// base-type chain. When a restriction drops an element the base declared and
+// lets a wildcard absorb it, the element keeps the locally declared type it had
+// in the base, so the tighter EDC rule (checkDynamicEDC) still governs it — a
+// wildcard-matched <e> must be consistent with the base's <e> type (saxon
+// wild068). The most-derived declaration of a name wins.
+func baseLocalDeclTypes(ct *xsd.ComplexType) map[xsd.QName]xsd.Type {
+	out := map[xsd.QName]xsd.Type{}
+	for cur := ct; cur != nil; {
+		if ec, ok := cur.Content.(*xsd.ElementContent); ok {
+			for name, typ := range localDeclTypes(ec.Particle) {
+				if _, seen := out[name]; !seen {
+					out[name] = typ
+				}
+			}
+		}
+		base, _ := cur.BaseType.(*xsd.ComplexType)
+		cur = base
+	}
+	return out
 }
 
 // localDeclTypes maps each element name appearing in the content model particle
