@@ -343,10 +343,10 @@ a clause the parser enforces.
 ## Milestone 9 — Conformance suite
 
 - Wire the **W3C XSD 1.1 test suite** through the resolver (positive + negative).
-  The suite is large and **not committed**: it is gitignored and fetched on
-  demand at a pinned revision via `testdata/fetch-xsdtests.sh`. Drive the 1.1
-  subset from `XSD1_1TestCategories.xml`. Negative cases assert the expected
-  `SpecRef.ID`.
+  The suite is large and **not committed**: it is a git submodule at
+  `testdata/xsdtests` pinning a specific upstream revision (check out with
+  `git submodule update --init testdata/xsdtests`). Drive the 1.1 subset from
+  `XSD1_1TestCategories.xml`. Negative cases assert the expected `SpecRef.ID`.
 - Spec-example tests for facets, dates (Appendix E), regex (Appendix F).
 - Fuzz `xmltree` and the pattern translator.
 - `CONFORMANCE.md` coverage matrix kept green by the declared-vs-referenced test.
@@ -373,7 +373,7 @@ passing and now fails — and on **unexpected passes** that aren't yet recorded.
   (a flag that rewrites the file from the current run) to add newly-passing
   cases. The diff to `xsd11-expectations.txt` is the visible, reviewable record
   of conformance progress.
-- **On suite-revision bump** (changing `REV` in `fetch-xsdtests.sh`):
+- **On suite-revision bump** (advancing the `testdata/xsdtests` submodule):
   re-baseline in the same commit so the revision change and the expectations
   delta are reviewed together.
 

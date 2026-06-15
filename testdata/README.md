@@ -8,16 +8,26 @@ Milestone 9 in [`../PLAN.md`](../PLAN.md): positive and negative schema cases th
 `parser` is validated against, with negative cases asserted to fail with the
 expected `SpecRef.ID`.
 
-**It is not committed.** The suite is large (~230 MB) and gitignored. Fetch it on
-demand (locally and in CI) at the pinned revision:
+**It is a git submodule, not committed content.** The suite is large (~230 MB),
+so only a gitlink pinning a specific upstream revision lives in this repo's
+history. Check it out (locally and in CI) with:
 
 ```sh
-testdata/fetch-xsdtests.sh
+git submodule update --init testdata/xsdtests
 ```
 
-Bump the pinned `REV` in that script deliberately; after a bump, re-baseline the
-expectations file (see PLAN.md M9) so the revision change doesn't silently alter
-the regression set.
+A fresh `git clone --recurse-submodules` of this repo populates it automatically.
+
+To bump the pinned revision, advance the submodule and re-baseline the
+expectations file in the **same commit** (see PLAN.md M9) so the revision change
+doesn't silently alter the regression set:
+
+```sh
+git -C testdata/xsdtests fetch origin && git -C testdata/xsdtests checkout <new-rev>
+git add testdata/xsdtests
+go test ./parser -run TestConformanceSuite -update-expectations  # re-baseline
+git add testdata/xsd11-expectations.txt
+```
 
 Key entry points within the suite:
 
@@ -26,6 +36,3 @@ Key entry points within the suite:
 - `msMeta/`, `sunMeta/`, `boeingMeta/`, `nistMeta/` — per-vendor metadata
   describing each test case (schema document(s), instance, and expected
   validity outcome).
-
-It carries its own `.git` directory (full upstream clone), so it is an embedded
-repository, not part of this module's history.

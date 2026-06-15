@@ -19,8 +19,8 @@ package parser
 //	go test ./parser -run TestConformanceSuite -update-expectations
 //
 // to rewrite the pass set from the current run; human-curated skip: lines are
-// preserved. The suite is gitignored and fetched on demand (see
-// testdata/fetch-xsdtests.sh); the harness skips if it is not checked out.
+// preserved. The suite is a git submodule at testdata/xsdtests (pinned to a
+// specific upstream revision); the harness skips if it is not checked out.
 
 import (
 	"bufio"
@@ -61,7 +61,7 @@ type expectation struct {
 
 func TestConformanceSuite(t *testing.T) {
 	if _, err := os.Stat(suiteRoot); err != nil {
-		t.Skipf("W3C suite not checked out (%v); run testdata/fetch-xsdtests.sh", err)
+		t.Skipf("W3C suite not checked out (%v); run: git submodule update --init testdata/xsdtests", err)
 	}
 	cases := collectSuiteCases(t)
 	if len(cases) == 0 {

@@ -1,7 +1,3 @@
-# W3C XSD test suite — large (~230 MB), fetched on demand, not committed.
-# Run testdata/fetch-xsdtests.sh to populate it locally / in CI.
-/testdata/xsdtests/
-
 # Local build artifacts
 /docscleaner
 /docs/dist/

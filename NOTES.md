@@ -7,6 +7,24 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-14 — testdata/xsdtests converted to a git submodule <<<
+Replaced the bespoke `testdata/fetch-xsdtests.sh` fetch-on-demand script with a
+proper git submodule at `testdata/xsdtests` → https://github.com/w3c/xsdtests.git,
+pinned at the same revision (gitlink 7bc3365c652a322f3d762021b3879eb92dae7e30).
+The local checkout was already that exact SHA with the upstream remote, so
+`git submodule add` staged it in place (no re-clone). The ~230 MB suite still
+stays out of this repo's history — only the gitlink + .gitmodules are committed.
+Changes: removed `/testdata/xsdtests/` from .gitignore (submodule add refuses an
+ignored path); added .gitmodules; `git rm testdata/fetch-xsdtests.sh`. Doc/test
+refs updated to `git submodule update --init testdata/xsdtests`:
+conformance_suite_test.go (header comment + skip message), testdata/README.md
+(new checkout + revision-bump recipe), PLAN.md M9 (×2). NOT marked `shallow` in
+.gitmodules — a recorded non-tip SHA + shallow fetch is fragile; standard init
+reliably checks out the pinned commit. Conformance held: 5709 cases / 5672
+recorded passes / 26 skips against the submodule. To bump the suite: checkout the
+new SHA inside the submodule, `git add testdata/xsdtests`, re-baseline
+expectations with `-update-expectations`, all in one commit.
+
 ## >>> DONE 2026-06-14 — comprehensive Go native fuzz testing added <<<
 Added 9 `func Fuzz*` targets (Go 1.18+ native fuzzing) across all four
 input-bearing surfaces, each with a curated seed corpus and invariants beyond
