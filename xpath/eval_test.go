@@ -219,6 +219,9 @@ func castDate(typ, val string) bool {
 		}
 		return true
 	}
+	if typ == "boolean" {
+		return val == "true" || val == "false" || val == "0" || val == "1"
+	}
 	return castInt(typ, val)
 }
 
@@ -255,6 +258,18 @@ func TestEvalTypedAtoms(t *testing.T) {
 		// A failed constructor cast is a dynamic error (definite false), not a
 		// fail-open unsupported construct.
 		{`xs:date(concat($value, '!!!')) gt xs:date('1900-01-01')`, map[string][]TypedAtom{"value": {{"2001-01-01", KindString}}}, true, false, true},
+		// fn:*-from-date/dateTime/time component extraction.
+		{`year-from-date($value) eq 2008`, map[string][]TypedAtom{"value": {{"2008-07-28", KindString}}}, false, true, true},
+		{`year-from-date($value) eq 2008`, map[string][]TypedAtom{"value": {{"2018-07-28", KindString}}}, false, false, true},
+		{`month-from-date($value) = 11`, map[string][]TypedAtom{"value": {{"2008-11-05+01:00", KindString}}}, false, true, true},
+		{`day-from-dateTime($value) = 5`, map[string][]TypedAtom{"value": {{"2008-11-05T12:30:00", KindString}}}, false, true, true},
+		{`hours-from-time($value) = 23`, map[string][]TypedAtom{"value": {{"23:15:00Z", KindString}}}, false, true, true},
+		// "cast as": xs:boolean yields a real boolean; a numeric kind a number;
+		// a non-castable value is a dynamic error (definite false).
+		{`$value cast as xs:boolean`, map[string][]TypedAtom{"value": {{"false", KindString}}}, false, false, true},
+		{`$value cast as xs:boolean`, map[string][]TypedAtom{"value": {{"true", KindString}}}, false, true, true},
+		{`($value cast as xs:integer) mod 2 = 0`, map[string][]TypedAtom{"value": {{"11", KindString}}}, false, false, true},
+		{`$value cast as xs:integer`, map[string][]TypedAtom{"value": {{"notanint", KindString}}}, false, false, true},
 	}
 	for _, c := range cases {
 		ec := EvalContext{Castable: castDate, TypedVars: c.typed, NoContextItem: c.noContext}

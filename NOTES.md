@@ -7,6 +7,63 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — broad instance push: date fns, cast-as, empty-choice, nested-all (+6) <<<
+Six general fixes across xpath + the xsdwalk matcher, after the assertion cluster.
+Instance ratchet 21413 → 21419 (+6); schema held 5672. Diagnostic: throwaway
+parser/zz_gapdiag_test.go (GAPDIAG=1) listed every verdict-wrong instance with its
+errors; deleted after. Started from 16 actionable wrong (19 total − 3 that error
+out before a verdict); ended at 10.
+ - fn:*-from-date/dateTime/time FAMILY (xpath/eval.go: year/month/day-from-date·
+   DateTime, hours/minutes/seconds-from-time·DateTime). dateComponent() parses the
+   ISO lexical (stripTimezone + parseISODate/parseISOTime). +2 saxon vc002.n1 /
+   vc007.n1 (year-from-date($value) eq 2008 now evaluates vs fail-open accept).
+ - "cast as T" OPERATOR (was only castable-as/instance-of): evaluates the cast
+   VALUE — xs:boolean → a real bool (so its effective boolean is the value, not
+   "non-empty string"); numeric kinds → number; else the lexical. A non-castable
+   value is a dynamic error. +2 ibm typeAlternatives_004 (@a cast as xs:boolean CTA
+   selecting an asserting alternative) / vc_007. cast-as is used 12× in the suite.
+ - EMPTY <xs:choice/> matches the empty LANGUAGE, not ε (automaton.go matchGroup):
+   was `return cont(pos)` (treated as nullable), now `return false`. A required
+   occurrence is unsatisfiable; emptiness only via a minOccurs=0 wrapper (handled
+   in matchParticle before the group). +1 saxon complex022 (`<z/>` vs `<choice/>`).
+ - NESTED xs:all FLATTENING (automaton.go matchAll + flattenAll): an xs:all may
+   ref a named group whose content is itself an xs:all (cos-all-limited's one
+   nesting). allAccept only handled element/wildcard terms, so a group-ref-to-all
+   never matched. flattenAll expands such members into the outer all's list
+   (propagating an optional wrapper's minOccurs=0). +1 saxon all007.
+Unit tests: xpath TestEvalTypedAtoms extended (date fns + cast-as); xsdwalk
+TestMatcher gained empty-choice + nested-all rows.
+REMAINING 10 instance wrong (all specialised hard cases, triaged — NOT general):
+ - xsi:schemaLocation loading (sun targetNS00101m1_p, ST_targetNS00101m2_p): the
+   instance names its root's schema only via xsi:schemaLocation (a 2nd doc the
+   testGroup doesn't list). Needs the validator/harness to load instance-hinted
+   schemas — crosses the xsdvalidate↔parser layer (xsdvalidate has no loader) and
+   the harness builds one schema per GROUP not per instance. Clearest "next"
+   general fix but structurally invasive; deferred.
+ - open-content GREEDY precedence (saxon open025): the open-content wildcard must
+   not absorb a child the EXPLICIT model can consume AT THE CURRENT STATE. After
+   one `i`, our backtracking matcher exits `i+` and lets the interleave wildcard
+   grab an invalid `<i>42.3</i>` (skip→unvalidated). A name-based "wildcard never
+   matches a sibling name" guard was TRIED and REVERTED: it broke open025.v1 /
+   open047.v3 where a sibling-named element legitimately goes to the wildcard once
+   the explicit model can't place it (state-sensitive, not name-based). Needs a
+   real greedy/deterministic automaton — substantial matcher rework.
+ - EMPTY content type forbids whitespace (saxon open012.n3): `<xs:sequence/>` must
+   reduce to the EMPTY content type (cvc-complex-type.2.1 — no char content, not
+   even whitespace), but we build it as element-only (2.3 allows whitespace).
+   Risky: could regress many whitespace-in-empty-element instances. Deferred.
+ - override SCOPING of defaultOpenContent/defaultAttributes (saxon open043/open045)
+   + CIRCULAR override (over023) + defaultAttributes-in-override (ibm s3_4_2_4ii08):
+   xs:override interaction with schema-level defaults; specialised.
+ - dynamic EDC vs BASE local decl (saxon wild068): a wildcard-matched element whose
+   name has a local decl in the restriction's BASE type must validate against that
+   base-local type (zang drops zing's local `e`=union(date|time); `<e>PT12H</e>`
+   duration must fail). Extends the existing EDC infra to base-local decls.
+ - pattern-on-union vs member whiteSpace (saxon simple085): a pattern on a union
+   restriction applies to the value AFTER the validating member's whiteSpace
+   normalisation. Needs reordering whiteSpace/pattern for unions; debatable
+   (Saxon issue 2247) and risky for other union+pattern cases.
+
 ## >>> DONE 2026-06-15 — typed $value + recursive assertions: ALL assertion gaps closed (+12) <<<
 Closed the entire remaining Assertions/XPath instance cluster. Instance ratchet
 21401 → 21413 (+12); schema held 5672. The ONLY remaining assertion miss is

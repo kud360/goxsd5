@@ -52,6 +52,15 @@ func TestMatcher(t *testing.T) {
 	allg := part(1, 1, allGroup(part(1, 1, elem("a")), part(0, 1, elem("b"))))
 	// empty sequence, required
 	empty := part(1, 1, seqGroup())
+	// empty choice (matches nothing, not even ε): required vs optional wrapper
+	emptyChoiceReq := part(1, 1, choiceGroup())
+	emptyChoiceOpt := part(0, 1, choiceGroup())
+	// all { a?, group-ref → all { b(1..2), c } } — the nested all is flattened
+	innerAll := &xsd.Group{Group: allGroup(part(1, 2, elem("b")), part(1, 1, elem("c")))}
+	nestedAll := part(1, 1, allGroup(
+		part(0, 1, elem("a")),
+		part(1, 1, &xsd.GroupRef{Ref: innerAll}),
+	))
 
 	cases := []struct {
 		name string
@@ -79,6 +88,17 @@ func TestMatcher(t *testing.T) {
 		{"all dup a", allg, names("a", "a"), false},
 		{"empty ok", empty, nil, true},
 		{"empty with child", empty, names("a"), false},
+		// An empty choice matches the empty language; only an optional wrapper
+		// admits empty content.
+		{"empty choice required rejects empty", emptyChoiceReq, nil, false},
+		{"empty choice optional accepts empty", emptyChoiceOpt, nil, true},
+		{"empty choice rejects child", emptyChoiceReq, names("a"), false},
+		// Nested all (group-ref → all) is flattened into the outer member set.
+		{"nested all a b c", nestedAll, names("a", "b", "c"), true},
+		{"nested all b c (a optional)", nestedAll, names("b", "c"), true},
+		{"nested all reordered c a b b", nestedAll, names("c", "a", "b", "b"), true},
+		{"nested all missing c", nestedAll, names("a", "b"), false},
+		{"nested all too many b", nestedAll, names("b", "b", "b", "c"), false},
 	}
 	for _, c := range cases {
 		_, ok := m.Match(c.p, c.in, nil)
