@@ -55,6 +55,16 @@ func DerivationOK(d, b xsd.Type, blocked xsd.DerivationSet) bool {
 	if TypeEq(d, b) {
 		return true
 	}
+	// cos-st-derived-ok clause 2.2.4: when b is a union, d is validly derived
+	// from b if it is validly derived from a type in b's transitive membership —
+	// provided b and every intervening union have empty {facets} (2.2.4.3). This
+	// lets xsi:type name a member of a union-typed element's declared type, but
+	// not reach through a union that was narrowed by restriction.
+	if bs, ok := b.(*xsd.SimpleType); ok && bs.Variety == xsd.VarietyUnion {
+		if derivedFromUnionMember(d, bs, blocked) {
+			return true
+		}
+	}
 	for cur := d; cur != nil; {
 		if blocked.Has(derivationMethod(cur)) {
 			return false
@@ -73,6 +83,41 @@ func DerivationOK(d, b xsd.Type, blocked xsd.DerivationSet) bool {
 		cur = base
 	}
 	return false
+}
+
+// derivedFromUnionMember implements cos-st-derived-ok clause 2.2.4: d is validly
+// derived from some type in union u's transitive membership, given u and every
+// intervening union have empty {facets} (2.2.4.3). A union with constraining
+// facets (it was narrowed by restriction) blocks the traversal through it.
+func derivedFromUnionMember(d xsd.Type, u *xsd.SimpleType, blocked xsd.DerivationSet) bool {
+	if !unionFacetsEmpty(u) {
+		return false
+	}
+	for _, m := range u.DirectMembers {
+		if m.Variety == xsd.VarietyUnion {
+			// An intervening union: only traversable if its facets are empty too.
+			if derivedFromUnionMember(d, m, blocked) {
+				return true
+			}
+			continue
+		}
+		if DerivationOK(d, m, blocked) {
+			return true
+		}
+	}
+	return false
+}
+
+// unionFacetsEmpty reports whether u carries no value-space-narrowing facet
+// (pattern, enumeration, or assertion — the constraining facets applicable to
+// the union variety); whiteSpace=collapse is the fixed default and does not
+// count. This is the 2.2.4.3 "{facets} … is empty" test.
+func unionFacetsEmpty(u *xsd.SimpleType) bool {
+	f := u.EffectiveFacets()
+	if f == nil {
+		return true
+	}
+	return len(f.PatternGroups) == 0 && len(f.Enumeration) == 0 && len(f.Assertions) == 0
 }
 
 // IsDerivedFrom reports whether d is the same as, or transitively derived

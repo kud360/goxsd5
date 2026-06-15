@@ -319,7 +319,9 @@ ibmMeta/union.testSet#s3_16_2v01#s3_16_2v01i	pass
 ibmMeta/union.testSet#s3_16_2v02#s3_16_2v02i	pass
 ibmMeta/union.testSet#s3_16_2v03#s3_16_2v03i	pass
 ibmMeta/union.testSet#s3_16_2v04#s3_16_2v04i	pass
+ibmMeta/union.testSet#s3_16_2v05#s3_16_2v05i	pass
 ibmMeta/union.testSet#s3_16_2v06#s3_16_2v06i	pass
+ibmMeta/union.testSet#s3_16_2v07#s3_16_2v07i	pass
 ibmMeta/unitsLength.testSet#d2_4_1_2ii01#d2_4_1_2ii01i	pass
 ibmMeta/unitsLength.testSet#d3_3_16ii01#d3_3_16ii01i	pass
 ibmMeta/unitsLength.testSet#d3_3_16ii02#d3_3_16ii02i	pass
@@ -20071,10 +20073,12 @@ saxonMeta/Simple.testSet#simple010#simple010.v01.xml	pass
 saxonMeta/Simple.testSet#simple012#simple012.n01.xml	pass
 saxonMeta/Simple.testSet#simple012#simple012.n02.xml	pass
 saxonMeta/Simple.testSet#simple012#simple012.v01.xml	pass
+saxonMeta/Simple.testSet#simple012#simple012.v02.xml	pass
 saxonMeta/Simple.testSet#simple013#simple013.n01.xml	pass
 saxonMeta/Simple.testSet#simple013#simple013.n02.xml	pass
 saxonMeta/Simple.testSet#simple013#simple013.v01.xml	pass
 saxonMeta/Simple.testSet#simple016#simple016.n01.xml	pass
+saxonMeta/Simple.testSet#simple016#simple016.v01.xml	pass
 saxonMeta/Simple.testSet#simple022#simple016.n01.xml	pass
 saxonMeta/Simple.testSet#simple022#simple022.v01.xml	pass
 saxonMeta/Simple.testSet#simple022#simple022.v02.xml	pass
