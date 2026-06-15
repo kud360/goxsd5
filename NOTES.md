@@ -7,6 +7,56 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — instance cvc-id rework + value-constraint defaults + xs:ENTITY <<<
+Closed the biggest instance false-REJECT/false-ACCEPT cluster (cvc-id family).
+Instance ratchet 21241 → 21298 (+57); schema held at 5672. All changes in
+`xsdvalidate/assess.go` unless noted. Diagnostic method: a throwaway
+`parser/zz_instdiag_test.go` (INSTDIAG=1) listed every verdict-wrong case by
+testSet/kind; deleted after. Wrong-count 190 → 133 over this session.
+ - cvc-id HARVESTING now recurses variety (collectID): list → per item, union →
+   first member that ParseValue-validates the lexical (the actual {member type}).
+   Fixes list-of-ID (s3_3_4v10/13/14/15/16/30), union-of-ID (v17–v21), IDREFS
+   subsumed. Previously only atomic ID/IDREF + list-of-IDREF were seen.
+ - cvc-id UNIQUENESS is now per-binding-ELEMENT, not per-value (XSD 1.1 §3.3.4.5).
+   `ids` is `map[string]Element` (value → bound element). Same value on the SAME
+   element (two ID attrs, repeated list items) is allowed; only a clash between
+   DISTINCT elements errors (saxon id001/id004). The binding owner differs by
+   source: an ID ATTRIBUTE binds to its element; an ID in ELEMENT SIMPLE CONTENT
+   binds to the element's PARENT. Threaded a `parent Element` param through
+   assessElement→assessType→assessComplexType→validateSimpleContent (and
+   assessElementContent passes `el` as the children's parent, assessChild relays).
+   collectID(t, lexical, pos, ctx, owner): ctx = ns-context element, owner =
+   binding target. cvc-id.1: an element-content ID whose owner is nil (the
+   validation ROOT's own content, parent out of scope) → "binds to no element in
+   scope" error (ibm instance_invalid ii26/ii27 now correctly INVALID).
+ - VALUE-CONSTRAINT DEFAULTS on empty content now applied (cvc-elt.5.1.1):
+   validateSimpleContent, if text=="" && !hasElementChildren && decl has Default
+   (else Fixed), substitutes that value before validating + ID-harvesting. Also
+   absent ATTRIBUTE uses with a default now harvest their ID (assessAttributes
+   tail loop, owner=el). Fixes idIDREF v11/v26/v28/v29 + sun valueConstraint
+   00201/00301/00501/00601/01101 + saxon Id pattern/minLength-on-"" cases.
+ - xs:ENTITY/ENTITIES REFERENTIAL VALIDITY: new plumbing. xmltree now collects
+   unparsed (NDATA) general-entity names from the internal DTD subset
+   (parseDTDUnparsedEntities + entityDeclEnd/unparsedEntityName helpers in
+   xmltree.go), stores them on the ROOT `Node.UnparsedEntities map[string]bool`.
+   xsdvalidate gained an optional `DocumentInfo{ UnparsedEntities() }` capability
+   (infoset.go); xmlsrc.element implements it; assessRoot reads it (haveEntities
+   flag → fail-open if a source omits DTD info). collectID ENTITY branch errors
+   (SpecDatatypeValid) when a value names no declared unparsed entity. Cleanly
+   separates saxon Id id020/id021 valid (entity1 declared) from invalid (only
+   entity2 declared) — and was REQUIRED because applying the element default
+   "entity1" exposed the missing check (those two .n01 cases had been passing for
+   the wrong reason: empty "" failed the NCName pattern).
+   Unit tests: xmltree_test.go TestUnparsedEntities / TestNoUnparsedEntities.
+   No bespoke xsdvalidate unit test — the instance ratchet pins these exact W3C
+   cases (id001/id004/ii26/idIDREF v*/id020) directly.
+REMAINING instance gaps (133 wrong, mostly false-ACCEPT by design): assertions/CTA
+fail-open needing richer XPath (saxonMeta/ibmMeta assert*), attribute-wildcard
+negative cases (Wild ##other/notQName), open-content suffix/interleave matching
+(Open027/031/047), xsi:type union-member derivation (union v05/v07, Simple012/016),
+"no global element declaration" for some sun targetNS/Override groups. Next
+tractable clusters: xsi:type union derivation, attribute-wildcard, open content.
+
 ## >>> DONE 2026-06-15 — cos-aw-intersect + defaultOpenContent appliesToEmpty <<<
 Both were identified as "obvious next parser TODOs" after the V0–V4 instance
 validation session (NOTES block above, lines ~67-75): the matcher bug fix

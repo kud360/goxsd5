@@ -50,3 +50,12 @@ type Attribute interface {
 type Text interface {
 	Data() string
 }
+
+// DocumentInfo is an optional capability a root Element may implement to expose
+// document-level DTD information. The engine reads UnparsedEntities at the
+// validation root to enforce xs:ENTITY/ENTITIES referential validity (each
+// value must name an unparsed entity declared in the DTD). A root that does not
+// implement it leaves ENTITY referential checking disabled (fail-open).
+type DocumentInfo interface {
+	UnparsedEntities() map[string]bool
+}

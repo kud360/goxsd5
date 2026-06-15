@@ -19,6 +19,10 @@ func (e element) Pos() xsd.Pos                   { return e.n.Pos }
 func (e element) Name() xsd.QName                { return xsd.QName{Namespace: e.n.Name.Space, Local: e.n.Name.Local} }
 func (e element) Lookup(p string) (string, bool) { return e.n.NS.Lookup(p) }
 
+// UnparsedEntities exposes the document's NDATA entity names (set on the root
+// node by xmltree) for xs:ENTITY referential validity (xsdvalidate.DocumentInfo).
+func (e element) UnparsedEntities() map[string]bool { return e.n.UnparsedEntities }
+
 func (e element) Attributes() []xsdvalidate.Attribute {
 	out := make([]xsdvalidate.Attribute, len(e.n.Attrs))
 	for i := range e.n.Attrs {

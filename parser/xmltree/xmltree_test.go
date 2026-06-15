@@ -155,6 +155,35 @@ func TestDTDEntityTrickyValue(t *testing.T) {
 	}
 }
 
+func TestUnparsedEntities(t *testing.T) {
+	// NDATA (unparsed) entities are collected by name on the root node for
+	// xs:ENTITY validity; parsed entities and parameter entities are excluded.
+	doc := `<!DOCTYPE root [
+  <!ENTITY pic1 SYSTEM "a.gif" NDATA gif>
+  <!ENTITY pic2 PUBLIC "-//x//y" "b.gif" NDATA gif>
+  <!ENTITY text "expanded">
+  <!ENTITY % pe "ignored">
+]>` + "\n<root>&text;</root>"
+	root := mustParse(t, doc)
+	if root.CharData != "expanded" {
+		t.Errorf("CharData = %q, want %q (parsed entity must still expand)", root.CharData, "expanded")
+	}
+	got := root.UnparsedEntities
+	if len(got) != 2 || !got["pic1"] || !got["pic2"] {
+		t.Errorf("UnparsedEntities = %v, want {pic1, pic2}", got)
+	}
+	if got["text"] || got["pe"] {
+		t.Errorf("parsed/parameter entity leaked into UnparsedEntities: %v", got)
+	}
+}
+
+func TestNoUnparsedEntities(t *testing.T) {
+	// A document with no internal subset (or no NDATA entity) yields a nil set.
+	if root := mustParse(t, "<root/>"); root.UnparsedEntities != nil {
+		t.Errorf("UnparsedEntities = %v, want nil", root.UnparsedEntities)
+	}
+}
+
 func TestPrologMiscBeforeRoot(t *testing.T) {
 	doc := "<?xml version=\"1.0\"?>\n<!-- comment -->\n<?pi data?>\n<root/>"
 	root := mustParse(t, doc)

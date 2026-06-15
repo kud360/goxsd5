@@ -15,8 +15,18 @@ type assessor struct {
 	v   *Validator
 	res *Result
 
-	ids    map[string]bool // declared xs:ID values, for uniqueness (cvc-id.2)
-	idrefs []idref         // pending IDREF values, resolved after the walk
+	// ids maps each declared xs:ID value to the element that bears it. XSD 1.1
+	// scopes ID uniqueness per element: an element may carry several ID
+	// attributes with the same value, but two distinct elements may not share an
+	// ID value (cvc-id.2, §3.4.4 — relaxed from XSD 1.0's single-ID-per-element).
+	ids    map[string]Element
+	idrefs []idref // pending IDREF values, resolved after the walk
+
+	// entities is the set of unparsed (NDATA) entity names declared in the
+	// document, for xs:ENTITY referential validity; haveEntities records whether
+	// the source supplied DTD info at all (else ENTITY checking is fail-open).
+	entities     map[string]bool
+	haveEntities bool
 
 	// attrType records the simple type assessed for each attribute node, so
 	// identity-constraint fields selecting attributes can compare typed values.
@@ -69,19 +79,25 @@ func (a *assessor) addValueErr(err error, pos xsd.Pos) {
 }
 
 func (a *assessor) assessRoot(root Element) {
+	if di, ok := root.(DocumentInfo); ok {
+		a.haveEntities = true
+		a.entities = di.UnparsedEntities()
+	}
 	decl := a.v.elements[root.Name()]
 	if decl == nil {
 		// spec: cvc-elt — XSD 1.1 Part 1 §3.3.4 (xmlschema11-1.md#cvc-elt)
 		a.addf(xsd.SpecCvcElt, root.Pos(), "no global element declaration for root element %s", root.Name())
 		return
 	}
-	a.assessElement(root, decl, nil)
+	a.assessElement(root, decl, nil, nil)
 }
 
 // assessElement implements cvc-elt (Element Locally Valid (Element), §3.3.4).
 // inherited carries the XSD 1.1 inheritable attributes contributed by ancestor
 // elements, available to conditional-type-assignment tests on this element.
-func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited map[xsd.QName]string) {
+// parent is the element's parent (nil at the validation root); it is the binding
+// target for any xs:ID carried by this element's simple content (§3.3.4.5).
+func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited map[xsd.QName]string, parent Element) {
 	// cvc-elt.2: the declaration must not be abstract.
 	if decl.Abstract {
 		a.addf(xsd.SpecCvcElt, el.Pos(), "element %s is declared abstract and cannot appear in an instance", decl.Name)
@@ -125,7 +141,7 @@ func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited ma
 	}
 
 	// cvc-elt.5: the element is locally valid with respect to its type.
-	a.assessType(el, gov, decl, childInherited(el, gov, inherited))
+	a.assessType(el, gov, decl, childInherited(el, gov, inherited), parent)
 
 	// Identity constraints are scoped at this element and read its subtree.
 	a.checkIdentityConstraints(el, decl)
@@ -193,7 +209,7 @@ func (a *assessor) resolveXSIType(el Element, decl *xsd.ElementDecl, declared xs
 }
 
 // assessType implements cvc-type (§3.4.4): dispatch on simple vs complex.
-func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl, inherited map[xsd.QName]string) {
+func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl, inherited map[xsd.QName]string, parent Element) {
 	switch t := t.(type) {
 	case *xsd.SimpleType:
 		// cvc-type.3.1.1/.2: a simple-typed element admits no element children
@@ -202,14 +218,14 @@ func (a *assessor) assessType(el Element, t xsd.Type, decl *xsd.ElementDecl, inh
 		if hasElementChildren(el) {
 			a.addf(xsd.SpecCvcType, el.Pos(), "element %s has a simple type but contains element children", decl.Name)
 		}
-		a.validateSimpleContent(el, t, charContent(el), decl)
+		a.validateSimpleContent(el, t, charContent(el), decl, parent)
 	case *xsd.ComplexType:
-		a.assessComplexType(el, t, decl, inherited)
+		a.assessComplexType(el, t, decl, inherited, parent)
 	}
 }
 
 // assessComplexType implements cvc-complex-type (§3.4.4).
-func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.ElementDecl, inherited map[xsd.QName]string) {
+func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.ElementDecl, inherited map[xsd.QName]string, parent Element) {
 	// cvc-complex-type.1: the type must not be abstract.
 	if ct.Abstract {
 		a.addf(xsd.SpecCvcComplexType, el.Pos(), "complex type %s is abstract and cannot be instantiated", typeName(ct))
@@ -223,7 +239,7 @@ func (a *assessor) assessComplexType(el Element, ct *xsd.ComplexType, decl *xsd.
 		if hasElementChildren(el) {
 			a.addf(xsd.SpecCvcComplexType, el.Pos(), "element %s has simple content but contains element children", decl.Name)
 		}
-		a.validateSimpleContent(el, content.Type, charContent(el), decl)
+		a.validateSimpleContent(el, content.Type, charContent(el), decl, parent)
 	case *xsd.ElementContent:
 		a.assessElementContent(el, content, inherited)
 	default: // empty content
@@ -258,14 +274,15 @@ func (a *assessor) assessElementContent(el Element, ec *xsd.ElementContent, inhe
 		return
 	}
 	for i, k := range kids {
-		a.assessChild(k, terms[i], inherited)
+		a.assessChild(k, terms[i], inherited, el)
 	}
 }
 
-// assessChild recurses into one matched child element.
-func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited map[xsd.QName]string) {
+// assessChild recurses into one matched child element. parent is the element
+// whose content model placed child (child's binding parent for cvc-id).
+func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited map[xsd.QName]string, parent Element) {
 	if mt.Elem != nil {
-		a.assessElement(child, mt.Elem, inherited)
+		a.assessElement(child, mt.Elem, inherited, parent)
 		return
 	}
 	if mt.Wildcard == nil {
@@ -281,7 +298,7 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited 
 		a.skipped[child] = true
 	case xsd.ProcessLax:
 		if d := a.v.elements[child.Name()]; d != nil {
-			a.assessElement(child, d, inherited)
+			a.assessElement(child, d, inherited, parent)
 		}
 	case xsd.ProcessStrict:
 		d := a.v.elements[child.Name()]
@@ -290,7 +307,7 @@ func (a *assessor) assessChild(child Element, mt xsdwalk.MatchedTerm, inherited 
 			a.addf(xsd.SpecCvcWildcard, child.Pos(), "no declaration for element %s matched by a strict wildcard", child.Name())
 			return
 		}
-		a.assessElement(child, d, inherited)
+		a.assessElement(child, d, inherited, parent)
 	}
 }
 
@@ -334,9 +351,23 @@ func (a *assessor) assessAttributes(el Element, uses []*xsd.AttributeUse, wildca
 		a.addf(xsd.SpecCvcComplexType, attr.Pos(), "attribute %s is not permitted here", name)
 	}
 	// cvc-complex-type.4: required attribute uses must be present.
+	// An absent attribute use with a default {value constraint} contributes that
+	// default to the [attribute] (cvc-complex-type.3 / §3.4.4.2); harvest any ID
+	// it carries so default-supplied IDs resolve IDREFs (e.g. id_attr default).
 	for _, u := range uses {
-		if u.Required && u.Decl != nil && !seen[u.Decl.Name] {
+		if u.Decl == nil || seen[u.Decl.Name] {
+			continue
+		}
+		if u.Required {
 			a.addf(xsd.SpecCvcComplexType, el.Pos(), "required attribute %s is missing", u.Decl.Name)
+			continue
+		}
+		def := u.Default
+		if def == nil {
+			def = u.Decl.Default
+		}
+		if def != nil {
+			a.collectID(u.Decl.Type, *def, el.Pos(), el, el)
 		}
 	}
 }
@@ -363,22 +394,30 @@ func (a *assessor) validateAttrValue(el Element, attr Attribute, t *xsd.SimpleTy
 		a.attrType = map[Attribute]*xsd.SimpleType{}
 	}
 	a.attrType[attr] = t
-	v, err := t.ParseValue(attr.Value(), nsContext{el})
-	if err != nil {
+	if _, err := t.ParseValue(attr.Value(), nsContext{el}); err != nil {
 		a.addValueErr(err, attr.Pos())
 		return
 	}
-	a.collectID(t, v, attr.Value(), attr.Pos())
+	a.collectID(t, attr.Value(), attr.Pos(), el, el)
 }
 
 // validateSimpleContent validates an element's character content against a
 // simple type, then enforces a fixed value constraint (cvc-elt.5.2.2).
-func (a *assessor) validateSimpleContent(el Element, t *xsd.SimpleType, text string, decl *xsd.ElementDecl) {
+func (a *assessor) validateSimpleContent(el Element, t *xsd.SimpleType, text string, decl *xsd.ElementDecl, parent Element) {
 	if t == nil {
 		return
 	}
-	v, err := t.ParseValue(text, nsContext{el})
-	if err != nil {
+	// cvc-elt.5.1.1: an ·empty· element with a {value constraint} (default OR
+	// fixed) takes that value as its schema-normalized value (validated and
+	// ID-harvested). The fixed-equality check below is then trivially satisfied.
+	if text == "" && decl != nil && !hasElementChildren(el) {
+		if decl.Default != nil {
+			text = *decl.Default
+		} else if decl.Fixed != nil {
+			text = *decl.Fixed
+		}
+	}
+	if _, err := t.ParseValue(text, nsContext{el}); err != nil {
 		a.addValueErr(err, el.Pos())
 		return
 	}
@@ -387,7 +426,9 @@ func (a *assessor) validateSimpleContent(el Element, t *xsd.SimpleType, text str
 			a.addf(xsd.SpecCvcElt, el.Pos(), "element %s content %q does not match fixed value %q", decl.Name, text, *decl.Fixed)
 		}
 	}
-	a.collectID(t, v, text, el.Pos())
+	// An xs:ID in element simple content binds the value to the element's PARENT
+	// (§3.3.4.5); attributes bind to their own element (see validateAttrValue).
+	a.collectID(t, text, el.Pos(), el, parent)
 }
 
 // valuesEqual reports whether two lexical forms denote the same value in t.
@@ -403,24 +444,68 @@ func (a *assessor) valuesEqual(t *xsd.SimpleType, lexA, lexB string, el Element)
 
 // collectID records xs:ID values (for uniqueness) and xs:IDREF references (for
 // later resolution) found in a value, implementing the gathering half of cvc-id.
-func (a *assessor) collectID(t *xsd.SimpleType, v xsd.Value, lexical string, pos xsd.Pos) {
+// ID/IDREF binding follows the actual validating type, so list items are
+// harvested per item type and union values per the member type that validates
+// them (xs:IDREFS, list-of-ID, union-of-ID all reduce to atomic ID/IDREF).
+// ctx is the element whose value is being harvested (for namespace-scoped value
+// parsing of union members); owner is the element to which a discovered xs:ID
+// binds (the value's element for attributes, the PARENT element for simple
+// content — nil at the validation root, which makes the binding empty).
+func (a *assessor) collectID(t *xsd.SimpleType, lexical string, pos xsd.Pos, ctx, owner Element) {
+	if t == nil {
+		return
+	}
+	switch t.Variety {
+	case xsd.VarietyList:
+		if t.ItemType != nil {
+			for _, item := range strings.Fields(lexical) {
+				a.collectID(t.ItemType, item, pos, ctx, owner)
+			}
+		}
+		return
+	case xsd.VarietyUnion:
+		// The actual {member type definition} is the first member that validates
+		// the value — harvest ID/IDREF as that member would (cvc-id over §3.16.4).
+		for _, m := range t.BasicMembers() {
+			if _, err := m.ParseValue(lexical, nsContext{ctx}); err == nil {
+				a.collectID(m, lexical, pos, ctx, owner)
+				return
+			}
+		}
+		return
+	}
 	switch {
 	case xsdwalk.IsDerivedFrom(t, builtin.ID):
-		if a.ids == nil {
-			a.ids = map[string]bool{}
-		}
 		val := strings.TrimSpace(lexical)
-		if a.ids[val] {
-			// spec: cvc-id — XSD 1.1 Part 1 §3.4.4 (xmlschema11-1.md#cvc-id)
-			a.addf(xsd.SpecCvcID, pos, "duplicate ID value %q", val)
+		if owner == nil {
+			// cvc-id.1: an xs:ID whose [binding] is empty — e.g. element-content
+			// ID on the validation root, whose parent is out of scope — is invalid.
+			a.addf(xsd.SpecCvcID, pos, "ID value %q binds to no element in scope", val)
 			return
 		}
-		a.ids[val] = true
+		if a.ids == nil {
+			a.ids = map[string]Element{}
+		}
+		if prev, dup := a.ids[val]; dup {
+			// cvc-id.2: the same value on the same element (e.g. two ID attributes,
+			// or repeated list items) is allowed; only a clash between distinct
+			// elements is an error.
+			if prev != owner {
+				a.addf(xsd.SpecCvcID, pos, "duplicate ID value %q", val)
+			}
+			return
+		}
+		a.ids[val] = owner
 	case xsdwalk.IsDerivedFrom(t, builtin.IDREF):
 		a.idrefs = append(a.idrefs, idref{val: strings.TrimSpace(lexical), pos: pos})
-	case t.Variety == xsd.VarietyList && t.ItemType != nil && xsdwalk.IsDerivedFrom(t.ItemType, builtin.IDREF):
-		for _, item := range strings.Fields(lexical) {
-			a.idrefs = append(a.idrefs, idref{val: item, pos: pos})
+	case xsdwalk.IsDerivedFrom(t, builtin.ENTITY):
+		// xs:ENTITY value space is restricted to the names of unparsed entities
+		// declared in the DTD (Part 2 §3.4.13; enforced at the structures level).
+		if a.haveEntities {
+			val := strings.TrimSpace(lexical)
+			if !a.entities[val] {
+				a.addf(xsd.SpecDatatypeValid, pos, "ENTITY %q matches no declared unparsed entity", val)
+			}
 		}
 	}
 }
@@ -428,7 +513,7 @@ func (a *assessor) collectID(t *xsd.SimpleType, v xsd.Value, lexical string, pos
 // checkIDRefs resolves every collected IDREF against the ID table (cvc-id.3).
 func (a *assessor) checkIDRefs() {
 	for _, r := range a.idrefs {
-		if !a.ids[r.val] {
+		if _, ok := a.ids[r.val]; !ok {
 			a.addf(xsd.SpecCvcID, r.pos, "IDREF %q has no matching ID", r.val)
 		}
 	}

@@ -28,6 +28,10 @@ type Node struct {
 	Pos      xsd.Pos
 	EndPos   xsd.Pos
 	NS       *NSContext
+	// UnparsedEntities holds the names of unparsed (NDATA) general entities
+	// declared in the document's internal DTD subset. It is populated only on
+	// the root node and supports xs:ENTITY/ENTITIES referential validation.
+	UnparsedEntities map[string]bool
 }
 
 // Attr is one attribute. Namespace declarations (xmlns, xmlns:p) are kept
@@ -177,7 +181,7 @@ func ParseLimit(r io.Reader, uri string, maxBytes int64) (*Node, error) {
 		return nil, fmt.Errorf("%s: %w", uri, err)
 	}
 
-	p := &treeParser{uri: uri, lines: []int{0}}
+	p := &treeParser{uri: uri, lines: []int{0}, unparsed: parseDTDUnparsedEntities(prolog)}
 	// lineReader records newline offsets as bytes flow to the decoder, so pos()
 	// can map offsets to line/column without retaining the whole document.
 	src := &lineReader{r: io.MultiReader(bytes.NewReader(prolog), br), p: p}
@@ -371,6 +375,88 @@ func parseDTDEntities(data []byte) map[string]string {
 		}
 	}
 	return resolveEntities(raw)
+}
+
+// parseDTDUnparsedEntities scans an internal DTD subset for unparsed general
+// entity declarations — `<!ENTITY name SYSTEM|PUBLIC … NDATA notation>` — and
+// returns the set of their names, used for xs:ENTITY/ENTITIES validity. It
+// returns nil when there is no internal subset or no unparsed entity.
+func parseDTDUnparsedEntities(data []byte) map[string]bool {
+	subset, ok := internalSubset(data)
+	if !ok {
+		return nil
+	}
+	var names map[string]bool
+	s := subset
+	for i := 0; i < len(s); {
+		switch {
+		case strings.HasPrefix(s[i:], "<!--"):
+			end := strings.Index(s[i+4:], "-->")
+			if end < 0 {
+				return names
+			}
+			i += 4 + end + 3
+		case strings.HasPrefix(s[i:], "<!ENTITY"):
+			end := entityDeclEnd(s, i)
+			decl := s[i:end]
+			// A parameter entity (`<!ENTITY % …>`) cannot be an xs:ENTITY referent.
+			if name := unparsedEntityName(decl); name != "" {
+				if names == nil {
+					names = map[string]bool{}
+				}
+				names[name] = true
+			}
+			i = end
+		case strings.HasPrefix(s[i:], "<!"), strings.HasPrefix(s[i:], "<?"):
+			i = skipMarkupDecl(s, i)
+		default:
+			i++
+		}
+	}
+	return names
+}
+
+// unparsedEntityName returns the declared name of an `<!ENTITY …>` declaration
+// if it is an unparsed (NDATA) general entity, else "". decl spans the whole
+// declaration including the leading "<!ENTITY" and trailing ">".
+func unparsedEntityName(decl string) string {
+	body := strings.TrimSuffix(strings.TrimPrefix(decl, "<!ENTITY"), ">")
+	fields := strings.Fields(body)
+	// Shape: name (SYSTEM "uri" | PUBLIC "id" "uri") NDATA notation
+	if len(fields) < 2 || fields[0] == "%" {
+		return ""
+	}
+	for _, f := range fields[1:] {
+		if f == "NDATA" {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
+// entityDeclEnd returns the index just past the `>` that closes the `<!ENTITY`
+// declaration starting at s[i], skipping over quoted literals so a `>` inside a
+// system identifier or replacement text does not terminate it early.
+func entityDeclEnd(s string, i int) int {
+	j := i + len("<!ENTITY")
+	for j < len(s) {
+		switch s[j] {
+		case '"', '\'':
+			quote := s[j]
+			j++
+			for j < len(s) && s[j] != quote {
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+		case '>':
+			return j + 1
+		default:
+			j++
+		}
+	}
+	return j
 }
 
 // internalSubset returns the text between the `[` and the matching top-level
@@ -571,8 +657,9 @@ func isSpace(b byte) bool {
 }
 
 type treeParser struct {
-	uri   string
-	lines []int // byte offset of the start of each line, grown by lineReader
+	uri      string
+	lines    []int           // byte offset of the start of each line, grown by lineReader
+	unparsed map[string]bool // unparsed (NDATA) entity names from the internal DTD subset
 }
 
 func (p *treeParser) pos(offset int64) xsd.Pos {
@@ -684,6 +771,7 @@ func (p *treeParser) parse(d *xml.Decoder) (*Node, error) {
 	if root == nil {
 		return nil, fmt.Errorf("%s: no root element", p.uri)
 	}
+	root.UnparsedEntities = p.unparsed
 	return root, nil
 }
 
