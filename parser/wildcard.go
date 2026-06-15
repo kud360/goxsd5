@@ -147,6 +147,91 @@ func wildcardIntersect(w1, w2 *xsd.Wildcard) *xsd.Wildcard {
 	return out
 }
 
+// wildcardUnion returns the Attribute Wildcard Union of W1 and W2 per XSD 1.1
+// Part 1 §3.10.6.2 (cos-aw-union), used to combine an extension's own attribute
+// wildcard (W2) with its base's (W1). A nil argument means "no wildcard"; the
+// union with a present wildcard is that wildcard. The result's {process
+// contents} is taken from W2 (the extension's local wildcard governs).
+func wildcardUnion(w1, w2 *xsd.Wildcard) *xsd.Wildcard {
+	if w1 == nil {
+		return w2
+	}
+	if w2 == nil {
+		return w1
+	}
+	out := &xsd.Wildcard{ProcessContents: w2.ProcessContents}
+	// {disallowed names} (§3.10.6.3): O1's disallowed names not allowed by O2,
+	// plus O2's not allowed by O1, plus a keyword only if both carry it.
+	out.NotQName = notQNameUnionDisallowed(w1, w2)
+	switch {
+	case w1.Mode == xsd.NSConstraintAny || w2.Mode == xsd.NSConstraintAny:
+		// clause 2: either any → any
+		out.Mode = xsd.NSConstraintAny
+	case w1.Mode == xsd.NSConstraintNot && w2.Mode == xsd.NSConstraintNot:
+		// clause 4: Not(S1) ∪ Not(S2) = Not(S1 ∩ S2); empty exclusion ⇒ any.
+		setUnionNot(out, stringsIntersection(w1.Namespaces, w2.Namespaces))
+	case w1.Mode == xsd.NSConstraintNot:
+		// clause 5: Not(S1) ∪ Enum(S2) = Not(S1 - S2); empty difference ⇒ any.
+		setUnionNot(out, stringsDifference(w1.Namespaces, w2.Namespaces))
+	case w2.Mode == xsd.NSConstraintNot:
+		// clause 5 (symmetric)
+		setUnionNot(out, stringsDifference(w2.Namespaces, w1.Namespaces))
+	default:
+		// clause 3: Enum(S1) ∪ Enum(S2) = Enum(S1 ∪ S2)
+		out.Mode = xsd.NSConstraintEnumeration
+		out.Namespaces = stringsUnion(w1.Namespaces, w2.Namespaces)
+	}
+	return out
+}
+
+// setUnionNot sets out to Not(ns), or to Any when ns is empty (Not of nothing
+// admits every namespace) — the clause 4.1/5.1 degeneration of cos-aw-union.
+func setUnionNot(out *xsd.Wildcard, ns []string) {
+	if len(ns) == 0 {
+		out.Mode = xsd.NSConstraintAny
+		return
+	}
+	out.Mode = xsd.NSConstraintNot
+	out.Namespaces = ns
+}
+
+// notQNameUnionDisallowed computes the {disallowed names} of the wildcard union
+// of w1 and w2 (cos-aw-union): an explicit QName disallowed by one wildcard
+// survives only if the other wildcard does not allow it anyway; a keyword
+// (##defined/##definedSibling) survives only if both wildcards carry it.
+func notQNameUnionDisallowed(w1, w2 *xsd.Wildcard) []xsd.QName {
+	var out []xsd.QName
+	add := func(q xsd.QName) {
+		if !slices.Contains(out, q) {
+			out = append(out, q)
+		}
+	}
+	for _, d := range w1.NotQName {
+		if isDisallowedKeyword(d) {
+			if hasDisallowedKeyword(w2, d.Local) {
+				add(d)
+			}
+		} else if !wildcardAllowsName(w2, d) {
+			add(d)
+		}
+	}
+	for _, d := range w2.NotQName {
+		if isDisallowedKeyword(d) {
+			continue // keyword case already settled from w1's side
+		}
+		if !wildcardAllowsName(w1, d) {
+			add(d)
+		}
+	}
+	return out
+}
+
+// isDisallowedKeyword reports whether q is a ##defined/##definedSibling token
+// rather than an explicit disallowed QName.
+func isDisallowedKeyword(q xsd.QName) bool {
+	return q.Namespace == "" && (q.Local == definedKeyword || q.Local == siblingKeyword)
+}
+
 // notQNameUnion returns the union of two NotQName slices, deduplicating.
 func notQNameUnion(a, b []xsd.QName) []xsd.QName {
 	if len(a) == 0 {

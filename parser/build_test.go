@@ -1164,6 +1164,71 @@ func TestBuildAttrWildcardIntersect(t *testing.T) {
 	}
 }
 
+// TestBuildAttrWildcardUnion verifies that an extension's effective attribute
+// wildcard is the UNION of the base's and the extension's own wildcards
+// (cos-aw-union §3.10.6.3), including the {disallowed names} rule.
+func TestBuildAttrWildcardUnion(t *testing.T) {
+	cases := []struct {
+		name      string
+		body      string
+		wantMode  xsd.NamespaceConstraintMode
+		wantNS    []string
+		wantNotIn []string // local names that MUST remain in {disallowed names}
+		wantOK    []string // local names that must NOT be in {disallowed names}
+	}{
+		{
+			// Not(urn:cain) ∪ Not(urn:abel) = Not(∅) = any  — clause 4.1
+			name: "Not∪Not→any(disjoint)",
+			body: `<xs:complexType name="base"><xs:sequence/><xs:anyAttribute notNamespace="urn:cain" processContents="lax"/></xs:complexType>
+			       <xs:complexType name="t"><xs:complexContent><xs:extension base="tns:base"><xs:anyAttribute notNamespace="urn:abel" processContents="lax"/></xs:extension></xs:complexContent></xs:complexType>`,
+			wantMode: xsd.NSConstraintAny,
+		},
+		{
+			// Enum(##local) notQName(a b c) ∪ Not(urn:xsl) notQName(c d e) :
+			// namespace union = Not(urn:xsl); disallowed = {c} (a,b allowed by O2;
+			// d,e allowed by O1 namespace? no — d,e are ##local so allowed by O1).
+			name: "Enum∪Not→Not, disallowed names filtered",
+			body: `<xs:complexType name="base"><xs:sequence/><xs:anyAttribute namespace="##local" notQName="a b c" processContents="skip"/></xs:complexType>
+			       <xs:complexType name="t"><xs:complexContent><xs:extension base="tns:base"><xs:anyAttribute notNamespace="urn:xsl" notQName="c d e" processContents="skip"/></xs:extension></xs:complexContent></xs:complexType>`,
+			wantMode:  xsd.NSConstraintNot,
+			wantNS:    []string{"urn:xsl"},
+			wantNotIn: []string{"c"},
+			wantOK:    []string{"a", "b", "d", "e"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+tc.body+`</xs:schema>`)
+			wantClean(t, errs)
+			ct := s.Types[xsd.QName{Namespace: "urn:t", Local: "t"}].(*xsd.ComplexType)
+			wc := ct.AttributeWildcard
+			if wc == nil {
+				t.Fatal("attribute wildcard is nil; want non-nil")
+			}
+			if wc.Mode != tc.wantMode {
+				t.Errorf("wildcard mode = %v, want %v", wc.Mode, tc.wantMode)
+			}
+			if len(wc.Namespaces) != len(tc.wantNS) {
+				t.Errorf("wildcard namespaces = %v, want %v", wc.Namespaces, tc.wantNS)
+			}
+			disallowed := map[string]bool{}
+			for _, d := range wc.NotQName {
+				disallowed[d.Local] = true
+			}
+			for _, n := range tc.wantNotIn {
+				if !disallowed[n] {
+					t.Errorf("disallowed names %v missing expected %q", wc.NotQName, n)
+				}
+			}
+			for _, n := range tc.wantOK {
+				if disallowed[n] {
+					t.Errorf("disallowed names %v wrongly contains %q", wc.NotQName, n)
+				}
+			}
+		})
+	}
+}
+
 // TestBuildDefaultOpenContentAppliesToEmpty verifies that a bare
 // <xs:sequence/> with no children is treated as an EMPTY content type, so a
 // defaultOpenContent with appliesToEmpty=false does NOT apply to it, while one

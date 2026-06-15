@@ -153,9 +153,13 @@ func (b *builder) mergeComplexType(ct *xsd.ComplexType, am *attrMaterial) {
 	ct.AttributeUses = b.mergeBaseAttrUses(am.own, baseUses, prohibited, am.override, am.pos)
 	ct.AttributeWildcard = am.wc
 	if am.wc == nil && am.wcFallback {
-		// Wildcard union (cos-aw-union) is deferred; the base's wildcard stands
-		// in when the type declares none.
+		// With no own wildcard the base's stands in (both restriction and the
+		// extension union degenerate to the base wildcard).
 		ct.AttributeWildcard = baseWC
+	} else if am.wc != nil && baseWC != nil && ct.DerivationMethod == xsd.DeriveExtension {
+		// cos-aw-union (§3.10.6.2): an extension's {attribute wildcard} is the
+		// union of the base's wildcard and the extension's own wildcard.
+		ct.AttributeWildcard = wildcardUnion(baseWC, am.wc)
 	}
 	if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil {
 		if am.wc != nil {

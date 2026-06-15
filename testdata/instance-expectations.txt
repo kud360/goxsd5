@@ -20172,9 +20172,13 @@ saxonMeta/Wild.testSet#wild012#wild012.n1.xml	pass
 saxonMeta/Wild.testSet#wild012#wild012.n2.xml	pass
 saxonMeta/Wild.testSet#wild012#wild012.v1.xml	pass
 saxonMeta/Wild.testSet#wild012#wild012.v2.xml	pass
+saxonMeta/Wild.testSet#wild013#wild013.v1.xml	pass
 saxonMeta/Wild.testSet#wild014#wild014.n1.xml	pass
+saxonMeta/Wild.testSet#wild014#wild014.v1.xml	pass
 saxonMeta/Wild.testSet#wild015#wild015.n1.xml	pass
+saxonMeta/Wild.testSet#wild015#wild015.v1.xml	pass
 saxonMeta/Wild.testSet#wild016#wild016.n1.xml	pass
+saxonMeta/Wild.testSet#wild016#wild016.v1.xml	pass
 saxonMeta/Wild.testSet#wild017#wild017.n1.xml	pass
 saxonMeta/Wild.testSet#wild017#wild017.n2.xml	pass
 saxonMeta/Wild.testSet#wild017#wild017.n3.xml	pass
@@ -20229,9 +20233,11 @@ saxonMeta/Wild.testSet#wild044#wild044.v1.xml	pass
 saxonMeta/Wild.testSet#wild045#wild045.n1.xml	pass
 saxonMeta/Wild.testSet#wild045#wild045.n2.xml	pass
 saxonMeta/Wild.testSet#wild045#wild045.v1.xml	pass
+saxonMeta/Wild.testSet#wild045#wild045.v2.xml	pass
 saxonMeta/Wild.testSet#wild046#wild046.n1.xml	pass
 saxonMeta/Wild.testSet#wild046#wild046.n2.xml	pass
 saxonMeta/Wild.testSet#wild046#wild046.v1.xml	pass
+saxonMeta/Wild.testSet#wild046#wild046.v2.xml	pass
 saxonMeta/Wild.testSet#wild047#wild047.n1.xml	pass
 saxonMeta/Wild.testSet#wild047#wild047.v1.xml	pass
 saxonMeta/Wild.testSet#wild052#wild052.v1.xml	pass
@@ -20276,6 +20282,7 @@ saxonMeta/Wild.testSet#wild077#wild077.v1.xml	pass
 saxonMeta/Wild.testSet#wild080#wild080.v1.xml	pass
 saxonMeta/Wild.testSet#wild082#wild082.v1.xml	pass
 saxonMeta/Wild.testSet#wild083#wild047.n1.xml	pass
+saxonMeta/Wild.testSet#wild083#wild083.v1.xml	pass
 saxonMeta/Wild.testSet#wild101#wild101.n1.xml	pass
 saxonMeta/Wild.testSet#wild101#wild101.n2.xml	pass
 saxonMeta/Wild.testSet#wild101#wild101.v1.xml	pass
@@ -21179,6 +21186,8 @@ sunMeta/suntest.testSet#test008#test.1.n	pass
 sunMeta/suntest.testSet#test008#test.10.n	pass
 sunMeta/suntest.testSet#test008#test.11.n	pass
 sunMeta/suntest.testSet#test008#test.12.n	pass
+sunMeta/suntest.testSet#test008#test.2.v	pass
+sunMeta/suntest.testSet#test008#test.3.v	pass
 sunMeta/suntest.testSet#test008#test.4.v	pass
 sunMeta/suntest.testSet#test008#test.5.n	pass
 sunMeta/suntest.testSet#test008#test.6.v	pass
