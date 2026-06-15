@@ -1164,6 +1164,47 @@ func TestBuildAttrWildcardIntersect(t *testing.T) {
 	}
 }
 
+// TestExtensionOpenContentInheritance verifies the §3.4.2.3.3 open-content
+// mapping for an extension: the effective {open content} is inherited from the
+// base when the extension authors none or mode='none' (clause 6.1), and is the
+// wildcard union when the extension authors its own (clause 6.2).
+func TestExtensionOpenContentInheritance(t *testing.T) {
+	openContentOf := func(t *testing.T, body string) *xsd.OpenContent {
+		t.Helper()
+		s, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">`+body+`</xs:schema>`)
+		wantClean(t, errs)
+		ct := s.Types[xsd.QName{Namespace: "urn:t", Local: "r"}].(*xsd.ComplexType)
+		ec, ok := ct.Content.(*xsd.ElementContent)
+		if !ok {
+			t.Fatalf("r content = %T, want *ElementContent", ct.Content)
+		}
+		return ec.OpenContent
+	}
+	base := `<xs:complexType name="b"><xs:openContent mode="interleave"><xs:any namespace="urn:o" processContents="lax"/></xs:openContent><xs:sequence><xs:element name="a" type="xs:int"/></xs:sequence></xs:complexType>`
+
+	t.Run("no openContent inherits base (clause 6.1)", func(t *testing.T) {
+		oc := openContentOf(t, base+`<xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`)
+		if oc == nil || oc.Mode != xsd.OpenContentInterleave {
+			t.Fatalf("open content = %+v, want inherited interleave", oc)
+		}
+	})
+	t.Run("mode=none still inherits base (clause 6.1)", func(t *testing.T) {
+		oc := openContentOf(t, base+`<xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="none"/><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`)
+		if oc == nil || oc.Mode != xsd.OpenContentInterleave {
+			t.Fatalf("open content = %+v, want inherited interleave (mode=none does not suppress)", oc)
+		}
+	})
+	t.Run("own interleave unions wildcards (clause 6.2)", func(t *testing.T) {
+		oc := openContentOf(t, base+`<xs:complexType name="r"><xs:complexContent><xs:extension base="tns:b"><xs:openContent mode="interleave"><xs:any namespace="urn:p" processContents="lax"/></xs:openContent><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>`)
+		if oc == nil || oc.Mode != xsd.OpenContentInterleave || oc.Wildcard == nil {
+			t.Fatalf("open content = %+v, want interleave with a wildcard", oc)
+		}
+		if oc.Wildcard.Mode != xsd.NSConstraintEnumeration || len(oc.Wildcard.Namespaces) != 2 {
+			t.Errorf("union wildcard = %+v, want enumeration of {urn:o, urn:p}", oc.Wildcard)
+		}
+	})
+}
+
 // TestBuildAttrWildcardUnion verifies that an extension's effective attribute
 // wildcard is the UNION of the base's and the extension's own wildcards
 // (cos-aw-union §3.10.6.3), including the {disallowed names} rule.

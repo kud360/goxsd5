@@ -19976,12 +19976,17 @@ saxonMeta/Open.testSet#open024#open024.v1.xml	pass
 saxonMeta/Open.testSet#open025#open025.v1.xml	pass
 saxonMeta/Open.testSet#open027#open027.n1.xml	pass
 saxonMeta/Open.testSet#open027#open027.v1.xml	pass
+saxonMeta/Open.testSet#open027#open027.v2.xml	pass
+saxonMeta/Open.testSet#open027#open027.v3.xml	pass
 saxonMeta/Open.testSet#open028#open028.n1.xml	pass
 saxonMeta/Open.testSet#open028#open028.v1.xml	pass
 saxonMeta/Open.testSet#open028#open028.v2.xml	pass
 saxonMeta/Open.testSet#open028#open028.v3.xml	pass
 saxonMeta/Open.testSet#open031#open031.n2.xml	pass
 saxonMeta/Open.testSet#open031#open031.v1.xml	pass
+saxonMeta/Open.testSet#open031#open031.v2.xml	pass
+saxonMeta/Open.testSet#open031#open031.v3.xml	pass
+saxonMeta/Open.testSet#open031#open031.v4.xml	pass
 saxonMeta/Open.testSet#open035#open035.n1.xml	pass
 saxonMeta/Open.testSet#open035#open035.n2.xml	pass
 saxonMeta/Open.testSet#open035#open035.v1.xml	pass
@@ -20000,6 +20005,7 @@ saxonMeta/Open.testSet#open044#open044.v1.xml	pass
 saxonMeta/Open.testSet#open045#open045.n1.xml	pass
 saxonMeta/Open.testSet#open045#open045.v1.xml	pass
 saxonMeta/Open.testSet#open047#open047.n1.xml	pass
+saxonMeta/Open.testSet#open047#open047.v1.xml	pass
 saxonMeta/Open.testSet#open047#open047.v2.xml	pass
 saxonMeta/Open.testSet#open047#open047.v3.xml	pass
 saxonMeta/Open.testSet#open201#open201.v1.xml	pass

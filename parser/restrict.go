@@ -320,6 +320,41 @@ func (b *builder) checkExtensionOpenContent(ct, bct *xsd.ComplexType, contentNod
 	}
 }
 
+// inheritExtensionOpenContent finalizes an extension's {open content} per the
+// §3.4.2.3.3 mapping. The *explicit content type* of an element-only/mixed
+// extension already carries the base's {open content} (clause 4.2.3); the
+// extension's own <openContent>/<defaultOpenContent> (recorded in ec.OpenContent
+// by fillElementOnlyContent as the "wildcard element") then layers on top:
+//   - clause 6.1: the wildcard element is absent or mode='none' ⇒ the result is
+//     the explicit content type, i.e. the BASE's open content (so an extension
+//     can never suppress inherited open content — mode='none' is not removal).
+//   - clause 6.2: otherwise the result keeps the wildcard element's mode and its
+//     wildcard is the union of the wildcard element's and the base's.
+func (b *builder) inheritExtensionOpenContent(ct, bct *xsd.ComplexType) {
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok {
+		return
+	}
+	bec, _ := bct.Content.(*xsd.ElementContent)
+	baseOC := effectiveOpenContent(bec) // the explicit content type's open content
+	own := ec.OpenContent               // the wildcard element (nil if none authored)
+	switch {
+	case own == nil || own.Mode == xsd.OpenContentNone:
+		ec.OpenContent = baseOC // clause 6.1
+	case baseOC == nil:
+		// clause 6.2 with an absent base open content: the wildcard element stands.
+	default:
+		// clause 6.2: combine. {mode} is the wildcard element's; {wildcard} is the
+		// wildcard union of the wildcard element's and the base's (processContents
+		// from the wildcard element — wildcardUnion takes it from its 2nd arg).
+		ec.OpenContent = &xsd.OpenContent{
+			Mode:     own.Mode,
+			Wildcard: wildcardUnion(baseOC.Wildcard, own.Wildcard),
+			Pos:      own.Pos,
+		}
+	}
+}
+
 // openContentModeAttr reads the {mode} of an <openContent>/<defaultOpenContent>
 // element, defaulting to interleave (mirrors buildOpenContent).
 func openContentModeAttr(n *xmltree.Node) xsd.OpenContentMode {

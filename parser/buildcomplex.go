@@ -168,6 +168,7 @@ func (b *builder) mergeComplexType(ct *xsd.ComplexType, am *attrMaterial) {
 		b.checkAttrRestriction(am.own, baseUses)
 	}
 	if ct.DerivationMethod == xsd.DeriveExtension && bct != nil {
+		b.inheritExtensionOpenContent(ct, bct)
 		b.checkExtensionOpenContent(ct, bct, am.contentNode, am.doc)
 	}
 	b.applyDefaultAttributes(ct, am.node, am.doc)
