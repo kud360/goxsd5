@@ -457,8 +457,13 @@ func (t *SimpleType) buildValue(norm, raw string, ctx ValueContext) (Value, erro
 		}
 		return list, nil
 	case VarietyUnion:
+		// Validate against the DIRECT member types, not the flattened basic
+		// members: a member that is itself a union (possibly a restriction adding
+		// facets) must validate the value through its own facets, so an
+		// intervening restriction-of-union's pattern/enumeration is enforced
+		// (cvc-datatype-valid; e.g. union(restriction(union(string), pattern))).
 		var firstErr error
-		for _, m := range t.BasicMembers() {
+		for _, m := range t.DirectMembers {
 			v, err := m.ParseValue(raw, ctx)
 			if err == nil {
 				return v, nil

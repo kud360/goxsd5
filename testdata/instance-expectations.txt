@@ -312,7 +312,9 @@ ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_005#typeAlternatives_005_
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_006#typeAlternatives_006_2	pass
 ibmMeta/typeAlternativesMixed.testSet#typeAlternatives_006#typeAlternatives_006_3	pass
 ibmMeta/union.testSet#s3_16_2ii01#s3_16_2ii01i	pass
+ibmMeta/union.testSet#s3_16_2ii02#s3_16_2ii02i	pass
 ibmMeta/union.testSet#s3_16_2ii03#s3_16_2ii03i	pass
+ibmMeta/union.testSet#s3_16_2ii04#s3_16_2ii04i	pass
 ibmMeta/union.testSet#s3_16_2ii05#s3_16_2ii05i	pass
 ibmMeta/union.testSet#s3_16_2ii06#s3_16_2ii06i	pass
 ibmMeta/union.testSet#s3_16_2ii07#s3_16_2ii07i	pass
