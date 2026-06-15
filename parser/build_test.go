@@ -1205,6 +1205,42 @@ func TestExtensionOpenContentInheritance(t *testing.T) {
 	})
 }
 
+// TestComplexAssertionChain verifies that a complex type's {assertions} are the
+// base type's assertions followed by its own, accumulated down the derivation
+// chain (XSD 1.1 §3.4.2.3.2/§3.4.2.3.3), for both extension and restriction.
+func TestComplexAssertionChain(t *testing.T) {
+	check := func(t *testing.T, ct *xsd.ComplexType, want []string) {
+		t.Helper()
+		var got []string
+		for _, a := range ct.Assertions {
+			got = append(got, a.Test)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("assertions = %v, want %v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("assertions = %v, want %v", got, want)
+			}
+		}
+	}
+	s, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
+		<xs:complexType name="base"><xs:simpleContent><xs:extension base="xs:integer">
+			<xs:assert test=". &gt; 0"/></xs:extension></xs:simpleContent></xs:complexType>
+		<xs:complexType name="derived"><xs:simpleContent><xs:restriction base="tns:base">
+			<xs:assert test=". mod 2 = 0"/></xs:restriction></xs:simpleContent></xs:complexType>
+		<xs:complexType name="grand"><xs:simpleContent><xs:restriction base="tns:derived">
+			<xs:assert test=". &lt; 100"/></xs:restriction></xs:simpleContent></xs:complexType>
+	</xs:schema>`)
+	wantClean(t, errs)
+	q := func(local string) *xsd.ComplexType {
+		return s.Types[xsd.QName{Namespace: "urn:t", Local: local}].(*xsd.ComplexType)
+	}
+	check(t, q("base"), []string{". > 0"})
+	check(t, q("derived"), []string{". > 0", ". mod 2 = 0"})
+	check(t, q("grand"), []string{". > 0", ". mod 2 = 0", ". < 100"})
+}
+
 // TestBuildAttrWildcardUnion verifies that an extension's effective attribute
 // wildcard is the UNION of the base's and the extension's own wildcards
 // (cos-aw-union §3.10.6.3), including the {disallowed names} rule.

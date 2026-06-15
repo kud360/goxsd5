@@ -137,6 +137,13 @@ func (b *builder) finishComplexType(ct *xsd.ComplexType) {
 // effective particle of an extension, then the merged attribute uses.
 func (b *builder) mergeComplexType(ct *xsd.ComplexType, am *attrMaterial) {
 	bct, _ := ct.BaseType.(*xsd.ComplexType)
+	if bct != nil {
+		// {assertions} is the base type's {assertions} followed by this type's
+		// own (XSD 1.1 §3.4.2.3.2/§3.4.2.3.3, both extension and restriction):
+		// a derived type must satisfy every assertion in its derivation chain.
+		// bct is fully finished here, so bct.Assertions already holds the chain.
+		ct.Assertions = append(append([]xsd.Assertion(nil), bct.Assertions...), ct.Assertions...)
+	}
 	if bct != nil && ct.DerivationMethod == xsd.DeriveExtension {
 		b.finishExtensionParticle(ct, bct)
 	}
