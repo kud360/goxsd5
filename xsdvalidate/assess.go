@@ -593,7 +593,14 @@ func (a *assessor) checkSimpleAssertions(el Element, t *xsd.SimpleType, text str
 	if len(eff.Assertions) == 0 {
 		return
 	}
-	value := []string{eff.WhiteSpace.Apply(text)}
+	// $value is the type's value sequence: a single atom for atomic/union types,
+	// the whitespace-separated items for a list type (§3.13.4 binds $value to the
+	// value being validated; list value spaces are sequences).
+	norm := eff.WhiteSpace.Apply(text)
+	value := []string{norm}
+	if t.Variety == xsd.VarietyList {
+		value = strings.Fields(norm)
+	}
 	for _, as := range eff.Assertions {
 		result, ok := evalSimpleAssertion(el, as.Test, value)
 		if ok && !result {

@@ -19696,6 +19696,7 @@ saxonMeta/Assert.testSet#assert-simple003#assert-simple003.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple003#assert-simple003.v1.xml	pass
 saxonMeta/Assert.testSet#assert-simple004#assert-simple004.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple004#assert-simple004.v1.xml	pass
+saxonMeta/Assert.testSet#assert-simple005#assert-simple005.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple005#assert-simple005.v1.xml	pass
 saxonMeta/Assert.testSet#assert-simple006#assert-simple006.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple006#assert-simple006.v1.xml	pass
