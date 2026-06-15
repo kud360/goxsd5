@@ -7,18 +7,22 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> DONE 2026-06-15 — defaultAttributes don't apply to xs:override-declared types (+2) <<<
-Instance ratchet 21423 → 21425 (+2: saxon open045, ibm s3_4_2_4ii08); schema held
-5672. A complex type declared inside <xs:override> belongs to the OVERRIDDEN
-document (§4.2.4), so that document's defaultAttributes apply — not the overriding
-schema's. open045: defaultAttributes="dag" (anyAttribute xml ns) in the overriding
-doc must NOT reach `beta` (declared in the override; overridden doc has no
-defaults), so `<b xml:lang="de">` is now correctly INVALID.
- - builder gained overrideTarget map[*xmltree.Node]*schemaDoc, populated in
-   buildSchemas from l.reps (kind=="override": each top-level override child node →
-   rep.target). applyDefaultAttributes swaps doc→target when the type's node is an
-   override child. NOTE: only defaultAttributes uses this; defaultOpenContent is a
-   SEPARATE question (open043 still open — its rule looks opposite, deferred).
+## >>> DONE 2026-06-15 — schema-level defaults skip xs:override-declared types (+3) <<<
+Instance ratchet 21423 → 21426 (+3: saxon open045/open043, ibm s3_4_2_4ii08);
+schema held 5672. A complex type declared inside <xs:override> belongs to the
+OVERRIDDEN document (§4.2.4), so THAT document's schema-level defaults apply — not
+the overriding schema's. BOTH defaultAttributes AND defaultOpenContent follow this
+(open043's schema comment "applies to types within xs:override" is the test THEME;
+the instance annotations confirm the default does NOT apply — beta's open content /
+dag come from the overridden doc, which has none).
+ - builder.overrideTarget map[*xmltree.Node]*schemaDoc, populated in buildSchemas
+   from l.reps (kind=="override": each top-level override child node → rep.target).
+ - New b.defaultsDoc(n, doc) returns the override target for an override-child node,
+   else doc. Used by applyDefaultAttributes (defaultAttributes) AND
+   fillElementOnlyContent (defaultOpenContent) — only the DEFAULTS source swaps;
+   namespace/reference resolution still uses the overriding doc. open045 (<b
+   xml:lang> via dag now rejected), open043 (<b><extra/></b> via open content now
+   rejected), s3_4_2_4ii08.
 
 ## >>> DONE 2026-06-15 — EDC against base-type local decls (+1 wild068) <<<
 Instance ratchet 21422 → 21423 (+1); schema held 5672. Extends the dynamic EDC

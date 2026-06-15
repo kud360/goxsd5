@@ -329,17 +329,20 @@ func (b *builder) fillElementOnlyContent(ct *xsd.ComplexType, n, content *xmltre
 	}
 
 	ec := &xsd.ElementContent{Mixed: mixed, Particle: particle}
+	defDoc := b.defaultsDoc(n, doc)
 	if ocn := firstChild(content, doc, "openContent"); ocn != nil {
 		ec.OpenContent = b.buildOpenContent(ocn, doc)
-	} else if doc.defaultOpenContent != nil {
+	} else if defDoc.defaultOpenContent != nil {
 		// Apply defaultOpenContent when the content type is non-empty (i.e. the
 		// particle can match at least one element, or the type is mixed — mixed
 		// always has a non-empty content type), OR when appliesToEmpty=true.
 		// A bare <xs:sequence/> with no children is an empty content type, so
 		// particleMatchesNonEmpty correctly returns false for it. §3.11.4.2.
+		// A type declared inside <xs:override> takes the overridden document's
+		// defaultOpenContent (defDoc), not the overriding schema's (saxon open043).
 		nonEmpty := mixed || particleMatchesNonEmpty(particle)
-		if nonEmpty || boolAttr(doc.defaultOpenContent, "appliesToEmpty", false) {
-			ec.OpenContent = b.buildOpenContent(doc.defaultOpenContent, doc)
+		if nonEmpty || boolAttr(defDoc.defaultOpenContent, "appliesToEmpty", false) {
+			ec.OpenContent = b.buildOpenContent(defDoc.defaultOpenContent, defDoc)
 		}
 	}
 	ct.Content = ec
@@ -395,15 +398,24 @@ func (b *builder) mergeBaseAttrUses(own, base []*xsd.AttributeUse, prohibited ma
 	return out
 }
 
+// defaultsDoc returns the document whose schema-level defaults (defaultAttributes
+// / defaultOpenContent) govern the component defined at node n: the overridden
+// (target) document when n is declared inside an <xs:override> (§4.2.4 places it
+// there), otherwise doc itself.
+func (b *builder) defaultsDoc(n *xmltree.Node, doc *schemaDoc) *schemaDoc {
+	if target := b.overrideTarget[n]; target != nil {
+		return target
+	}
+	return doc
+}
+
 // applyDefaultAttributes appends the schema's defaultAttributes group
 // unless the type opts out.
 func (b *builder) applyDefaultAttributes(ct *xsd.ComplexType, n *xmltree.Node, doc *schemaDoc) {
 	// A complex type declared inside <xs:override> belongs to the overridden
 	// document (§4.2.4), so that document's defaultAttributes apply — not the
 	// overriding schema's. saxon open045 / ibm s3_4_2_4ii08.
-	if target := b.overrideTarget[n]; target != nil {
-		doc = target
-	}
+	doc = b.defaultsDoc(n, doc)
 	if doc.defaultAttributes.IsZero() || !boolAttr(n, "defaultAttributesApply", true) {
 		return
 	}

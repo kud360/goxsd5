@@ -20055,6 +20055,7 @@ saxonMeta/Open.testSet#open042#open042.n1.xml	pass
 saxonMeta/Open.testSet#open042#open042.n2.xml	pass
 saxonMeta/Open.testSet#open042#open042.v1.xml	pass
 saxonMeta/Open.testSet#open043#open043.n1.xml	pass
+saxonMeta/Open.testSet#open043#open043.n2.xml	pass
 saxonMeta/Open.testSet#open043#open043.v1.xml	pass
 saxonMeta/Open.testSet#open044#open044.n1.xml	pass
 saxonMeta/Open.testSet#open044#open044.n2.xml	pass
