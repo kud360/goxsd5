@@ -50,7 +50,9 @@ ibmMeta/assert.testSet#assert_018#assert_018_2	pass
 ibmMeta/assert.testSet#assert_018#assert_018_3	pass
 ibmMeta/assert.testSet#assert_019#assert_019_2	pass
 ibmMeta/assert.testSet#assert_020#assert_020_2	pass
+ibmMeta/assert.testSet#assert_021#assert_021_2	pass
 ibmMeta/assert.testSet#assert_022#assert_022_2	pass
+ibmMeta/assert.testSet#assert_023#assert_023_2	pass
 ibmMeta/assert.testSet#assert_024#assert_024_2	pass
 ibmMeta/assert.testSet#assert_025#assert_025_2	pass
 ibmMeta/assert.testSet#assert_026#assert_026_2	pass
@@ -59,12 +61,17 @@ ibmMeta/assert.testSet#assert_028#assert_028_2	pass
 ibmMeta/assert.testSet#assert_029#assert_029_2	pass
 ibmMeta/assert.testSet#assert_029#assert_029_3	pass
 ibmMeta/assert.testSet#assert_030#assert_030_2	pass
+ibmMeta/assert.testSet#assert_030#assert_030_3	pass
 ibmMeta/assert.testSet#assert_031#assert_031_2	pass
+ibmMeta/assert.testSet#assert_031#assert_031_3	pass
 ibmMeta/assert.testSet#assert_031#assert_031_4	pass
 ibmMeta/assert.testSet#assert_031#assert_031_5	pass
 ibmMeta/assert.testSet#assert_032#assert_032_2	pass
+ibmMeta/assert.testSet#assert_032#assert_032_3	pass
 ibmMeta/assert.testSet#assert_033#assert_033_2	pass
+ibmMeta/assert.testSet#assert_034#assert_034_3	pass
 ibmMeta/assert.testSet#assert_035#assert_035_2	pass
+ibmMeta/assert.testSet#assert_035#assert_035_3	pass
 ibmMeta/assertion.testSet#d4_3_15ii01#d4_3_15ii01i	pass
 ibmMeta/assertion.testSet#d4_3_15ii02#d4_3_15ii02i	pass
 ibmMeta/assertion.testSet#d4_3_15ii03#d4_3_15ii03i	pass
@@ -19700,6 +19707,10 @@ saxonMeta/Assert.testSet#assert-simple005#assert-simple005.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple005#assert-simple005.v1.xml	pass
 saxonMeta/Assert.testSet#assert-simple006#assert-simple006.n1.xml	pass
 saxonMeta/Assert.testSet#assert-simple006#assert-simple006.v1.xml	pass
+saxonMeta/Assert.testSet#assert-simple007#assert-simple007.n1.xml	pass
+saxonMeta/Assert.testSet#assert-simple008#assert-simple007.n1.xml	pass
+saxonMeta/Assert.testSet#assert-simple009#assert-simple007.n1.xml	pass
+saxonMeta/Assert.testSet#assert-simple010#assert-simple007.n1.xml	pass
 saxonMeta/Assert.testSet#assert001#assert001.n1.xml	pass
 saxonMeta/Assert.testSet#assert001#assert001.v1.xml	pass
 saxonMeta/Assert.testSet#assert002#assert002.n1.xml	pass
@@ -19733,7 +19744,10 @@ saxonMeta/Assert.testSet#assert008a#assert008a.n3.xml	pass
 saxonMeta/Assert.testSet#assert008a#assert008a.v1.xml	pass
 saxonMeta/Assert.testSet#assert009#assert009.n1.xml	pass
 saxonMeta/Assert.testSet#assert009#assert009.v1.xml	pass
+saxonMeta/Assert.testSet#assert010#assert010.n1.xml	pass
 saxonMeta/Assert.testSet#assert010#assert010.v1.xml	pass
+saxonMeta/Assert.testSet#assert011#assert011.n1.xml	skip:assertion uses doc() — external document access, disallowed by the spec and Saxon; out of scope for the evaluator
+saxonMeta/Assert.testSet#assert011#assert011.v1.xml	skip:assertion uses doc() — external document access, disallowed by the spec and Saxon; out of scope for the evaluator
 saxonMeta/Assert.testSet#assert012#assert012.n1.xml	pass
 saxonMeta/Assert.testSet#assert013#assert013.v1.xml	pass
 saxonMeta/Assert.testSet#assert014#assert014.v1.xml	pass

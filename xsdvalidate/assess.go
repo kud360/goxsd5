@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kud360/goxsd5/builtin"
+	"github.com/kud360/goxsd5/xpath"
 	"github.com/kud360/goxsd5/xsd"
 	"github.com/kud360/goxsd5/xsdwalk"
 )
@@ -547,6 +548,7 @@ func (a *assessor) validateAttrValue(el Element, attr Attribute, t *xsd.SimpleTy
 		a.addValueErr(err, attr.Pos())
 		return
 	}
+	a.checkSimpleAssertions(el, t, attr.Value())
 	a.collectID(t, attr.Value(), attr.Pos(), el, el)
 }
 
@@ -582,32 +584,128 @@ func (a *assessor) validateSimpleContent(el Element, t *xsd.SimpleType, text str
 }
 
 // checkSimpleAssertions evaluates a simple type's xs:assertion facets against
-// the element's value (cvc-assertion / §3.13.4). $value is bound to the
-// whiteSpace-normalized lexical value; the evaluator fails open on any construct
-// it does not support, so this only ever ratchets coverage up.
+// the element's value (cvc-assertion / §3.13.4) and records a violation when the
+// value does not satisfy them. The evaluator fails open on any construct it does
+// not support, so this only ever ratchets coverage up.
 func (a *assessor) checkSimpleAssertions(el Element, t *xsd.SimpleType, text string) {
-	if a.v.opts.DisableAssertions {
+	if a.v.opts.DisableAssertions || t == nil || !typeHasAssertions(t) {
 		return
 	}
-	eff := t.EffectiveFacets()
-	if len(eff.Assertions) == 0 {
-		return
+	if !a.assertSatisfied(el, t, text) {
+		// spec: cvc-assertion — XSD 1.1 Part 1 §3.13.4 (xmlschema11-1.md#cvc-assertion)
+		a.addf(xsd.SpecCvcAssertion, el.Pos(), "value %q does not satisfy the assertions of type %s", text, typeName(t))
 	}
-	// $value is the type's value sequence: a single atom for atomic/union types,
-	// the whitespace-separated items for a list type (§3.13.4 binds $value to the
-	// value being validated; list value spaces are sequences).
-	norm := eff.WhiteSpace.Apply(text)
-	value := []string{norm}
-	if t.Variety == xsd.VarietyList {
-		value = strings.Fields(norm)
+}
+
+// assertSatisfied reports whether the value `lexical` satisfies every assertion
+// entailed by type t, recursing on variety: a list checks each item against its
+// ItemType (then its own assertions over the item sequence); a union requires
+// the value to satisfy some member type — including that member's assertions —
+// before the union's own assertions apply. An assertion the XPath evaluator
+// cannot evaluate is treated as satisfied (fail open). No errors are recorded:
+// this is the predicate used both for the top-level check and for selecting a
+// union's validating member.
+func (a *assessor) assertSatisfied(el Element, t *xsd.SimpleType, lexical string) bool {
+	switch t.Variety {
+	case xsd.VarietyList:
+		if t.ItemType != nil {
+			for _, item := range strings.Fields(t.EffectiveFacets().WhiteSpace.Apply(lexical)) {
+				if !a.assertSatisfied(el, t.ItemType, item) {
+					return false
+				}
+			}
+		}
+		// The list type's own assertions see $value as the item sequence.
+		return a.evalTypeAssertions(el, t, listAtoms(t, lexical))
+	case xsd.VarietyUnion:
+		for _, m := range t.DirectMembers {
+			if _, err := m.ParseValue(lexical, nsContext{el}); err != nil {
+				continue
+			}
+			if a.assertSatisfied(el, m, lexical) {
+				// The validating member's assertions hold; the union's own
+				// assertions (if any) apply over the same value.
+				return a.evalTypeAssertions(el, t, atomicAtoms(t, lexical))
+			}
+		}
+		// No member type accepts the value once its assertions are considered.
+		return false
+	default:
+		return a.evalTypeAssertions(el, t, atomicAtoms(t, lexical))
 	}
-	for _, as := range eff.Assertions {
-		result, ok := evalSimpleAssertion(el, as.Test, value)
+}
+
+// evalTypeAssertions evaluates t's own (chain-accumulated) assertion facets with
+// $value bound to atoms, returning false only when an assertion definitely fails.
+func (a *assessor) evalTypeAssertions(el Element, t *xsd.SimpleType, atoms []xpath.TypedAtom) bool {
+	for _, as := range t.EffectiveFacets().Assertions {
+		result, ok := evalSimpleAssertion(el, as.Test, atoms)
 		if ok && !result {
-			// spec: cvc-assertion — XSD 1.1 Part 1 §3.13.4 (xmlschema11-1.md#cvc-assertion)
-			a.addf(xsd.SpecCvcAssertion, el.Pos(), "assertion %q is not satisfied", as.Test)
+			return false
 		}
 	}
+	return true
+}
+
+// typeHasAssertions reports whether t — or, for a list/union, its item or member
+// types — carries any assertion facet, so the recursive check can be skipped for
+// assertion-free types (preserving prior behaviour exactly).
+func typeHasAssertions(t *xsd.SimpleType) bool {
+	if t == nil {
+		return false
+	}
+	if len(t.EffectiveFacets().Assertions) > 0 {
+		return true
+	}
+	switch t.Variety {
+	case xsd.VarietyList:
+		return typeHasAssertions(t.ItemType)
+	case xsd.VarietyUnion:
+		for _, m := range t.DirectMembers {
+			if typeHasAssertions(m) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// valueKind classifies a simple type for XPath comparison: numeric types compare
+// numerically, everything else (strings, dates, …) compares as strings — for
+// dates the ISO lexical orders chronologically when the forms match.
+func valueKind(t *xsd.SimpleType) xpath.AtomKind {
+	if t != nil && t.Fundamentals().Numeric {
+		return xpath.KindNumber
+	}
+	return xpath.KindString
+}
+
+// atomicAtoms binds $value as a single typed atom (the whiteSpace-normalized
+// lexical value) for an atomic or union type.
+func atomicAtoms(t *xsd.SimpleType, lexical string) []xpath.TypedAtom {
+	return []xpath.TypedAtom{{Lexical: t.EffectiveFacets().WhiteSpace.Apply(lexical), Kind: valueKind(t)}}
+}
+
+// listAtoms binds $value as the sequence of list items, each typed by ItemType.
+func listAtoms(t *xsd.SimpleType, lexical string) []xpath.TypedAtom {
+	kind := valueKind(t.ItemType)
+	var out []xpath.TypedAtom
+	for _, item := range strings.Fields(t.EffectiveFacets().WhiteSpace.Apply(lexical)) {
+		out = append(out, xpath.TypedAtom{Lexical: item, Kind: kind})
+	}
+	return out
+}
+
+// simpleContentAtoms binds $value for a complex type's xs:assert over simple
+// content: the item sequence for a list type, otherwise a single atom.
+func simpleContentAtoms(t *xsd.SimpleType, text string) []xpath.TypedAtom {
+	if t == nil {
+		return nil
+	}
+	if t.Variety == xsd.VarietyList {
+		return listAtoms(t, text)
+	}
+	return atomicAtoms(t, text)
 }
 
 // valuesEqual reports whether two lexical forms denote the same value in t.

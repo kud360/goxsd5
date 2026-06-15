@@ -201,6 +201,70 @@ func TestEvalVars(t *testing.T) {
 	}
 }
 
+// castDate is a Castable that accepts the ISO date forms used below.
+func castDate(typ, val string) bool {
+	if typ == "date" {
+		// crude YYYY-MM-DD recogniser (optionally with a timezone suffix); any
+		// stray character (e.g. the "!!!" of assert-simple007) makes it not a date
+		if len(val) < 10 || val[4] != '-' || val[7] != '-' {
+			return false
+		}
+		for i, c := range val {
+			if i == 4 || i == 7 {
+				continue
+			}
+			if !(c >= '0' && c <= '9') && c != '+' && c != ':' && c != 'Z' {
+				return false
+			}
+		}
+		return true
+	}
+	return castInt(typ, val)
+}
+
+// TestEvalTypedAtoms covers schema-typed $value bindings (TypedVars): a
+// string-kind value never coerces to a number; numeric and date comparisons
+// still work; data() atomises a bound sequence; and the simple-type-assertion
+// dynamic-error rules (NoContextItem, failed casts) yield a definite false.
+func TestEvalTypedAtoms(t *testing.T) {
+	root := el("v")
+	cases := []struct {
+		expr      string
+		typed     map[string][]TypedAtom
+		noContext bool
+		want, ok  bool
+	}{
+		// String-kind: "\n   100\n" is not the string "100" (no numeric coercion).
+		{`$value eq '100'`, map[string][]TypedAtom{"value": {{"\n   100\n", KindString}}}, false, false, true},
+		{`$value = '100'`, map[string][]TypedAtom{"value": {{"\n   100\n", KindString}}}, false, false, true},
+		{`$value eq '100'`, map[string][]TypedAtom{"value": {{"100", KindString}}}, false, true, true},
+		// Number-kind: a numeric-looking value compares numerically.
+		{`$value mod 2 = 0`, map[string][]TypedAtom{"value": {{"4", KindNumber}}}, false, true, true},
+		{`$value = 100`, map[string][]TypedAtom{"value": {{"100", KindNumber}}}, false, true, true},
+		// Date as string-kind: ISO lexicals order chronologically by string.
+		{`$value lt current-date()`, map[string][]TypedAtom{"value": {{"2001-01-01", KindString}}}, false, true, true},
+		{`$value lt current-date()`, map[string][]TypedAtom{"value": {{"9999-10-10", KindString}}}, false, false, true},
+		// data() over a bound sequence atomises it; a quantifier sees each item.
+		{`count(data($value)) = 3`, map[string][]TypedAtom{"value": {{"2", KindNumber}, {"4", KindNumber}, {"6", KindNumber}}}, false, true, true},
+		{`every $x in data($value) satisfies ($x mod 2 = 0)`, map[string][]TypedAtom{"value": {{"2", KindNumber}, {"7", KindNumber}}}, false, false, true},
+		// NoContextItem: referencing the absent context item is a dynamic error,
+		// reported as a definite false (ok true) so the assertion is unsatisfied.
+		{`position() le 50`, map[string][]TypedAtom{"value": {{"x", KindString}}}, true, false, true},
+		{`last() le 50`, map[string][]TypedAtom{"value": {{"x", KindString}}}, true, false, true},
+		{`. castable as xs:date`, map[string][]TypedAtom{"value": {{"2008-05-01", KindString}}}, true, false, true},
+		// A failed constructor cast is a dynamic error (definite false), not a
+		// fail-open unsupported construct.
+		{`xs:date(concat($value, '!!!')) gt xs:date('1900-01-01')`, map[string][]TypedAtom{"value": {{"2001-01-01", KindString}}}, true, false, true},
+	}
+	for _, c := range cases {
+		ec := EvalContext{Castable: castDate, TypedVars: c.typed, NoContextItem: c.noContext}
+		got, ok := EvalBool(c.expr, root, ec)
+		if got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}
+
 // TestEvalAxes covers the reverse and sibling axes (synthesized from the
 // positioned-node parent chain) plus quantified and for expressions. The tree:
 //

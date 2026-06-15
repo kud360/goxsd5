@@ -53,6 +53,31 @@ type NodeAttr interface {
 	AttrValue() string
 }
 
+// AtomKind tags how a bound atomic value participates in comparison: it lets a
+// schema-typed $value compare with the right semantics rather than the
+// "numeric if both look numeric, else string" default that untyped node and
+// literal values use.
+type AtomKind int
+
+const (
+	// KindUntyped is the default for node/attribute values and string literals:
+	// a comparison coerces to number when both sides parse as numbers, else
+	// compares as strings (XPath untypedAtomic-ish behaviour).
+	KindUntyped AtomKind = iota
+	// KindNumber forces numeric comparison (xs:decimal/double/float and derived).
+	KindNumber
+	// KindString forces string comparison and never coerces to a number, even
+	// when the lexical form looks numeric (xs:string and other non-numeric
+	// types, including dates, whose ISO lexical compares chronologically).
+	KindString
+)
+
+// TypedAtom is one schema-typed atomic value bound to an XPath variable.
+type TypedAtom struct {
+	Lexical string
+	Kind    AtomKind
+}
+
 // EvalContext supplies the callbacks the evaluator cannot resolve on its own.
 type EvalContext struct {
 	// Castable reports whether value is castable to the built-in datatype with
@@ -66,6 +91,17 @@ type EvalContext struct {
 	// open). Used by simple-type assertions to bind $value to the value being
 	// validated. Runtime bindings introduced by for/some/every shadow these.
 	Vars map[string][]string
+
+	// TypedVars binds variables to schema-typed atomic values (checked before
+	// Vars). Used to bind $value with its type's comparison semantics.
+	TypedVars map[string][]TypedAtom
+
+	// NoContextItem marks an evaluation whose dynamic context has no context
+	// item — the case for simple-type xs:assertion facets, where only $value is
+	// defined. Referencing the context item (".", a relative path, position(),
+	// last()) is then a dynamic error, which makes the assertion unsatisfied
+	// rather than failing open.
+	NoContextItem bool
 }
 
 // item is one XPath item: float64, string, bool, *nodeCtx (a positioned element
@@ -90,14 +126,33 @@ type attrItem struct {
 	owner *nodeCtx
 }
 
+// typedItem is a schema-typed atomic value (from EvalContext.TypedVars). Its
+// kind drives comparison: KindString never coerces to a number even when the
+// lexical looks numeric, so an xs:string $value compares as a string.
+type typedItem struct {
+	lex  string
+	kind AtomKind
+}
+
 // errUnsupported marks a construct outside the supported subset.
 var errUnsupported = fmt.Errorf("xpath: unsupported construct")
 
+// errDynamic marks a genuine XPath dynamic (run-time) error — a failed
+// constructor cast, or a reference to an absent context item. Unlike
+// errUnsupported it is not "we can't evaluate this": the expression is
+// understood and the spec says it raises an error, which for an assertion means
+// the assertion is not satisfied. EvalBool reports it as a definite false.
+var errDynamic = fmt.Errorf("xpath: dynamic error")
+
 // EvalBool evaluates expr against the context node and returns its effective
 // boolean value. ok is false when the expression is outside the supported
-// subset (or otherwise fails to evaluate), so callers can fail open.
+// subset, so callers can fail open. A dynamic error evaluates to a definite
+// false (ok true): the spec treats an assertion that raises one as unsatisfied.
 func EvalBool(expr string, node Node, ec EvalContext) (result, ok bool) {
 	v, err := evalExpr(expr, node, ec)
+	if err == errDynamic {
+		return false, true
+	}
 	if err != nil {
 		return false, false
 	}
@@ -113,7 +168,7 @@ func evalExpr(expr string, node Node, ec EvalContext) (seq, error) {
 	if p.cur().kind != tkEOF {
 		return nil, errUnsupported
 	}
-	ev := &evaluator{ec: ec, vars: map[string]seq{}}
+	ev := &evaluator{ec: ec, vars: map[string]seq{}, ctxAbsent: ec.NoContextItem}
 	rootCtx := &nodeCtx{node: node}
 	return ev.eval(root, &focus{item: rootCtx, pos: 1, size: 1})
 }
@@ -946,6 +1001,9 @@ func (f *focus) node() (*nodeCtx, bool) {
 type evaluator struct {
 	ec   EvalContext
 	vars map[string]seq
+	// ctxAbsent mirrors EvalContext.NoContextItem: when set, referencing the
+	// context item is a dynamic error (simple-type assertion semantics).
+	ctxAbsent bool
 }
 
 func (e *evaluator) eval(node exprNode, f *focus) (seq, error) {
@@ -1011,6 +1069,13 @@ func (e *evaluator) eval(node exprNode, f *focus) (seq, error) {
 func (e *evaluator) evalVar(n *varRef) (seq, error) {
 	if v, ok := e.vars[n.name]; ok {
 		return v, nil
+	}
+	if vals, ok := e.ec.TypedVars[n.name]; ok {
+		out := make(seq, len(vals))
+		for i, v := range vals {
+			out[i] = typedItem{lex: v.Lexical, kind: v.Kind}
+		}
+		return out, nil
 	}
 	vals, ok := e.ec.Vars[n.name]
 	if !ok {
@@ -1380,6 +1445,11 @@ func (e *evaluator) evalPath(n *pathExpr, f *focus) (seq, error) {
 		}
 		ctxItems = s
 	} else {
+		// A path relative to the context item ("." or a child step) is a dynamic
+		// error when no context item is defined (simple-type assertion).
+		if e.ctxAbsent {
+			return nil, errDynamic
+		}
 		if f == nil || f.item == nil {
 			return nil, errUnsupported
 		}
@@ -1710,15 +1780,37 @@ func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
 		}
 		return seq{float64(len(v))}, nil
 	case "position":
+		if e.ctxAbsent {
+			return nil, errDynamic
+		}
 		if f == nil {
 			return nil, errUnsupported
 		}
 		return seq{float64(f.pos)}, nil
 	case "last":
+		if e.ctxAbsent {
+			return nil, errDynamic
+		}
 		if f == nil {
 			return nil, errUnsupported
 		}
 		return seq{float64(f.size)}, nil
+	case "data":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, err
+		}
+		// data() over nodes would need each node's schema-typed value, which this
+		// evaluator does not model (a node atomizes only to its untyped string).
+		// Restrict data() to already-atomic operands (e.g. data($value)); a node
+		// operand is unsupported, so the caller fails open rather than treating
+		// the untyped string as a typed value.
+		for _, it := range v {
+			if nodeIdentity(it) != nil {
+				return nil, errUnsupported
+			}
+		}
+		return seq(atomizeAll(v)), nil
 	case "string":
 		if len(n.args) == 0 {
 			return seq{focusString(f)}, nil
@@ -1847,7 +1939,10 @@ func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
 		}
 		s := seqString(v)
 		if !e.ec.Castable(localPart(n.name), s) {
-			return nil, errUnsupported
+			// A constructor whose argument is not castable to the target type
+			// raises a dynamic error (e.g. xs:date("not-a-date")), which makes a
+			// containing assertion unsatisfied rather than failing open.
+			return nil, errDynamic
 		}
 		return seq{s}, nil
 	}
@@ -1901,6 +1996,8 @@ func atomString(it item) string {
 	switch v := it.(type) {
 	case string:
 		return v
+	case typedItem:
+		return v.lex
 	case float64:
 		return formatNumber(v)
 	case bool:
@@ -1922,6 +2019,17 @@ func asNumber(it item) (float64, bool) {
 		return v, true
 	case string:
 		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case typedItem:
+		// A string-typed atom never coerces to a number: an xs:string value of
+		// "100" must compare as a string, not as the number 100.
+		if v.kind == KindString {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(v.lex), 64)
 		if err != nil {
 			return 0, false
 		}

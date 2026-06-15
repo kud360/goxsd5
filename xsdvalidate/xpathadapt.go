@@ -72,20 +72,36 @@ func nodeString(el Element) string {
 // subset, so callers fail open. Built-in casts resolve QNames against ctx's
 // in-scope namespaces.
 func evalAssertion(ctx Element, expr string) (result, ok bool) {
-	return xpath.EvalBool(expr, xpNode{ctx}, castableContext(ctx, nil))
+	return xpath.EvalBool(expr, xpNode{ctx}, castableContext(ctx))
+}
+
+// evalComplexAssertion evaluates a complex type's xs:assert with $value bound to
+// the simple-content value sequence (nil for element content, where $value is
+// undefined). The element remains the context item, so paths and @attr work.
+func evalComplexAssertion(ctx Element, expr string, value []xpath.TypedAtom) (result, ok bool) {
+	ec := castableContext(ctx)
+	if value != nil {
+		ec.TypedVars = map[string][]xpath.TypedAtom{"value": value}
+	}
+	return xpath.EvalBool(expr, xpNode{ctx}, ec)
 }
 
 // evalSimpleAssertion evaluates a simple-type xs:assertion (XSD 1.1 §3.13.4)
-// against the element carrying the value, with $value bound to the validated
-// value. The element node serves as the context item, so "." atomizes to the
-// same value. ok is false for any unsupported construct (fail open).
-func evalSimpleAssertion(ctx Element, expr string, value []string) (result, ok bool) {
-	return xpath.EvalBool(expr, xpNode{ctx}, castableContext(ctx, map[string][]string{"value": value}))
+// against the element carrying the value, with $value bound to the typed value.
+// A simple-type assertion has no context item (only $value is defined), so a
+// reference to "." or position()/last() is a dynamic error — which makes the
+// assertion unsatisfied rather than failing open. ok is false for any
+// unsupported construct (fail open).
+func evalSimpleAssertion(ctx Element, expr string, value []xpath.TypedAtom) (result, ok bool) {
+	ec := castableContext(ctx)
+	ec.TypedVars = map[string][]xpath.TypedAtom{"value": value}
+	ec.NoContextItem = true
+	return xpath.EvalBool(expr, xpNode{ctx}, ec)
 }
 
 // castableContext builds the shared EvalContext: built-in casts resolve QNames
-// against ctx's in-scope namespaces, plus any variable bindings.
-func castableContext(ctx Element, vars map[string][]string) xpath.EvalContext {
+// against ctx's in-scope namespaces.
+func castableContext(ctx Element) xpath.EvalContext {
 	return xpath.EvalContext{
 		Castable: func(local, val string) bool {
 			t := builtin.Lookup(local)
@@ -95,6 +111,5 @@ func castableContext(ctx Element, vars map[string][]string) xpath.EvalContext {
 			_, err := t.ParseValue(val, nsContext{ctx})
 			return err == nil
 		},
-		Vars: vars,
 	}
 }

@@ -7,6 +7,59 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — typed $value + recursive assertions: ALL assertion gaps closed (+12) <<<
+Closed the entire remaining Assertions/XPath instance cluster. Instance ratchet
+21401 → 21413 (+12); schema held 5672. The ONLY remaining assertion miss is
+assert011 (uses doc() — external document access, disallowed by spec+Saxon), now
+a curated skip (first two `skip:` lines in instance-expectations.txt). After this
+the instance suite is at 21413 pass / 2 skip / 19 wrong, and NONE of the 19 are
+assertion/XPath (they're open-content, VC version-control, multi-schema, etc.).
+Two-package change (xpath + xsdvalidate); unit test xpath TestEvalTypedAtoms +
+the W3C instance ratchet pin every case.
+ - TYPED $value (the crux): the xpath evaluator gained a typed-atom layer so a
+   schema-typed $value compares with the right semantics. EvalContext.TypedVars
+   (map name→[]TypedAtom{Lexical,Kind}); AtomKind ∈ {Untyped,Number,String}.
+   Internal typedItem; asNumber() refuses a KindString atom even when the lexical
+   looks numeric. Fixes the ibm whitespace cases (assert_021/023): $value of
+   xs:string is KindString so "\n   100\n" eq '100' is a STRING compare → false →
+   INVALID (was: both atomized to the number 100 → wrongly equal). valueKind() in
+   xsdvalidate picks Number iff Fundamentals().Numeric, else String (dates compare
+   as ISO strings, which orders chronologically when forms match — no date type
+   needed). KEY GOTCHA: do NOT force String on numeric types (10>5 would break as
+   "10"<"5"); classify by Fundamentals.Numeric.
+ - RECURSIVE assertion check by variety (xsdvalidate assess.go assertSatisfied,
+   replaces the flat checkSimpleAssertions): LIST → each item validated against
+   ItemType incl. its assertions, then the list's own assertions over the item
+   sequence; UNION → the value must satisfy SOME DirectMember *including that
+   member's assertions* before the union's own apply, and if no member accepts it
+   → INVALID. This is what was missing: assertion facets live on the member/item
+   types, not the union/list, so they were never evaluated (fail-open accept).
+   +4: assert_030 (list-of-MYINT, odd item), assert_031 (union MYINT|date, "3"
+   fails MYINT assert and isn't a date), assert_032 (union MYINT|MYDATE, far-future
+   date fails MYDATE), assert_034 (list-of-MYDATE on an ATTRIBUTE — also wired
+   checkSimpleAssertions into validateAttrValue). typeHasAssertions() guards so
+   assertion-free types are untouched (zero behaviour change).
+ - SIMPLE-TYPE assertions have NO context item (§ datatypes): only $value is
+   defined, so `.`, a relative path, position(), last() raise a DYNAMIC error.
+   New errDynamic (distinct from errUnsupported): EvalBool maps errDynamic →
+   (false,TRUE) — a definite "assertion unsatisfied" — vs errUnsupported →
+   (false,false) fail-open. EvalContext.NoContextItem drives evaluator.ctxAbsent.
+   Verified SAFE: a suite-wide grep found ONLY assert-simple008/009/010 use
+   `.`/position/last in a simpleType xs:assertion (nothing we pass relies on a
+   context item there). +3 (assert-simple008 `. castable`, 009 position(), 010
+   last() — all want INVALID via the run-time error).
+ - FAILED CONSTRUCTOR CAST is errDynamic too: xs:date("2001-01-01!!!") → assertion
+   false (was errUnsupported→fail-open). +1 assert-simple007.
+ - data() FUNCTION + complex-assert $value: checkAssertions now binds $value to
+   the simple-content value sequence (typed); data() atomises a bound sequence.
+   GOTCHA/regression-and-fix: a general data() broke assert014/017/022 (valids)
+   whose `data(.) instance of xs:date` probes typed-ness of NODES we don't model —
+   so data() is restricted to already-atomic operands (data($value) ok; data(node)
+   stays unsupported→fail-open). +2: assert010 ($value gt xs:date(@startDate),
+   simpleContent extension), assert_035 (count($value) le 5 / every $x in
+   data($value) satisfies $x mod 2=0).
+REMAINING assertion/XPath false-accepts: NONE (only assert011/doc(), skipped).
+
 ## >>> DONE 2026-06-15 — XPATH assertion evaluator push (+31 instance cases) <<<
 Eight commits enriching the XPath subset (xpath/eval.go) + two engine rules, all
 ratcheting the instance suite up with the schema suite held at 5672 throughout.

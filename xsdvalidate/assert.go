@@ -1,6 +1,9 @@
 package xsdvalidate
 
-import "github.com/kud360/goxsd5/xsd"
+import (
+	"github.com/kud360/goxsd5/xpath"
+	"github.com/kud360/goxsd5/xsd"
+)
 
 // Assertions (cvc-assertion, Part 1 §3.13.4) and conditional type assignment
 // (xs:alternative, §3.12) are evaluated with the partial XPath subset in
@@ -50,13 +53,19 @@ func (a inhAttr) Value() string   { return a.v }
 func (a inhAttr) Pos() xsd.Pos    { return xsd.Pos{} }
 
 // checkAssertions evaluates a complex type's xs:assert children against the
-// element being assessed (the assertion's context node).
+// element being assessed (the assertion's context node). For a simple-content
+// type, $value is bound to that content's typed value sequence (§3.13.4); for
+// element content $value is undefined.
 func (a *assessor) checkAssertions(el Element, ct *xsd.ComplexType) {
-	if a.v.opts.DisableAssertions {
+	if a.v.opts.DisableAssertions || len(ct.Assertions) == 0 {
 		return
 	}
+	var value []xpath.TypedAtom
+	if sc, ok := ct.Content.(*xsd.SimpleContent); ok && sc.Type != nil {
+		value = simpleContentAtoms(sc.Type, charContent(el))
+	}
 	for _, as := range ct.Assertions {
-		result, ok := evalAssertion(el, as.Test)
+		result, ok := evalComplexAssertion(el, as.Test, value)
 		if ok && !result {
 			// spec: cvc-assertion — XSD 1.1 Part 1 §3.13.4 (xmlschema11-1.md#cvc-assertion)
 			a.addf(xsd.SpecCvcAssertion, el.Pos(), "assertion %q is not satisfied", as.Test)
