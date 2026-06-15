@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 	"github.com/kud360/goxsd5/xsdvalidate"
 	"github.com/kud360/goxsd5/xsdvalidate/xmlsrc"
@@ -164,7 +165,7 @@ func collectInstanceCases(t *testing.T) []instanceCase {
 			if scanExpectedValidity(g.Schema.Expected) != "valid" {
 				continue // instances are only meaningful against a valid schema
 			}
-			schemas, okSchema := buildGroupSchema(sf, g.Schema)
+			schemas, groupPaths, okSchema := buildGroupSchema(sf, g.Schema)
 			if !okSchema {
 				continue // we don't build this schema cleanly; not gated here
 			}
@@ -180,7 +181,7 @@ func collectInstanceCases(t *testing.T) []instanceCase {
 				cases = append(cases, instanceCase{
 					id:        rel + "#" + g.Name + "#" + inst.Name,
 					docPath:   docPath,
-					schemas:   schemas,
+					schemas:   instanceSchemas(docPath, schemas, groupPaths),
 					wantValid: validity == "valid",
 				})
 			}
@@ -190,12 +191,25 @@ func collectInstanceCases(t *testing.T) []instanceCase {
 }
 
 // buildGroupSchema loads and builds a group's schema document(s) as one schema
-// set; ok is false if a root fails to load or the build reports errors.
-func buildGroupSchema(setFile string, st *scanSchemaTest) (schemas []*xsd.Schema, ok bool) {
+// set; ok is false if a root fails to load or the build reports errors. It also
+// returns the resolved document paths so an instance's xsi:schemaLocation hints
+// can be folded in to build an augmented per-instance schema.
+func buildGroupSchema(setFile string, st *scanSchemaTest) (schemas []*xsd.Schema, paths []string, ok bool) {
+	for _, d := range st.Docs {
+		paths = append(paths, filepath.Join(filepath.Dir(setFile), filepath.FromSlash(d.Href)))
+	}
+	schemas, ok = buildSchemaFromDocs(paths)
+	return schemas, paths, ok
+}
+
+// buildSchemaFromDocs loads every document path into one loader and builds the
+// combined schema set; ok is false on any load or build error. The loader
+// dedupes by resolved URI, so a path appearing twice (e.g. a group document an
+// instance also names in xsi:schemaLocation) is loaded once.
+func buildSchemaFromDocs(paths []string) (schemas []*xsd.Schema, ok bool) {
 	errs := &xsd.ErrorList{}
 	l := newLoader(FileResolver{}, errs)
-	for _, d := range st.Docs {
-		p := filepath.Join(filepath.Dir(setFile), filepath.FromSlash(d.Href))
+	for _, p := range paths {
 		if err := l.loadRoot(p); err != nil {
 			return nil, false
 		}
@@ -205,6 +219,46 @@ func buildGroupSchema(setFile string, st *scanSchemaTest) (schemas []*xsd.Schema
 		return nil, false
 	}
 	return built, true
+}
+
+// instanceSchemas returns the schema set to assess the instance at docPath
+// against: the group's schema, augmented with any documents the instance names
+// via xsi:schemaLocation / xsi:noNamespaceSchemaLocation that are not already
+// among the group's documents (a conforming processor follows these hints,
+// §4.3.2). When the instance adds no documents, the shared group schema is
+// reused; the build only re-runs when hints genuinely extend the set.
+func instanceSchemas(docPath string, groupSchemas []*xsd.Schema, groupPaths []string) []*xsd.Schema {
+	f, err := os.Open(docPath)
+	if err != nil {
+		return groupSchemas
+	}
+	root, perr := xmltree.Parse(f, docPath)
+	f.Close()
+	if perr != nil {
+		return groupSchemas
+	}
+	have := map[string]bool{}
+	for _, p := range groupPaths {
+		have[p] = true
+	}
+	paths := append([]string{}, groupPaths...)
+	added := false
+	for _, loc := range SchemaLocationHints(root) {
+		p := filepath.Join(filepath.Dir(docPath), filepath.FromSlash(loc))
+		if have[p] {
+			continue
+		}
+		have[p] = true
+		paths = append(paths, p)
+		added = true
+	}
+	if !added {
+		return groupSchemas
+	}
+	if s, ok := buildSchemaFromDocs(paths); ok {
+		return s
+	}
+	return groupSchemas
 }
 
 // runInstanceCase assesses one instance. ran is false when the instance file

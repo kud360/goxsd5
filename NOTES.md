@@ -7,6 +7,28 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — xsi:schemaLocation hint loading (+2 targetNS) <<<
+Instance ratchet 21419 → 21421 (+2); schema held 5672. Closes the two multi-schema
+false-REJECTs (sun targetNS00101m1_p, ST_targetNS00101m2_p) where the instance's
+root element (and its xsi:type) is declared only in a 2nd schema document the
+testGroup's schemaTest does NOT list — the instance names it via
+xsi:schemaLocation. A conforming processor follows that hint (§4.3.2).
+ - NEW reusable primitive parser.SchemaLocationHints(root) (parser/instancehints.go,
+   non-test): returns the locations from the root's xsi:schemaLocation (the
+   location half of each (ns, loc) pair) + xsi:noNamespaceSchemaLocation, in doc
+   order. Unit test parser/instancehints_test.go.
+ - HARNESS wiring (instance_suite_test.go): buildGroupSchema now also returns the
+   resolved group doc PATHS; new buildSchemaFromDocs(paths) (the loader dedupes by
+   URI, so a doc named in both the group and the instance hint loads once); new
+   instanceSchemas(docPath, groupSchemas, groupPaths) parses the instance, and when
+   xsi:schemaLocation adds docs beyond the group's, builds an augmented per-instance
+   schema — otherwise reuses the shared group schema (build only re-runs when hints
+   genuinely extend the set, so negligible perf cost). KEY: hint paths resolve
+   relative to the INSTANCE dir, group paths relative to the testSet dir; filepath.
+   Join cleans both to the same string for a shared file, so dedup works.
+ - NOT yet wired into cmd/goxsd5 -validate (would need a multi-root parser.Parse);
+   the SchemaLocationHints primitive is ready for it. Remaining instance wrong: 8.
+
 ## >>> DONE 2026-06-15 — broad instance push: date fns, cast-as, empty-choice, nested-all (+6) <<<
 Six general fixes across xpath + the xsdwalk matcher, after the assertion cluster.
 Instance ratchet 21413 → 21419 (+6); schema held 5672. Diagnostic: throwaway

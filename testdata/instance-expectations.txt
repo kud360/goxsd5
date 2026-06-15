@@ -20752,6 +20752,7 @@ sunMeta/ElemDecl.testSet#substgrpexcl00401m4#Positive	pass
 sunMeta/ElemDecl.testSet#substgrpexcl00401m5#Positive	pass
 sunMeta/ElemDecl.testSet#substgrpexcl00401m6#Positive	pass
 sunMeta/ElemDecl.testSet#substgrpexcl00402m7#Positive	pass
+sunMeta/ElemDecl.testSet#targetns00101m#targetNS00101m1_p	pass
 sunMeta/ElemDecl.testSet#targetns00201m#targetNS00201m1_n	pass
 sunMeta/ElemDecl.testSet#targetns00201m#targetNS00201m1_p	pass
 sunMeta/ElemDecl.testSet#targetns00301m1#Negative	pass
@@ -21138,6 +21139,7 @@ sunMeta/SType.testSet#st_name00401m#ST_name00401m1_p	pass
 sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m1_n	pass
 sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m1_p	pass
 sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m2_n	pass
+sunMeta/SType.testSet#st_targetns00101m#ST_targetNS00101m2_p	pass
 sunMeta/SType.testSet#st_targetns00201m#ST_targetNS00201m1_p	pass
 sunMeta/SType.testSet#st_variety00101m1#Negative	pass
 sunMeta/SType.testSet#st_variety00101m1#Positive	pass
