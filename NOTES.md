@@ -7,6 +7,51 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — XPATH assertion evaluator push (+26 instance cases) <<<
+Six commits enriching the XPath subset (xpath/eval.go) + one engine rule, all
+ratcheting the instance suite up with the schema suite held at 5672 throughout.
+Instance ratchet 21370 → 21396 (+26). Each landed as its own commit + re-baseline.
+Diagnostic: throwaway parser/zz_instdiag_test.go (INSTDIAG=1) listed every
+verdict-wrong instance with its schema's assert/alternative/simple-assertion
+exprs; deleted after.
+ - "STAY IN SUBTREE" (§3.13.4.1): the assertion XDM root is the PARENTLESS
+   element being assessed, so a leading "/" or "//" is rooted at a non-existent
+   document node → EMPTY sequence (was: leading "//" walked the element's own
+   subtree). A relative "//" step now expands descendant-OR-self (was strict
+   descendants, dropping the step node's own children/attrs), and the attribute
+   step honours "descend". +5 (ibm d4_3_15ii12/17/31/32 count(//x) eq N; v15
+   count(.//@attr1)). Key: ALL absolute-// suite instance tests expect INVALID
+   (StayInSubtree category), so "absolute → empty" is safe.
+ - SEQUENCE "(a,b,c)" + RANGE "to" + UNION "|"/"union" (precedence: Range
+   between Comparison/Additive, Union between Multiplicative/Unary). +4 (ibm ii03
+   count(@a|@b); saxon assert007/008/008a .n3 — "result = (seq)").
+ - COMPLEX {assertions} ACCUMULATE down the derivation chain (ENGINE fix,
+   buildcomplex.go mergeComplexType): {assertions} = base's followed by own
+   (§3.4.2.3.2/3, BOTH extension+restriction). Was storing own-only, so a base
+   assertion was dropped on the derived type. +4 (saxon assert006.n1, 007/008/
+   008a .n2). Unit TestComplexAssertionChain.
+ - SIMPLE-TYPE xs:assertion FACETS now evaluated (assess.go checkSimpleAssertions
+   wired into validateSimpleContent): $value bound to the whiteSpace-normalized
+   value (evaluator gained "$name" var refs, EvalContext.Vars map[string][]string),
+   element as context node so "." atomizes to the same value. ATOMIC scope only —
+   list $value, position()/last() stay fail-open. +10 (ibm ii20/22/24, vc_001/
+   003/005; saxon assert-simple003/004/006, over010). Unit TestEvalVars.
+ - current-date()/current-dateTime()/current-time() return today's ISO string;
+   ISO dates of equal form compare chronologically via string cmp (suite values
+   are far past/future so verdict is run-date-independent). +3 (ibm ii11/ii13
+   "current-date() le @date" date 2000-12-12; saxon assert-simple001 value 2080).
+REMAINING XPath false-ACCEPTS (NOT done, rising cost): (1) QUANTIFIED cluster
+assert007/008/008a .n1 (3) — "every $w in chess:white satisfies
+not($w/following-sibling::*[1][self::chess:white])" needs node-valued variables
+with dynamic scoping + the following-sibling axis + self:: kind test. BLOCKER:
+neither xpath.Node nor infoset Element exposes parent/siblings; following-sibling
+would require threading positional context through the node model (touches
+infoset + xmlsrc + evaluator) — poor ROI for 3 cases. (2) list-type $value:
+simple005 count($value) eq count(distinct-values($value)) needs $value as the
+list-item SEQUENCE (currently single-item). (3) date assertions on list-union
+types (assert_032/034). The ~30 non-XPath false-ACCEPTS are open-content/VC/
+wildcard/defaultAttributes features (empty assert exprs), out of XPath scope.
+
 ## >>> DONE 2026-06-15 — scattered false-ACCEPT fixes: substitution type-block, fixed-mixed, fixed-ID, union facets, nilled ws <<<
 Five small spec fixes after the EDC cluster. Instance ratchet 21360 → 21370
 (schema held 5672). Each landed as its own commit + ratchet re-baseline.
