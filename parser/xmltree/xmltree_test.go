@@ -1,8 +1,10 @@
 package xmltree
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/kud360/goxsd5/xsd"
 )
@@ -129,6 +131,80 @@ func TestMalformed(t *testing.T) {
 		if _, err := Parse(strings.NewReader(doc), "bad.xml"); err == nil {
 			t.Errorf("expected error for %q", doc)
 		}
+	}
+}
+
+func TestDTDEntities(t *testing.T) {
+	// The prolog (and only the prolog) is buffered to extract internal-subset
+	// entity declarations; the entities must be substituted in the body.
+	root := mustParse(t, `<!DOCTYPE root [ <!ENTITY foo "bar"> ]>`+"\n<root>&foo;</root>")
+	if root.CharData != "bar" {
+		t.Errorf("CharData = %q, want %q", root.CharData, "bar")
+	}
+}
+
+func TestDTDEntityTrickyValue(t *testing.T) {
+	// Exercises consumeDoctype: ']' and '>' inside a quoted entity value must
+	// not end the internal subset or the DOCTYPE, and a comment containing the
+	// same characters must be skipped wholesale.
+	doc := `<!DOCTYPE root [ <!ENTITY x "a]b>c"> <!-- ] and > inside --> ]>` +
+		"\n<root>&x;</root>"
+	root := mustParse(t, doc)
+	if root.CharData != "a]b>c" {
+		t.Errorf("CharData = %q, want %q", root.CharData, "a]b>c")
+	}
+}
+
+func TestPrologMiscBeforeRoot(t *testing.T) {
+	doc := "<?xml version=\"1.0\"?>\n<!-- comment -->\n<?pi data?>\n<root/>"
+	root := mustParse(t, doc)
+	if root.Name.Local != "root" {
+		t.Fatalf("root = %q", root.Name.Local)
+	}
+	if root.Pos.Line != 4 {
+		t.Errorf("root pos = %v, want line 4", root.Pos)
+	}
+}
+
+func TestBOMStripped(t *testing.T) {
+	root := mustParse(t, "\uFEFF<root>hi</root>")
+	if root.Name.Local != "root" || root.CharData != "hi" {
+		t.Errorf("root = %q chardata = %q", root.Name.Local, root.CharData)
+	}
+}
+
+func TestUTF16Transcoded(t *testing.T) {
+	// Encode a UTF-8 document as UTF-16LE with a BOM; charset detection must
+	// transcode it and the parser must read it as if it were UTF-8.
+	const src = `<root a="é">über</root>`
+	units := utf16.Encode([]rune("\uFEFF" + src))
+	var buf bytes.Buffer
+	for _, u := range units {
+		buf.WriteByte(byte(u))
+		buf.WriteByte(byte(u >> 8))
+	}
+	root, err := Parse(&buf, "u16.xml")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if v, _ := root.Attr("a"); v != "é" || root.CharData != "über" {
+		t.Errorf("a = %q chardata = %q", v, root.CharData)
+	}
+}
+
+func TestParseLimit(t *testing.T) {
+	doc := "<root>" + strings.Repeat("x", 1000) + "</root>"
+	if _, err := ParseLimit(strings.NewReader(doc), "big.xml", 100); err == nil {
+		t.Fatal("expected size-limit error")
+	} else if !strings.Contains(err.Error(), "exceeds maximum size") {
+		t.Errorf("error = %v, want size-limit error", err)
+	}
+	// Exactly at the limit is fine; 0 disables the limit.
+	if _, err := ParseLimit(strings.NewReader(doc), "ok.xml", int64(len(doc))); err != nil {
+		t.Errorf("at-limit Parse: %v", err)
+	}
+	if _, err := ParseLimit(strings.NewReader(doc), "ok.xml", 0); err != nil {
+		t.Errorf("unlimited Parse: %v", err)
 	}
 }
 

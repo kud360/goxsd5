@@ -7,6 +7,28 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-14 — xmltree.Parse streams (no unbounded io.ReadAll) <<<
+`parser/xmltree.Parse` used `io.ReadAll` twice (raw + transcoded) and held the
+whole document in `treeParser.data` — an unbounded-memory vector on untrusted
+input. Now streaming, keeping the *Node DOM (callers need random tree access):
+ - `ParseLimit(r, uri, maxBytes)` added; `Parse` calls it with `MaxDocumentBytes`
+   (1 GiB default). `maxBytes <= 0` = unlimited. Limit enforced mid-stream by
+   `boundedReader` (errors past max), not read-all-then-check.
+ - Transcoding streams (`charset.NewReader(limitReader(r))`); no raw/data copies.
+ - Only the PROLOG is buffered: `readProlog` consumes XML decl/comments/PIs/DOCTYPE
+   (incl. internal subset) into a small buffer, leaves root `<` unread, then
+   `io.MultiReader(prolog, br)` feeds the decoder. `parseDTDEntities` runs on just
+   the prolog. `consumeDoctype` tracks quotes + `[ ]` depth + `<!-- -->` so a
+   `]`/`>` inside an entity value or comment doesn't end the subset.
+ - Line/col: `lineReader` records newline offsets as bytes flow to the decoder
+   (O(lines) index, not O(doc) byte slice); correct because the decoder reads in
+   document order so the index always covers any offset pos() queries.
+ - CAVEAT (unchanged): peak memory is still O(doc) — dominated by the returned
+   DOM, not byte buffers. The size cap is the real memory bound. Sublinear would
+   need a SAX API + reworking loader/xmlsrc (declined).
+ - Tests added in xmltree_test.go: DTD entities, tricky entity value (]/>/comment),
+   prolog misc, BOM strip, UTF-16 transcode, ParseLimit. Full suite + 8s fuzz green.
+
 ## >>> DONE 2026-06-14 — instance validation V0–V4 implemented (PLAN-validate.md) <<<
 The whole instance-validation plan landed in one session (3 milestone commits +
 1 refactor commit). New packages:

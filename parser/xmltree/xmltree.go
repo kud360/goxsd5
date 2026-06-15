@@ -6,6 +6,7 @@
 package xmltree
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/xml"
 	"fmt"
@@ -138,38 +139,194 @@ func isNameChar(r rune) bool {
 		r == 0xB7 || (r >= 0x300 && r <= 0x36F) || (r >= 0x203F && r <= 0x2040)
 }
 
+// MaxDocumentBytes is the default ceiling Parse imposes on a single document.
+// It guards against unbounded memory use when reading from untrusted streams.
+// Callers needing a different limit (including none) can use ParseLimit.
+const MaxDocumentBytes = 1 << 30 // 1 GiB
+
 // Parse reads an XML document and returns its root node. uri is used only
 // for positions. Non-UTF-8 encodings are transcoded (BOM and <?xml
-// encoding=…?> sniffing).
+// encoding=…?> sniffing). Input larger than MaxDocumentBytes is rejected;
+// use ParseLimit for a different ceiling.
 func Parse(r io.Reader, uri string) (*Node, error) {
-	raw, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", uri, err)
-	}
-	// Transcode to UTF-8 up front so byte offsets used for line/column
+	return ParseLimit(r, uri, MaxDocumentBytes)
+}
+
+// ParseLimit is like Parse but reads at most maxBytes from r, returning an
+// error if the document is larger. A maxBytes <= 0 means no limit. The document
+// is streamed: only the prolog (for its internal DTD subset) and a line-offset
+// index are held in memory, not the whole byte content.
+func ParseLimit(r io.Reader, uri string, maxBytes int64) (*Node, error) {
+	// Transcode to UTF-8 on the fly so byte offsets used for line/column
 	// mapping refer to the same bytes the decoder consumes.
-	utf8r, err := charset.NewReader(bytes.NewReader(raw), "")
+	utf8r, err := charset.NewReader(limitReader(r, maxBytes), "")
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", uri, err)
 	}
-	data, err := io.ReadAll(utf8r)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", uri, err)
-	}
+	br := bufio.NewReader(utf8r)
 	// The transcoder preserves a byte order mark as U+FEFF, which
 	// encoding/xml would report as character data before the root element.
-	data = bytes.TrimPrefix(data, []byte("\uFEFF"))
+	if bom, _ := br.Peek(3); bytes.Equal(bom, []byte("\uFEFF")) {
+		br.Discard(3)
+	}
+	// Buffer only the prolog so its internal DTD subset can be scanned for
+	// general entity declarations before the decoder reaches the body; the rest
+	// of the document streams straight into the decoder.
+	prolog, err := readProlog(br)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", uri, err)
+	}
 
-	p := &treeParser{uri: uri, data: data}
-	d := xml.NewDecoder(bytes.NewReader(data))
+	p := &treeParser{uri: uri, lines: []int{0}}
+	// lineReader records newline offsets as bytes flow to the decoder, so pos()
+	// can map offsets to line/column without retaining the whole document.
+	src := &lineReader{r: io.MultiReader(bytes.NewReader(prolog), br), p: p}
+	d := xml.NewDecoder(src)
 	// encoding/xml does not process the internal DTD subset, so a reference to
-	// a custom general entity (&name;) would otherwise be a hard error. Pre-scan
-	// the subset and hand the resolved replacement texts to the decoder, which
-	// substitutes them wherever the entity is referenced.
-	if ents := parseDTDEntities(data); ents != nil {
+	// a custom general entity (&name;) would otherwise be a hard error. Hand the
+	// resolved replacement texts to the decoder, which substitutes them wherever
+	// the entity is referenced.
+	if ents := parseDTDEntities(prolog); ents != nil {
 		d.Entity = ents
 	}
 	return p.parse(d)
+}
+
+// limitReader wraps r so that reading more than max bytes yields an error. A
+// max <= 0 disables the limit.
+func limitReader(r io.Reader, max int64) io.Reader {
+	if max <= 0 {
+		return r
+	}
+	return &boundedReader{r: r, max: max}
+}
+
+type boundedReader struct {
+	r    io.Reader
+	max  int64
+	read int64
+}
+
+func (b *boundedReader) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.read += int64(n)
+	if b.read > b.max {
+		return n, fmt.Errorf("document exceeds maximum size of %d bytes", b.max)
+	}
+	return n, err
+}
+
+// lineReader counts newlines in the bytes read through it, appending the byte
+// offset of each line start to p.lines. Because the decoder reads bytes in
+// document order, the index always covers any offset pos() is later asked
+// about.
+type lineReader struct {
+	r      io.Reader
+	p      *treeParser
+	offset int
+}
+
+func (lr *lineReader) Read(b []byte) (int, error) {
+	n, err := lr.r.Read(b)
+	for i := 0; i < n; i++ {
+		if b[i] == '\n' {
+			lr.p.lines = append(lr.p.lines, lr.offset+i+1)
+		}
+	}
+	lr.offset += n
+	return n, err
+}
+
+// readProlog consumes everything before the root element's start tag from br
+// (XML declaration, comments, processing instructions, and a DOCTYPE with its
+// internal subset) and returns those bytes. The root element's '<' is left
+// unread in br, so io.MultiReader of the returned bytes and br reconstructs the
+// full document for the decoder.
+func readProlog(br *bufio.Reader) ([]byte, error) {
+	var buf []byte
+	for {
+		next, err := br.Peek(1)
+		if err != nil {
+			if err == io.EOF {
+				return buf, nil // no root element; let the decoder report it
+			}
+			return buf, err
+		}
+		if next[0] != '<' {
+			b, _ := br.ReadByte()
+			buf = append(buf, b)
+			continue
+		}
+		kind, _ := br.Peek(len("<!DOCTYPE")) // shorter near EOF; HasPrefix still works
+		switch {
+		case bytes.HasPrefix(kind, []byte("<!--")):
+			err = consumeUntil(br, &buf, "-->")
+		case bytes.HasPrefix(kind, []byte("<!DOCTYPE")):
+			err = consumeDoctype(br, &buf)
+		case bytes.HasPrefix(kind, []byte("<?")):
+			err = consumeUntil(br, &buf, "?>")
+		default:
+			return buf, nil // root element start tag
+		}
+		if err != nil {
+			return buf, err
+		}
+	}
+}
+
+// consumeUntil reads from br into *buf up to and including the first occurrence
+// of term, returning the read error (e.g. io.ErrUnexpectedEOF) if the stream
+// ends first.
+func consumeUntil(br *bufio.Reader, buf *[]byte, term string) error {
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			return err
+		}
+		*buf = append(*buf, b)
+		if bytes.HasSuffix(*buf, []byte(term)) {
+			return nil
+		}
+	}
+}
+
+// consumeDoctype reads a `<!DOCTYPE \u2026 >` declaration (including any internal
+// subset) from br into *buf. The closing '>' is the first one found outside any
+// quoted literal, comment, or `[ \u2026 ]` internal subset.
+func consumeDoctype(br *bufio.Reader, buf *[]byte) error {
+	depth := 0
+	var quote byte
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			return err
+		}
+		*buf = append(*buf, b)
+		if quote != 0 {
+			if b == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch b {
+		case '"', '\'':
+			quote = b
+		case '[':
+			depth++
+		case ']':
+			depth--
+		case '-':
+			if depth >= 1 && bytes.HasSuffix(*buf, []byte("<!--")) {
+				if err := consumeUntil(br, buf, "-->"); err != nil {
+					return err
+				}
+			}
+		case '>':
+			if depth <= 0 {
+				return nil
+			}
+		}
+	}
 }
 
 // parseDTDEntities extracts general entity declarations from an internal DTD
@@ -415,19 +572,10 @@ func isSpace(b byte) bool {
 
 type treeParser struct {
 	uri   string
-	data  []byte
-	lines []int // byte offset of the start of each line, built lazily
+	lines []int // byte offset of the start of each line, grown by lineReader
 }
 
 func (p *treeParser) pos(offset int64) xsd.Pos {
-	if p.lines == nil {
-		p.lines = []int{0}
-		for i, b := range p.data {
-			if b == '\n' {
-				p.lines = append(p.lines, i+1)
-			}
-		}
-	}
 	// Binary search for the line containing offset.
 	lo, hi := 0, len(p.lines)-1
 	for lo < hi {
