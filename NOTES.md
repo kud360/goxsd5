@@ -7,6 +7,36 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-15 — open-content inheritance + ##defined/##definedSibling wildcard exclusions <<<
+Two more clusters. Instance ratchet 21315 → 21344 (schema held 5672). After this,
+only 7 instance false-REJECTS remain (see list at end); the ~80 false-ACCEPTS are
+dominated by fail-open assertions (Assert/assertion ≈40) + a few hard cases.
+ - EXTENSION open-content inheritance (parser, §3.4.2.3.3): an extension's
+   explicit content type carries the BASE's {open content} (clause 4.2.3); the
+   own <openContent>/<defaultOpenContent> layers per clause 6.1 (absent or
+   mode='none' ⇒ keep the base's — an extension can NOT suppress inherited open
+   content, mode='none' is not removal) / 6.2 (authored ⇒ wildcard UNION of own +
+   base, own's mode). New inheritExtensionOpenContent (restrict.go) wired into
+   mergeComplexType before the narrowing check. +6 (saxon Open027/031/047, incl.
+   the mode='none' Open031). Unit test TestExtensionOpenContentInheritance.
+ - ##defined / ##definedSibling matcher exclusions (xsdwalk/automaton.go,
+   cvc-wildcard clauses 2 & 3): the matcher ignored these context keywords so a
+   negative wildcard never excluded anything. New wildcardOK wraps WildcardAllows:
+   ##defined ⇒ name must not resolve to a global element (LookupGlobal); 
+   ##definedSibling ⇒ name must not match any element decl in the content model,
+   directly OR implicitly via substitution groups (collectSiblings gathers the
+   model's decls per Match; matchesSibling uses SubstitutableFor). All five
+   matcher WildcardAllows sites now call m.wildcardOK. +23 (wg substitution-groups
+   sg-and-defined-Sibling-*, saxon Wild negatives). Unit test
+   TestMatcherDefinedSiblingWildcard.
+REMAINING 7 instance false-REJECTS (2026-06-15): (1) assertion count(.//@attr1)
+— needs descendant-attribute XPath axis; (2) vc_007 — vc:* version-control attr;
+(3) All007 — all-group cvc-particle; (4) Override over023 — xs:override element
+not surfaced as global; (5) simple085 — pattern vs collapsed whitespace value;
+(6) ElemDecl targetNS00101m + (7) SType ST_targetNS00101m2_p — multi-schema /
+aux-namespace type not loaded (likely needs the group's 2nd schemaDocument or
+xsi:schemaLocation; verify harness loads both docs).
+
 ## >>> DONE 2026-06-15 — instance false-REJECT clusters: root xsi:type, union derivation, cos-aw-union <<<
 Three follow-on commits after the cvc-id batch, each a clean spec rule. Instance
 ratchet 21302 → 21315 (schema held 5672 throughout). Same INSTDIAG diagnostic
