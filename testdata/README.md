@@ -3,10 +3,9 @@
 ## xsdtests — W3C XSD 1.1 Test Suite
 
 `testdata/xsdtests/` is the official **W3C XML Schema (XSD) 1.1 test suite**,
-<https://github.com/w3c/xsdtests>. It is the conformance suite referenced by
-Milestone 9 in [`../PLAN.md`](../PLAN.md): positive and negative schema cases that
-`parser` is validated against, with negative cases asserted to fail with the
-expected `SpecRef.ID`.
+<https://github.com/w3c/xsdtests>. It is the conformance suite that `parser` is
+validated against: positive and negative schema cases, with negative cases
+asserted to fail with the expected `SpecRef.ID`.
 
 **It is a git submodule, not committed content.** The suite is large (~230 MB),
 so only a gitlink pinning a specific upstream revision lives in this repo's
@@ -19,7 +18,7 @@ git submodule update --init testdata/xsdtests
 A fresh `git clone --recurse-submodules` of this repo populates it automatically.
 
 To bump the pinned revision, advance the submodule and re-baseline the
-expectations file in the **same commit** (see PLAN.md M9) so the revision change
+expectations file in the **same commit** so the revision change
 doesn't silently alter the regression set:
 
 ```sh

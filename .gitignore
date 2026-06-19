@@ -2,3 +2,6 @@
 /docscleaner
 /docs/dist/
 .idea/
+
+# Local-only Claude Code settings (never commit)
+.claude/settings.local.json

@@ -83,7 +83,7 @@ constant name in code.
 ### Instance validation rules (`cvc-*`, the xsdvalidate engine)
 
 These govern schema-validity assessment of an instance document and are enforced
-by the `xsdvalidate` package (PLAN-validate.md), not the schema processor.
+by the `xsdvalidate` package, not the schema processor.
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
@@ -226,4 +226,4 @@ every schema test applicable to XSD 1.1 it runs the full pipeline and compares
 our verdict to the suite's declared validity, gated against the committed
 ratchet `testdata/xsd11-expectations.txt` (`pass` lines auto-ratchet up,
 `skip:` lines are curated for deferred features). Regressions and unrecorded
-passes both fail; see PLAN.md M9. Run with `-update-expectations` to re-baseline.
+passes both fail. Run with `-update-expectations` to re-baseline.
