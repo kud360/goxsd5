@@ -279,7 +279,7 @@ func (w *walker) checkLocalDeclTargetNamespace(n *xmltree.Node, ref xsd.SpecRef,
 		}
 		base, _ := a.Attr("base")
 		q, err := a.ResolveQName(strings.TrimSpace(base))
-		if err == nil && !(q.Namespace == xsd.XSDNS && q.Local == "anyType") {
+		if err == nil && (q.Namespace != xsd.XSDNS || q.Local != "anyType") {
 			return // a qualifying restriction with a concrete base
 		}
 		break // the nearest restriction did not qualify

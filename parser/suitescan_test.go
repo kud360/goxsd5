@@ -67,12 +67,14 @@ func TestScanW3CSuiteValidSchemas(t *testing.T) {
 		t.Skipf("W3C suite not checked out: %v", err)
 	}
 	var setFiles []string
-	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".testSet") {
 			setFiles = append(setFiles, p)
 		}
 		return nil
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	total, failed, parseFail := 0, 0, 0
 	counts := map[string]int{}
@@ -110,7 +112,7 @@ func TestScanW3CSuiteValidSchemas(t *testing.T) {
 			if !docOK {
 				continue
 			}
-			finish(l, errs)
+			_, _ = finish(l, errs)
 			total++
 			if !errs.Empty() {
 				failed++

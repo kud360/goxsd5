@@ -75,18 +75,31 @@ func wsRank(w WhiteSpace) int {
 
 // CheckFacetRestriction validates the facets declared on one restriction
 // step against the base type's effective facets: narrowing only, and fixed
-// facets unchanged. cmp compares values (base value space).
+// facets unchanged. cmp compares values (base value space). Each facet family
+// is checked by its own helper; see the *-valid-restriction rules in
+// XSD 1.1 Part 2 §4.3.
 func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 	var errs ErrorList
+	checkLengthRestriction(&errs, declared, base)
+	checkWhiteSpaceRestriction(&errs, declared, base)
+	checkBoundsRestriction(&errs, declared, base, cmp)
+	checkDigitsRestriction(&errs, declared, base)
+	checkTimezoneRestriction(&errs, declared, base)
+	return errs.Err()
+}
 
-	checkFixedInt := func(d, b *IntFacet, name string) {
-		if d != nil && b != nil && b.Fixed && d.Value != b.Value {
-			// spec: fixed-facet-value — XSD 1.1 Part 2 §4.3 (xmlschema11-2.md#fixed-facet-value)
-			errs.Addf(SpecFixedFacetValue, d.Pos, "facet %s is fixed to %d in the base type", name, b.Value)
-		}
+// checkFixedInt reports when a declared integer facet differs from a base facet
+// whose value the base fixed.
+// spec: fixed-facet-value — XSD 1.1 Part 2 §4.3 (xmlschema11-2.md#fixed-facet-value)
+func checkFixedInt(errs *ErrorList, d, b *IntFacet, name string) {
+	if d != nil && b != nil && b.Fixed && d.Value != b.Value {
+		errs.Addf(SpecFixedFacetValue, d.Pos, "facet %s is fixed to %d in the base type", name, b.Value)
 	}
+}
 
-	// spec: length-valid-restriction — XSD 1.1 Part 2 §4.3.1.5 (xmlschema11-2.md#length-valid-restriction)
+// checkLengthRestriction enforces length/minLength/maxLength narrowing.
+// spec: {length,minLength,maxLength}-valid-restriction — XSD 1.1 Part 2 §4.3.{1,2,3}.5
+func checkLengthRestriction(errs *ErrorList, declared, base *Facets) {
 	if declared.Length != nil && base.Length != nil && declared.Length.Value != base.Length.Value {
 		errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d differs from base length %d", declared.Length.Value, base.Length.Value)
 	}
@@ -98,7 +111,6 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 			errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d > base maxLength %d", declared.Length.Value, base.MaxLength.Value)
 		}
 	}
-	// spec: minLength-valid-restriction — XSD 1.1 Part 2 §4.3.2.5 (xmlschema11-2.md#minLength-valid-restriction)
 	if declared.MinLength != nil {
 		if base.MinLength != nil && declared.MinLength.Value < base.MinLength.Value {
 			errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d < base minLength %d", declared.MinLength.Value, base.MinLength.Value)
@@ -109,9 +121,8 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 		if base.Length != nil && declared.MinLength.Value > base.Length.Value {
 			errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d > base length %d", declared.MinLength.Value, base.Length.Value)
 		}
-		checkFixedInt(declared.MinLength, base.MinLength, "minLength")
+		checkFixedInt(errs, declared.MinLength, base.MinLength, "minLength")
 	}
-	// spec: maxLength-valid-restriction — XSD 1.1 Part 2 §4.3.3.5 (xmlschema11-2.md#maxLength-valid-restriction)
 	if declared.MaxLength != nil {
 		if base.MaxLength != nil && declared.MaxLength.Value > base.MaxLength.Value {
 			errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d > base maxLength %d", declared.MaxLength.Value, base.MaxLength.Value)
@@ -122,73 +133,82 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 		if base.Length != nil && declared.MaxLength.Value < base.Length.Value {
 			errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d < base length %d", declared.MaxLength.Value, base.Length.Value)
 		}
-		checkFixedInt(declared.MaxLength, base.MaxLength, "maxLength")
+		checkFixedInt(errs, declared.MaxLength, base.MaxLength, "maxLength")
 	}
 	if declared.Length != nil && base.Length != nil {
-		checkFixedInt(declared.Length, base.Length, "length")
+		checkFixedInt(errs, declared.Length, base.Length, "length")
 	}
+}
 
-	// spec: whiteSpace-valid-restriction — XSD 1.1 Part 2 §4.3.6.5 (xmlschema11-2.md#whiteSpace-valid-restriction)
-	if declared.WhiteSpace != WSUnset && base.WhiteSpace != WSUnset {
-		if wsRank(declared.WhiteSpace) < wsRank(base.WhiteSpace) {
-			errs.Addf(SpecWhiteSpaceValidRestriction, declared.WhiteSpacePos, "whiteSpace %s loosens base whiteSpace %s", declared.WhiteSpace, base.WhiteSpace)
-		}
-		if base.WhiteSpaceFixed && declared.WhiteSpace != base.WhiteSpace {
-			errs.Addf(SpecFixedFacetValue, declared.WhiteSpacePos, "facet whiteSpace is fixed to %s in the base type", base.WhiteSpace)
-		}
+// checkWhiteSpaceRestriction enforces whiteSpace narrowing + fixed.
+// spec: whiteSpace-valid-restriction — XSD 1.1 Part 2 §4.3.6.5 (xmlschema11-2.md#whiteSpace-valid-restriction)
+func checkWhiteSpaceRestriction(errs *ErrorList, declared, base *Facets) {
+	if declared.WhiteSpace == WSUnset || base.WhiteSpace == WSUnset {
+		return
 	}
+	if wsRank(declared.WhiteSpace) < wsRank(base.WhiteSpace) {
+		errs.Addf(SpecWhiteSpaceValidRestriction, declared.WhiteSpacePos, "whiteSpace %s loosens base whiteSpace %s", declared.WhiteSpace, base.WhiteSpace)
+	}
+	if base.WhiteSpaceFixed && declared.WhiteSpace != base.WhiteSpace {
+		errs.Addf(SpecFixedFacetValue, declared.WhiteSpacePos, "facet whiteSpace is fixed to %s in the base type", base.WhiteSpace)
+	}
+}
 
-	// Bounds narrowing: each declared bound must lie within the base's
-	// effective bounds (incomparable counts as outside). Exclusive-vs-
-	// exclusive equality on the same side is the one permitted equality
-	// against an exclusive base bound.
-	checkBound := func(b *Bound, name string, minSide, incl bool, ref SpecRef, baseSame *Bound) {
-		if b == nil {
-			return
-		}
-		if base.MinInclusive != nil {
-			if o, ok := cmp(b.Value, base.MinInclusive.Value); !ok || o == OrderLess {
-				errs.Addf(ref, b.Pos, "%s %s < base minInclusive %s", name, b.Lexical, base.MinInclusive.Lexical)
-			}
-		}
-		if base.MaxInclusive != nil {
-			if o, ok := cmp(b.Value, base.MaxInclusive.Value); !ok || o == OrderGreater {
-				errs.Addf(ref, b.Pos, "%s %s > base maxInclusive %s", name, b.Lexical, base.MaxInclusive.Lexical)
-			}
-		}
-		if base.MinExclusive != nil {
-			o, ok := cmp(b.Value, base.MinExclusive.Value)
-			if !ok || o == OrderLess || (o == OrderEqual && !(minSide && !incl)) {
-				errs.Addf(ref, b.Pos, "%s %s <= base minExclusive %s", name, b.Lexical, base.MinExclusive.Lexical)
-			}
-		}
-		if base.MaxExclusive != nil {
-			o, ok := cmp(b.Value, base.MaxExclusive.Value)
-			if !ok || o == OrderGreater || (o == OrderEqual && !(!minSide && !incl)) {
-				errs.Addf(ref, b.Pos, "%s %s >= base maxExclusive %s", name, b.Lexical, base.MaxExclusive.Lexical)
-			}
-		}
-		if baseSame != nil && baseSame.Fixed {
-			// spec: fixed-facet-value — XSD 1.1 Part 2 §4.3 (xmlschema11-2.md#fixed-facet-value)
-			if o, ok := cmp(b.Value, baseSame.Value); !ok || o != OrderEqual {
-				errs.Addf(SpecFixedFacetValue, b.Pos, "facet %s is fixed in the base type", name)
-			}
+// checkBoundsRestriction enforces that each declared range bound lies within
+// the base's effective bounds.
+// spec: {min,max}{Inclusive,Exclusive}-valid-restriction — XSD 1.1 Part 2 §4.3.{7,8,9,10}.5
+func checkBoundsRestriction(errs *ErrorList, declared, base *Facets, cmp CompareFunc) {
+	checkBoundRestriction(errs, declared.MinInclusive, "minInclusive", true, true, SpecMinInclValidRestriction, base.MinInclusive, base, cmp)
+	checkBoundRestriction(errs, declared.MaxInclusive, "maxInclusive", false, true, SpecMaxInclValidRestriction, base.MaxInclusive, base, cmp)
+	checkBoundRestriction(errs, declared.MinExclusive, "minExclusive", true, false, SpecMinExclValidRestriction, base.MinExclusive, base, cmp)
+	checkBoundRestriction(errs, declared.MaxExclusive, "maxExclusive", false, false, SpecMaxExclValidRestriction, base.MaxExclusive, base, cmp)
+}
+
+// checkBoundRestriction validates one declared bound against the base bounds.
+// Incomparable counts as outside; exclusive-vs-exclusive equality on the same
+// side is the one permitted equality against an exclusive base bound.
+func checkBoundRestriction(errs *ErrorList, b *Bound, name string, minSide, incl bool, ref SpecRef, baseSame *Bound, base *Facets, cmp CompareFunc) {
+	if b == nil {
+		return
+	}
+	if base.MinInclusive != nil {
+		if o, ok := cmp(b.Value, base.MinInclusive.Value); !ok || o == OrderLess {
+			errs.Addf(ref, b.Pos, "%s %s < base minInclusive %s", name, b.Lexical, base.MinInclusive.Lexical)
 		}
 	}
-	// spec: minInclusive-valid-restriction — XSD 1.1 Part 2 §4.3.10.5 (xmlschema11-2.md#minInclusive-valid-restriction)
-	checkBound(declared.MinInclusive, "minInclusive", true, true, SpecMinInclValidRestriction, base.MinInclusive)
-	// spec: maxInclusive-valid-restriction — XSD 1.1 Part 2 §4.3.7.5 (xmlschema11-2.md#maxInclusive-valid-restriction)
-	checkBound(declared.MaxInclusive, "maxInclusive", false, true, SpecMaxInclValidRestriction, base.MaxInclusive)
-	// spec: minExclusive-valid-restriction — XSD 1.1 Part 2 §4.3.9.5 (xmlschema11-2.md#minExclusive-valid-restriction)
-	checkBound(declared.MinExclusive, "minExclusive", true, false, SpecMinExclValidRestriction, base.MinExclusive)
-	// spec: maxExclusive-valid-restriction — XSD 1.1 Part 2 §4.3.8.5 (xmlschema11-2.md#maxExclusive-valid-restriction)
-	checkBound(declared.MaxExclusive, "maxExclusive", false, false, SpecMaxExclValidRestriction, base.MaxExclusive)
+	if base.MaxInclusive != nil {
+		if o, ok := cmp(b.Value, base.MaxInclusive.Value); !ok || o == OrderGreater {
+			errs.Addf(ref, b.Pos, "%s %s > base maxInclusive %s", name, b.Lexical, base.MaxInclusive.Lexical)
+		}
+	}
+	if base.MinExclusive != nil {
+		o, ok := cmp(b.Value, base.MinExclusive.Value)
+		if !ok || o == OrderLess || (o == OrderEqual && (!minSide || incl)) {
+			errs.Addf(ref, b.Pos, "%s %s <= base minExclusive %s", name, b.Lexical, base.MinExclusive.Lexical)
+		}
+	}
+	if base.MaxExclusive != nil {
+		o, ok := cmp(b.Value, base.MaxExclusive.Value)
+		if !ok || o == OrderGreater || (o == OrderEqual && (minSide || incl)) {
+			errs.Addf(ref, b.Pos, "%s %s >= base maxExclusive %s", name, b.Lexical, base.MaxExclusive.Lexical)
+		}
+	}
+	if baseSame != nil && baseSame.Fixed {
+		// spec: fixed-facet-value — XSD 1.1 Part 2 §4.3 (xmlschema11-2.md#fixed-facet-value)
+		if o, ok := cmp(b.Value, baseSame.Value); !ok || o != OrderEqual {
+			errs.Addf(SpecFixedFacetValue, b.Pos, "facet %s is fixed in the base type", name)
+		}
+	}
+}
 
+// checkDigitsRestriction enforces totalDigits/fractionDigits narrowing.
+// spec: {total,fraction}Digits-valid-restriction — XSD 1.1 Part 2 §4.3.{11,12}.5
+func checkDigitsRestriction(errs *ErrorList, declared, base *Facets) {
 	// spec: totalDigits-valid-restriction — XSD 1.1 Part 2 §4.3.11.5 (xmlschema11-2.md#totalDigits-valid-restriction)
 	if declared.TotalDigits != nil && base.TotalDigits != nil && declared.TotalDigits.Value > base.TotalDigits.Value {
 		errs.Addf(SpecTotalDigitsValidRestriction, declared.TotalDigits.Pos, "totalDigits %d > base totalDigits %d", declared.TotalDigits.Value, base.TotalDigits.Value)
 	}
-	checkFixedInt(declared.TotalDigits, base.TotalDigits, "totalDigits")
+	checkFixedInt(errs, declared.TotalDigits, base.TotalDigits, "totalDigits")
 	// spec: fractionDigits-valid-restriction — XSD 1.1 Part 2 §4.3.12.5 (xmlschema11-2.md#fractionDigits-valid-restriction)
 	if declared.FractionDigits != nil {
 		if base.FractionDigits != nil && declared.FractionDigits.Value > base.FractionDigits.Value {
@@ -197,24 +217,25 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 		if base.TotalDigits != nil && declared.FractionDigits.Value > base.TotalDigits.Value {
 			errs.Addf(SpecFractionDigitsValidRestriction, declared.FractionDigits.Pos, "fractionDigits %d > base totalDigits %d", declared.FractionDigits.Value, base.TotalDigits.Value)
 		}
-		checkFixedInt(declared.FractionDigits, base.FractionDigits, "fractionDigits")
+		checkFixedInt(errs, declared.FractionDigits, base.FractionDigits, "fractionDigits")
 	}
+}
 
+// checkTimezoneRestriction enforces explicitTimezone fixed + narrowing: a
+// restriction may not widen the base (from required only required is allowed,
+// from prohibited only prohibited, from optional anything).
+// spec: explicitTimezone-valid-restriction — XSD 1.1 Part 2 §4.3.16.5 (xmlschema11-2.md#explicitTimezone-valid-restriction)
+func checkTimezoneRestriction(errs *ErrorList, declared, base *Facets) {
+	if declared.ExplicitTimezone == ETZUnset || base.ExplicitTimezone == ETZUnset {
+		return
+	}
 	// spec: fixed-facet-value — XSD 1.1 Part 2 §4.3 (xmlschema11-2.md#fixed-facet-value)
-	if declared.ExplicitTimezone != ETZUnset && base.ExplicitTimezone != ETZUnset &&
-		base.ExplicitTimezoneFixed && declared.ExplicitTimezone != base.ExplicitTimezone {
+	if base.ExplicitTimezoneFixed && declared.ExplicitTimezone != base.ExplicitTimezone {
 		errs.Addf(SpecFixedFacetValue, declared.ExplicitTimezonePos, "facet explicitTimezone is fixed in the base type")
 	}
-
-	// spec: explicitTimezone-valid-restriction — XSD 1.1 Part 2 §4.3.16.5 (xmlschema11-2.md#explicitTimezone-valid-restriction)
-	// A restriction may not widen the base: from required only required is
-	// allowed; from prohibited only prohibited; from optional anything.
-	if declared.ExplicitTimezone != ETZUnset && base.ExplicitTimezone != ETZUnset &&
-		base.ExplicitTimezone != ETZOptional && declared.ExplicitTimezone != base.ExplicitTimezone {
+	if base.ExplicitTimezone != ETZOptional && declared.ExplicitTimezone != base.ExplicitTimezone {
 		errs.Addf(SpecETZValidRestriction, declared.ExplicitTimezonePos,
 			"explicitTimezone %q cannot restrict base explicitTimezone %q",
 			declared.ExplicitTimezone, base.ExplicitTimezone)
 	}
-
-	return errs.Err()
 }

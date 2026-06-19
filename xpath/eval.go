@@ -1116,209 +1116,22 @@ func castValue(typeLocal, lex string) item {
 }
 
 func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
-	switch n.name {
-	case "true":
-		return seq{true}, nil
-	case "false":
-		return seq{false}, nil
-	case "not":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{!effectiveBool(v)}, nil
-	case "boolean":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{effectiveBool(v)}, nil
-	case "exists":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{len(v) > 0}, nil
-	case "empty":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{len(v) == 0}, nil
-	case "count":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{float64(len(v))}, nil
-	case "position":
-		if e.ctxAbsent {
-			return nil, errDynamic
-		}
-		if f == nil {
-			return nil, errUnsupported
-		}
-		return seq{float64(f.pos)}, nil
-	case "last":
-		if e.ctxAbsent {
-			return nil, errDynamic
-		}
-		if f == nil {
-			return nil, errUnsupported
-		}
-		return seq{float64(f.size)}, nil
-	case "data":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		// data() over nodes would need each node's schema-typed value, which this
-		// evaluator does not model (a node atomizes only to its untyped string).
-		// Restrict data() to already-atomic operands (e.g. data($value)); a node
-		// operand is unsupported, so the caller fails open rather than treating
-		// the untyped string as a typed value.
-		for _, it := range v {
-			if nodeIdentity(it) != nil {
-				return nil, errUnsupported
-			}
-		}
-		return seq(atomizeAll(v)), nil
-	case "string":
-		if len(n.args) == 0 {
-			return seq{focusString(f)}, nil
-		}
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{seqString(v)}, nil
-	case "number":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		fl, err := toNumber(v)
-		if err != nil {
-			return nil, err
-		}
-		return seq{fl}, nil
-	case "string-length":
-		s, err := e.strArgOrCtx(n, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{float64(len([]rune(s)))}, nil
-	case "normalize-space":
-		s, err := e.strArgOrCtx(n, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{collapse(s)}, nil
-	case "contains", "starts-with", "ends-with":
-		a, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		b, err := e.arg(n, 1, f)
-		if err != nil {
-			return nil, err
-		}
-		s1, s2 := seqString(a), seqString(b)
-		switch n.name {
-		case "contains":
-			return seq{strings.Contains(s1, s2)}, nil
-		case "starts-with":
-			return seq{strings.HasPrefix(s1, s2)}, nil
-		default:
-			return seq{strings.HasSuffix(s1, s2)}, nil
-		}
-	case "concat":
-		var b strings.Builder
-		for i := range n.args {
-			v, err := e.arg(n, i, f)
-			if err != nil {
-				return nil, err
-			}
-			b.WriteString(seqString(v))
-		}
-		return seq{b.String()}, nil
-	case "sum":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		var sum float64
-		for _, it := range atomizeAll(v) {
-			fl, ok := asNumber(it)
-			if !ok {
-				return nil, errUnsupported
-			}
-			sum += fl
-		}
-		return seq{sum}, nil
-	case "distinct-values":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		seen := map[string]bool{}
-		var out seq
-		for _, it := range atomizeAll(v) {
-			s := atomString(it)
-			if !seen[s] {
-				seen[s] = true
-				out = append(out, it)
-			}
-		}
-		return out, nil
-	case "current-date":
-		return seq{time.Now().Format("2006-01-02")}, nil
-	case "current-dateTime":
-		return seq{time.Now().Format("2006-01-02T15:04:05")}, nil
-	case "current-time":
-		return seq{time.Now().Format("15:04:05")}, nil
-	case "year-from-date", "month-from-date", "day-from-date",
-		"year-from-dateTime", "month-from-dateTime", "day-from-dateTime",
-		"hours-from-dateTime", "minutes-from-dateTime", "seconds-from-dateTime",
-		"hours-from-time", "minutes-from-time", "seconds-from-time":
-		v, err := e.arg(n, 0, f)
-		if err != nil {
-			return nil, err
-		}
-		atoms := atomizeAll(v)
-		if len(atoms) == 0 {
-			return seq{}, nil // fn:*-from-*(()) is the empty sequence
-		}
-		comp, ok := dateComponent(n.name, atomString(atoms[0]))
-		if !ok {
-			// The argument is already a validated date/time value, so a parse
-			// failure means our reader is too strict — fail open, never reject.
-			return nil, errUnsupported
-		}
-		return seq{comp}, nil
-	case "local-name", "name":
-		var el *nodeCtx
-		if len(n.args) == 0 {
-			c, ok := f.node()
-			if !ok {
-				return seq{""}, nil
-			}
-			el = c
-		} else {
-			v, err := e.arg(n, 0, f)
-			if err != nil {
-				return nil, err
-			}
-			if len(v) == 0 {
-				return seq{""}, nil
-			}
-			c, ok := v[0].(*nodeCtx)
-			if !ok {
-				return seq{""}, nil
-			}
-			el = c
-		}
-		return seq{el.node.NodeName().Local}, nil
+	// The XPath function library is partitioned into category helpers; each
+	// reports whether it handled n.name, so the first match wins.
+	if s, ok, err := e.evalLogicFn(n, f); ok {
+		return s, err
+	}
+	if s, ok, err := e.evalStringFn(n, f); ok {
+		return s, err
+	}
+	if s, ok, err := e.evalAggregateFn(n, f); ok {
+		return s, err
+	}
+	if s, ok, err := e.evalDateFn(n, f); ok {
+		return s, err
+	}
+	if s, ok, err := e.evalNodeFn(n, f); ok {
+		return s, err
 	}
 	// Constructor functions: xs:integer(…), xs:decimal(…), etc. — the argument
 	// must be castable to the named built-in type; the cast value is carried as
@@ -1338,6 +1151,243 @@ func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
 		return seq{s}, nil
 	}
 	return nil, errUnsupported
+}
+
+// evalLogicFn handles boolean, existence, count, positional, and data() calls.
+func (e *evaluator) evalLogicFn(n *call, f *focus) (seq, bool, error) {
+	switch n.name {
+	case "true":
+		return seq{true}, true, nil
+	case "false":
+		return seq{false}, true, nil
+	case "not":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{!effectiveBool(v)}, true, nil
+	case "boolean":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{effectiveBool(v)}, true, nil
+	case "exists":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{len(v) > 0}, true, nil
+	case "empty":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{len(v) == 0}, true, nil
+	case "count":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{float64(len(v))}, true, nil
+	case "position":
+		if e.ctxAbsent {
+			return nil, true, errDynamic
+		}
+		if f == nil {
+			return nil, true, errUnsupported
+		}
+		return seq{float64(f.pos)}, true, nil
+	case "last":
+		if e.ctxAbsent {
+			return nil, true, errDynamic
+		}
+		if f == nil {
+			return nil, true, errUnsupported
+		}
+		return seq{float64(f.size)}, true, nil
+	case "data":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		// data() over nodes would need each node's schema-typed value, which this
+		// evaluator does not model (a node atomizes only to its untyped string).
+		// Restrict data() to already-atomic operands (e.g. data($value)); a node
+		// operand is unsupported, so the caller fails open rather than treating
+		// the untyped string as a typed value.
+		for _, it := range v {
+			if nodeIdentity(it) != nil {
+				return nil, true, errUnsupported
+			}
+		}
+		return seq(atomizeAll(v)), true, nil
+	}
+	return nil, false, nil
+}
+
+// evalStringFn handles the string-valued functions.
+func (e *evaluator) evalStringFn(n *call, f *focus) (seq, bool, error) {
+	switch n.name {
+	case "string":
+		if len(n.args) == 0 {
+			return seq{focusString(f)}, true, nil
+		}
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{seqString(v)}, true, nil
+	case "number":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		fl, err := toNumber(v)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{fl}, true, nil
+	case "string-length":
+		s, err := e.strArgOrCtx(n, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{float64(len([]rune(s)))}, true, nil
+	case "normalize-space":
+		s, err := e.strArgOrCtx(n, f)
+		if err != nil {
+			return nil, true, err
+		}
+		return seq{collapse(s)}, true, nil
+	case "contains", "starts-with", "ends-with":
+		a, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		b, err := e.arg(n, 1, f)
+		if err != nil {
+			return nil, true, err
+		}
+		s1, s2 := seqString(a), seqString(b)
+		switch n.name {
+		case "contains":
+			return seq{strings.Contains(s1, s2)}, true, nil
+		case "starts-with":
+			return seq{strings.HasPrefix(s1, s2)}, true, nil
+		default:
+			return seq{strings.HasSuffix(s1, s2)}, true, nil
+		}
+	case "concat":
+		var b strings.Builder
+		for i := range n.args {
+			v, err := e.arg(n, i, f)
+			if err != nil {
+				return nil, true, err
+			}
+			b.WriteString(seqString(v))
+		}
+		return seq{b.String()}, true, nil
+	}
+	return nil, false, nil
+}
+
+// evalAggregateFn handles sequence aggregates.
+func (e *evaluator) evalAggregateFn(n *call, f *focus) (seq, bool, error) {
+	switch n.name {
+	case "sum":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		var sum float64
+		for _, it := range atomizeAll(v) {
+			fl, ok := asNumber(it)
+			if !ok {
+				return nil, true, errUnsupported
+			}
+			sum += fl
+		}
+		return seq{sum}, true, nil
+	case "distinct-values":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		seen := map[string]bool{}
+		var out seq
+		for _, it := range atomizeAll(v) {
+			s := atomString(it)
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, it)
+			}
+		}
+		return out, true, nil
+	}
+	return nil, false, nil
+}
+
+// evalDateFn handles current-* and the *-from-* date/time accessors.
+func (e *evaluator) evalDateFn(n *call, f *focus) (seq, bool, error) {
+	switch n.name {
+	case "current-date":
+		return seq{time.Now().Format("2006-01-02")}, true, nil
+	case "current-dateTime":
+		return seq{time.Now().Format("2006-01-02T15:04:05")}, true, nil
+	case "current-time":
+		return seq{time.Now().Format("15:04:05")}, true, nil
+	case "year-from-date", "month-from-date", "day-from-date",
+		"year-from-dateTime", "month-from-dateTime", "day-from-dateTime",
+		"hours-from-dateTime", "minutes-from-dateTime", "seconds-from-dateTime",
+		"hours-from-time", "minutes-from-time", "seconds-from-time":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		atoms := atomizeAll(v)
+		if len(atoms) == 0 {
+			return seq{}, true, nil // fn:*-from-*(()) is the empty sequence
+		}
+		comp, ok := dateComponent(n.name, atomString(atoms[0]))
+		if !ok {
+			// The argument is already a validated date/time value, so a parse
+			// failure means our reader is too strict — fail open, never reject.
+			return nil, true, errUnsupported
+		}
+		return seq{comp}, true, nil
+	}
+	return nil, false, nil
+}
+
+// evalNodeFn handles the node-name accessors.
+func (e *evaluator) evalNodeFn(n *call, f *focus) (seq, bool, error) {
+	switch n.name {
+	case "local-name", "name":
+		var el *nodeCtx
+		if len(n.args) == 0 {
+			c, ok := f.node()
+			if !ok {
+				return seq{""}, true, nil
+			}
+			el = c
+		} else {
+			v, err := e.arg(n, 0, f)
+			if err != nil {
+				return nil, true, err
+			}
+			if len(v) == 0 {
+				return seq{""}, true, nil
+			}
+			c, ok := v[0].(*nodeCtx)
+			if !ok {
+				return seq{""}, true, nil
+			}
+			el = c
+		}
+		return seq{el.node.NodeName().Local}, true, nil
+	}
+	return nil, false, nil
 }
 
 func (e *evaluator) arg(n *call, i int, f *focus) (seq, error) {

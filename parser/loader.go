@@ -202,10 +202,10 @@ func (l *loader) compose(doc *schemaDoc, comp composition) {
 	}
 	tns, _ := te.root.Attr("targetNamespace")
 	var target *schemaDoc
-	switch {
-	case tns == doc.targetNamespace:
+	switch tns {
+	case doc.targetNamespace:
 		target = l.instance(te.root, uri, tns, false)
-	case tns == "":
+	case "":
 		// spec: src-include.2.2 — chameleon: the document is absorbed into
 		// the including schema's target namespace.
 		target = l.instance(te.root, uri, doc.targetNamespace, true)

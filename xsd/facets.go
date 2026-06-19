@@ -335,26 +335,54 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 		return nil, err
 	}
 
-	// Stage 4: length facets, in the proper unit for the value kind.
-	if f.Length != nil || f.MinLength != nil || f.MaxLength != nil {
-		if n, ok := ValueLength(v); ok {
-			// spec: cvc-length-valid — XSD 1.1 Part 2 §4.3.1.4 (xmlschema11-2.md#cvc-length-valid)
-			if f.Length != nil && n != f.Length.Value {
-				return nil, NewError(SpecLengthValid, Pos{}, "length %d of %q != required %d", n, norm, f.Length.Value)
-			}
-			// spec: cvc-minLength-valid — XSD 1.1 Part 2 §4.3.2.4 (xmlschema11-2.md#cvc-minLength-valid)
-			if f.MinLength != nil && n < f.MinLength.Value {
-				return nil, NewError(SpecMinLengthValid, Pos{}, "length %d of %q < minLength %d", n, norm, f.MinLength.Value)
-			}
-			// spec: cvc-maxLength-valid — XSD 1.1 Part 2 §4.3.3.4 (xmlschema11-2.md#cvc-maxLength-valid)
-			if f.MaxLength != nil && n > f.MaxLength.Value {
-				return nil, NewError(SpecMaxLengthValid, Pos{}, "length %d of %q > maxLength %d", n, norm, f.MaxLength.Value)
-			}
-		}
+	// Stages 4-7: facet checks against the typed value, in spec order. Each
+	// stage is its own helper; the first violation wins.
+	cmp := t.compareFunc()
+	if err := t.checkLengthFacets(f, v, norm); err != nil {
+		return nil, err
+	}
+	if err := t.checkRangeFacets(f, v, norm, cmp, skipRange); err != nil {
+		return nil, err
+	}
+	if err := t.checkEnumeration(f, v, norm, cmp); err != nil {
+		return nil, err
+	}
+	if err := t.checkTimezoneFacet(f, v, norm); err != nil {
+		return nil, err
 	}
 
-	// Stage 5: bounds and digit facets (value space).
-	cmp := t.compareFunc()
+	// Stage 8: assertions — deliberately not evaluated.
+	return v, nil
+}
+
+// checkLengthFacets is stage 4: length/minLength/maxLength in the value's
+// natural unit (skipped when the value kind has no length).
+func (t *SimpleType) checkLengthFacets(f *Facets, v Value, norm string) error {
+	if f.Length == nil && f.MinLength == nil && f.MaxLength == nil {
+		return nil
+	}
+	n, ok := ValueLength(v)
+	if !ok {
+		return nil
+	}
+	// spec: cvc-length-valid — XSD 1.1 Part 2 §4.3.1.4 (xmlschema11-2.md#cvc-length-valid)
+	if f.Length != nil && n != f.Length.Value {
+		return NewError(SpecLengthValid, Pos{}, "length %d of %q != required %d", n, norm, f.Length.Value)
+	}
+	// spec: cvc-minLength-valid — XSD 1.1 Part 2 §4.3.2.4 (xmlschema11-2.md#cvc-minLength-valid)
+	if f.MinLength != nil && n < f.MinLength.Value {
+		return NewError(SpecMinLengthValid, Pos{}, "length %d of %q < minLength %d", n, norm, f.MinLength.Value)
+	}
+	// spec: cvc-maxLength-valid — XSD 1.1 Part 2 §4.3.3.4 (xmlschema11-2.md#cvc-maxLength-valid)
+	if f.MaxLength != nil && n > f.MaxLength.Value {
+		return NewError(SpecMaxLengthValid, Pos{}, "length %d of %q > maxLength %d", n, norm, f.MaxLength.Value)
+	}
+	return nil
+}
+
+// checkRangeFacets is stage 5: inclusive/exclusive bounds and digit facets,
+// compared in the value space. skipRange suppresses the bound checks.
+func (t *SimpleType) checkRangeFacets(f *Facets, v Value, norm string, cmp CompareFunc, skipRange bool) error {
 	check := func(b *Bound, ref SpecRef, want func(Order) bool, what string) error {
 		if b == nil {
 			return nil
@@ -368,66 +396,71 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 	if !skipRange {
 		// spec: cvc-minInclusive-valid — XSD 1.1 Part 2 §4.3.10.4 (xmlschema11-2.md#cvc-minInclusive-valid)
 		if err := check(f.MinInclusive, SpecMinInclusiveValid, func(o Order) bool { return o >= OrderEqual }, "minInclusive"); err != nil {
-			return nil, err
+			return err
 		}
 		// spec: cvc-maxInclusive-valid — XSD 1.1 Part 2 §4.3.7.4 (xmlschema11-2.md#cvc-maxInclusive-valid)
 		if err := check(f.MaxInclusive, SpecMaxInclusiveValid, func(o Order) bool { return o <= OrderEqual }, "maxInclusive"); err != nil {
-			return nil, err
+			return err
 		}
 		// spec: cvc-minExclusive-valid — XSD 1.1 Part 2 §4.3.9.4 (xmlschema11-2.md#cvc-minExclusive-valid)
 		if err := check(f.MinExclusive, SpecMinExclusiveValid, func(o Order) bool { return o > OrderEqual }, "minExclusive"); err != nil {
-			return nil, err
+			return err
 		}
 		// spec: cvc-maxExclusive-valid — XSD 1.1 Part 2 §4.3.8.4 (xmlschema11-2.md#cvc-maxExclusive-valid)
 		if err := check(f.MaxExclusive, SpecMaxExclusiveValid, func(o Order) bool { return o < OrderEqual }, "maxExclusive"); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if f.TotalDigits != nil || f.FractionDigits != nil {
-		if d, ok := v.(DigitCounted); ok {
-			// spec: cvc-totalDigits-valid — XSD 1.1 Part 2 §4.3.11.4 (xmlschema11-2.md#cvc-totalDigits-valid)
-			if f.TotalDigits != nil && d.TotalDigits() > f.TotalDigits.Value {
-				return nil, NewError(SpecTotalDigitsValid, Pos{}, "value %q has %d digits, totalDigits is %d", norm, d.TotalDigits(), f.TotalDigits.Value)
-			}
-			// spec: cvc-fractionDigits-valid — XSD 1.1 Part 2 §4.3.12.4 (xmlschema11-2.md#cvc-fractionDigits-valid)
-			if f.FractionDigits != nil && d.FractionDigits() > f.FractionDigits.Value {
-				return nil, NewError(SpecFractionDigitsValid, Pos{}, "value %q has %d fraction digits, fractionDigits is %d", norm, d.FractionDigits(), f.FractionDigits.Value)
-			}
-		}
+	if f.TotalDigits == nil && f.FractionDigits == nil {
+		return nil
 	}
+	d, ok := v.(DigitCounted)
+	if !ok {
+		return nil
+	}
+	// spec: cvc-totalDigits-valid — XSD 1.1 Part 2 §4.3.11.4 (xmlschema11-2.md#cvc-totalDigits-valid)
+	if f.TotalDigits != nil && d.TotalDigits() > f.TotalDigits.Value {
+		return NewError(SpecTotalDigitsValid, Pos{}, "value %q has %d digits, totalDigits is %d", norm, d.TotalDigits(), f.TotalDigits.Value)
+	}
+	// spec: cvc-fractionDigits-valid — XSD 1.1 Part 2 §4.3.12.4 (xmlschema11-2.md#cvc-fractionDigits-valid)
+	if f.FractionDigits != nil && d.FractionDigits() > f.FractionDigits.Value {
+		return NewError(SpecFractionDigitsValid, Pos{}, "value %q has %d fraction digits, fractionDigits is %d", norm, d.FractionDigits(), f.FractionDigits.Value)
+	}
+	return nil
+}
 
-	// Stage 6: enumeration (value-space membership). Use the type's effective
-	// comparator so a custom value space's own equality is honored, not just
-	// the default value comparison.
-	if f.HasEnumeration() {
-		ok := false
-		for i := range f.Enumeration {
-			if o, c := cmp(v, f.Enumeration[i].Value); c && o == OrderEqual {
-				ok = true
-				break
-			}
-		}
-		if !ok {
-			// spec: cvc-enumeration-valid — XSD 1.1 Part 2 §4.3.5.4 (xmlschema11-2.md#cvc-enumeration-valid)
-			return nil, NewError(SpecEnumerationValid, Pos{}, "value %q not in enumeration of %s", norm, t.describe())
+// checkEnumeration is stage 6: value-space membership. It uses the type's
+// effective comparator so a custom value space's own equality is honored.
+func (t *SimpleType) checkEnumeration(f *Facets, v Value, norm string, cmp CompareFunc) error {
+	if !f.HasEnumeration() {
+		return nil
+	}
+	for i := range f.Enumeration {
+		if o, c := cmp(v, f.Enumeration[i].Value); c && o == OrderEqual {
+			return nil
 		}
 	}
+	// spec: cvc-enumeration-valid — XSD 1.1 Part 2 §4.3.5.4 (xmlschema11-2.md#cvc-enumeration-valid)
+	return NewError(SpecEnumerationValid, Pos{}, "value %q not in enumeration of %s", norm, t.describe())
+}
 
-	// Stage 7: explicitTimezone (XSD 1.1).
-	if f.ExplicitTimezone == ETZRequired || f.ExplicitTimezone == ETZProhibited {
-		if tz, ok := v.(TimezoneAware); ok {
-			// spec: cvc-explicitTimezone-valid — XSD 1.1 Part 2 §4.3.14.4 (xmlschema11-2.md#cvc-explicitTimezone-valid)
-			if f.ExplicitTimezone == ETZRequired && !tz.HasTimezone() {
-				return nil, NewError(SpecExplicitTimezoneValid, Pos{}, "value %q must carry a timezone", norm)
-			}
-			if f.ExplicitTimezone == ETZProhibited && tz.HasTimezone() {
-				return nil, NewError(SpecExplicitTimezoneValid, Pos{}, "value %q must not carry a timezone", norm)
-			}
-		}
+// checkTimezoneFacet is stage 7: explicitTimezone (XSD 1.1).
+func (t *SimpleType) checkTimezoneFacet(f *Facets, v Value, norm string) error {
+	if f.ExplicitTimezone != ETZRequired && f.ExplicitTimezone != ETZProhibited {
+		return nil
 	}
-
-	// Stage 8: assertions — deliberately not evaluated.
-	return v, nil
+	tz, ok := v.(TimezoneAware)
+	if !ok {
+		return nil
+	}
+	// spec: cvc-explicitTimezone-valid — XSD 1.1 Part 2 §4.3.14.4 (xmlschema11-2.md#cvc-explicitTimezone-valid)
+	if f.ExplicitTimezone == ETZRequired && !tz.HasTimezone() {
+		return NewError(SpecExplicitTimezoneValid, Pos{}, "value %q must carry a timezone", norm)
+	}
+	if f.ExplicitTimezone == ETZProhibited && tz.HasTimezone() {
+		return NewError(SpecExplicitTimezoneValid, Pos{}, "value %q must not carry a timezone", norm)
+	}
+	return nil
 }
 
 // patternsMatch reports whether s satisfies every pattern group (each group

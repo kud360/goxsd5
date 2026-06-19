@@ -419,6 +419,62 @@ func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xs
 	if !ok || ec.Particle == nil {
 		return
 	}
+	byName, wildcards, seenElems := collectContentDecls(ec, subMembers)
+
+	// Declarations that co-occur as named particles — directly, through nested
+	// groups, or implicitly through substitution groups — must share both a
+	// top-level type definition and a {type table}.
+	for name, decls := range byName {
+		if len(decls) < 2 {
+			continue
+		}
+		ref := decls[0]
+		for _, d := range decls[1:] {
+			if !sameTopLevelType(ref.Type, d.Type) || !typeTablesEqual(ref, d) {
+				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
+				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s appears more than once in the content model of %s with differing types or type tables", name, describeCT(ct))
+				break
+			}
+		}
+	}
+
+	// A strict/lax wildcard implicitly binds a global element declaration it
+	// matches by name. When that global shares its name with a local element
+	// particle, their {type table}s must be equal: a differing type alone is a
+	// dynamic check that leaves the schema valid (cvc-complex-type.5), but a
+	// differing type table is a static EDC violation (§3.8.6). We only consult
+	// a global that already collides with a present local name, so the wildcard
+	// never widens the comparison beyond an existing local/global pairing.
+	for name, decls := range byName {
+		g := globalsByName[name]
+		if g == nil || seenElems[g] {
+			continue
+		}
+		matched := false
+		for _, w := range wildcards {
+			if w.AllowsName(name) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		for _, d := range decls {
+			if !typeTablesEqual(g, d) {
+				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
+				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s has a type table inconsistent with the global declaration a wildcard binds in the content model of %s", name, describeCT(ct))
+				break
+			}
+		}
+	}
+}
+
+// collectContentDecls walks a complex type's element content and returns, by
+// name, every contained element declaration (directly, through nested model
+// groups, and transitively through substitution groups), the set of those
+// declarations, and the non-skip wildcards encountered.
+func collectContentDecls(ec *xsd.ElementContent, subMembers map[*xsd.ElementDecl][]*xsd.ElementDecl) (map[xsd.QName][]*xsd.ElementDecl, []*xsd.Wildcard, map[*xsd.ElementDecl]bool) {
 	byName := map[xsd.QName][]*xsd.ElementDecl{}
 	seenGroups := map[*xsd.ModelGroup]bool{}
 	seenElems := map[*xsd.ElementDecl]bool{}
@@ -469,54 +525,7 @@ func (b *builder) checkElementConsistent(ct *xsd.ComplexType, subMembers map[*xs
 		}
 	}
 	walk(ec.Particle)
-
-	// Declarations that co-occur as named particles — directly, through nested
-	// groups, or implicitly through substitution groups — must share both a
-	// top-level type definition and a {type table}.
-	for name, decls := range byName {
-		if len(decls) < 2 {
-			continue
-		}
-		ref := decls[0]
-		for _, d := range decls[1:] {
-			if !sameTopLevelType(ref.Type, d.Type) || !typeTablesEqual(ref, d) {
-				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
-				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s appears more than once in the content model of %s with differing types or type tables", name, describeCT(ct))
-				break
-			}
-		}
-	}
-
-	// A strict/lax wildcard implicitly binds a global element declaration it
-	// matches by name. When that global shares its name with a local element
-	// particle, their {type table}s must be equal: a differing type alone is a
-	// dynamic check that leaves the schema valid (cvc-complex-type.5), but a
-	// differing type table is a static EDC violation (§3.8.6). We only consult
-	// a global that already collides with a present local name, so the wildcard
-	// never widens the comparison beyond an existing local/global pairing.
-	for name, decls := range byName {
-		g := globalsByName[name]
-		if g == nil || seenElems[g] {
-			continue
-		}
-		matched := false
-		for _, w := range wildcards {
-			if w.AllowsName(name) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			continue
-		}
-		for _, d := range decls {
-			if !typeTablesEqual(g, d) {
-				// spec: cos-element-consistent — XSD 1.1 Part 1 §3.8.6
-				b.errf(xsd.SpecCosElementConsistent, d.Pos, "element %s has a type table inconsistent with the global declaration a wildcard binds in the content model of %s", name, describeCT(ct))
-				break
-			}
-		}
-	}
+	return byName, wildcards, seenElems
 }
 
 // sameTopLevelType reports whether two element declarations share a type

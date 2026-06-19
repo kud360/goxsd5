@@ -1,40 +1,57 @@
-# goxsd5 lint config (golangci-lint v1). Run: golangci-lint run
-# The mechanical style gate — formatting, imports, and obvious-bug linters.
-# Taste/architecture rules that tools can't check live in CONVENTIONS.md.
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
-    - gofmt        # canonical formatting (Fmt)
-    - goimports    # import grouping + ordering
-    - govet        # suspicious constructs
-    - staticcheck  # the big correctness/simplification linter
-    - unused       # dead code
-    - ineffassign  # ineffectual assignments
-    - errcheck     # unchecked errors
-    - unconvert    # redundant conversions
-    - misspell     # comment/string typos
-    - revive       # style: naming, exported-doc, early-return nudges
-    - gocognit     # cognitive complexity — flags functions that need splitting
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/kud360/goxsd5
-  gocognit:
-    # Cognitive-complexity ceiling per function. 30 is the conventional default;
-    # tune up if the parser/validator's genuinely-complex routines flood it, or
-    # down to ratchet complexity tighter over time.
-    min-complexity: 30
-  revive:
-    rules:
-      - name: early-return        # nudges happy-path-left / avoid-else
-      - name: indent-error-flow
-      - name: exported            # exported symbols want doc comments
-
+    - errcheck
+    - gocognit
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+  settings:
+    gocognit:
+      # Cognitive-complexity ceiling per function. Conventional defaults are 30
+      # (gocognit) / 15 (SonarSource), but this is a spec-driven parser/validator
+      # where rule-tables and dispatch are inherently complex: 15-20 would flag
+      # ~50-105 functions, forcing churn that scatters cohesive algorithms.
+      # 50 isolates the genuinely-unmaintainable outliers (>50) from the long
+      # tail of complex-but-readable routines (~30-50). RATCHET INTENT: lower
+      # this toward 30 as functions are simplified -- like the conformance
+      # baseline, but descending.
+      min-complexity: 50
+    revive:
+      rules:
+        - name: early-return
+        - name: indent-error-flow
+        - name: exported
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - examples$
 issues:
-  # Don't hide repeat offenders — we want every finding while ratcheting quality.
   max-issues-per-linter: 0
   max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/kud360/goxsd5
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - examples$

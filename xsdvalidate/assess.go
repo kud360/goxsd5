@@ -920,10 +920,6 @@ func charContent(el Element) string {
 	return b.String()
 }
 
-func hasContent(el Element) bool {
-	return hasElementChildren(el) || hasNonWhitespace(charContent(el))
-}
-
 func hasNonWhitespace(s string) bool {
 	return strings.TrimSpace(s) != ""
 }

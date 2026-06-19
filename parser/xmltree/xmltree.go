@@ -13,8 +13,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/kud360/goxsd5/xsd"
 	"golang.org/x/net/html/charset"
+
+	"github.com/kud360/goxsd5/xsd"
 )
 
 // Node is one element in the document tree.
@@ -171,7 +172,7 @@ func ParseLimit(r io.Reader, uri string, maxBytes int64) (*Node, error) {
 	// The transcoder preserves a byte order mark as U+FEFF, which
 	// encoding/xml would report as character data before the root element.
 	if bom, _ := br.Peek(3); bytes.Equal(bom, []byte("\uFEFF")) {
-		br.Discard(3)
+		_, _ = br.Discard(3)
 	}
 	// Buffer only the prolog so its internal DTD subset can be scanned for
 	// general entity declarations before the decoder reaches the body; the rest
@@ -677,11 +678,7 @@ func (p *treeParser) pos(offset int64) xsd.Pos {
 }
 
 func (p *treeParser) parse(d *xml.Decoder) (*Node, error) {
-	var root *Node
-	var stack []*Node
-	var ns *NSContext
-	var text []*strings.Builder // parallel to stack
-
+	b := &docBuilder{p: p}
 	for {
 		start := d.InputOffset()
 		tok, err := d.Token()
@@ -693,86 +690,121 @@ func (p *treeParser) parse(d *xml.Decoder) (*Node, error) {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			if root != nil && len(stack) == 0 {
-				return nil, fmt.Errorf("%s: multiple root elements", p.uri)
+			if err := b.startElement(t, start); err != nil {
+				return nil, err
 			}
-			node := &Node{Pos: p.pos(start)}
-			// Split namespace declarations from real attributes.
-			var bindings map[string]string
-			for _, a := range t.Attr {
-				switch {
-				case a.Name.Space == "xmlns":
-					if bindings == nil {
-						bindings = map[string]string{}
-					}
-					bindings[a.Name.Local] = a.Value
-				case a.Name.Space == "" && a.Name.Local == "xmlns":
-					if bindings == nil {
-						bindings = map[string]string{}
-					}
-					bindings[""] = a.Value
-				default:
-					node.Attrs = append(node.Attrs, Attr{Name: a.Name, Value: a.Value, Pos: node.Pos})
-				}
-			}
-			if bindings != nil {
-				ns = &NSContext{parent: ns, bindings: bindings}
-			}
-			node.NS = ns
-			node.Name = t.Name
-			// encoding/xml leaves Name.Space as the raw prefix when the
-			// prefix is unbound; detect that as a namespace error.
-			if err := checkBound(ns, t.Name); err != nil {
-				return nil, fmt.Errorf("%s: %w", p.uri, err)
-			}
-			for _, a := range node.Attrs {
-				if err := checkBound(ns, a.Name); err != nil {
-					return nil, fmt.Errorf("%s: %w", p.uri, err)
-				}
-			}
-			if len(stack) == 0 {
-				root = node
-			} else {
-				parent := stack[len(stack)-1]
-				parent.Children = append(parent.Children, node)
-			}
-			stack = append(stack, node)
-			text = append(text, &strings.Builder{})
-
 		case xml.EndElement:
-			if len(stack) == 0 {
-				return nil, fmt.Errorf("%s: unexpected end element", p.uri)
+			if err := b.endElement(d.InputOffset()); err != nil {
+				return nil, err
 			}
-			node := stack[len(stack)-1]
-			node.CharData = text[len(text)-1].String()
-			node.EndPos = p.pos(d.InputOffset())
-			stack = stack[:len(stack)-1]
-			text = text[:len(text)-1]
-			if node.NS != nil && len(stack) > 0 {
-				ns = stack[len(stack)-1].NS
-			} else if len(stack) == 0 {
-				ns = nil
-			}
-
 		case xml.CharData:
-			if len(stack) > 0 {
-				text[len(text)-1].Write(t)
-			} else if len(bytes.TrimSpace(t)) > 0 {
-				return nil, fmt.Errorf("%s: character data outside root element", p.uri)
+			if err := b.charData(t); err != nil {
+				return nil, err
 			}
-
 		case xml.Comment, xml.ProcInst, xml.Directive:
 			// Ignored: not part of the schema infoset we consume.
 		}
 	}
-	if len(stack) != 0 {
-		return nil, fmt.Errorf("%s: unexpected EOF: unclosed element <%s>", p.uri, stack[len(stack)-1].Name.Local)
+	return b.finish()
+}
+
+// docBuilder accumulates the node tree across decoder tokens. text is parallel
+// to stack: text[i] collects the character data of stack[i].
+type docBuilder struct {
+	p     *treeParser
+	root  *Node
+	stack []*Node
+	ns    *NSContext
+	text  []*strings.Builder
+}
+
+func (b *docBuilder) startElement(t xml.StartElement, start int64) error {
+	p := b.p
+	if b.root != nil && len(b.stack) == 0 {
+		return fmt.Errorf("%s: multiple root elements", p.uri)
 	}
-	if root == nil {
-		return nil, fmt.Errorf("%s: no root element", p.uri)
+	node := &Node{Pos: p.pos(start)}
+	// Split namespace declarations from real attributes.
+	var bindings map[string]string
+	for _, a := range t.Attr {
+		switch {
+		case a.Name.Space == "xmlns":
+			if bindings == nil {
+				bindings = map[string]string{}
+			}
+			bindings[a.Name.Local] = a.Value
+		case a.Name.Space == "" && a.Name.Local == "xmlns":
+			if bindings == nil {
+				bindings = map[string]string{}
+			}
+			bindings[""] = a.Value
+		default:
+			node.Attrs = append(node.Attrs, Attr{Name: a.Name, Value: a.Value, Pos: node.Pos})
+		}
 	}
-	root.UnparsedEntities = p.unparsed
-	return root, nil
+	if bindings != nil {
+		b.ns = &NSContext{parent: b.ns, bindings: bindings}
+	}
+	node.NS = b.ns
+	node.Name = t.Name
+	// encoding/xml leaves Name.Space as the raw prefix when the prefix is
+	// unbound; detect that as a namespace error.
+	if err := checkBound(b.ns, t.Name); err != nil {
+		return fmt.Errorf("%s: %w", p.uri, err)
+	}
+	for _, a := range node.Attrs {
+		if err := checkBound(b.ns, a.Name); err != nil {
+			return fmt.Errorf("%s: %w", p.uri, err)
+		}
+	}
+	if len(b.stack) == 0 {
+		b.root = node
+	} else {
+		parent := b.stack[len(b.stack)-1]
+		parent.Children = append(parent.Children, node)
+	}
+	b.stack = append(b.stack, node)
+	b.text = append(b.text, &strings.Builder{})
+	return nil
+}
+
+func (b *docBuilder) endElement(off int64) error {
+	if len(b.stack) == 0 {
+		return fmt.Errorf("%s: unexpected end element", b.p.uri)
+	}
+	node := b.stack[len(b.stack)-1]
+	node.CharData = b.text[len(b.text)-1].String()
+	node.EndPos = b.p.pos(off)
+	b.stack = b.stack[:len(b.stack)-1]
+	b.text = b.text[:len(b.text)-1]
+	if node.NS != nil && len(b.stack) > 0 {
+		b.ns = b.stack[len(b.stack)-1].NS
+	} else if len(b.stack) == 0 {
+		b.ns = nil
+	}
+	return nil
+}
+
+func (b *docBuilder) charData(t xml.CharData) error {
+	if len(b.stack) > 0 {
+		b.text[len(b.text)-1].Write(t)
+		return nil
+	}
+	if len(bytes.TrimSpace(t)) > 0 {
+		return fmt.Errorf("%s: character data outside root element", b.p.uri)
+	}
+	return nil
+}
+
+func (b *docBuilder) finish() (*Node, error) {
+	if len(b.stack) != 0 {
+		return nil, fmt.Errorf("%s: unexpected EOF: unclosed element <%s>", b.p.uri, b.stack[len(b.stack)-1].Name.Local)
+	}
+	if b.root == nil {
+		return nil, fmt.Errorf("%s: no root element", b.p.uri)
+	}
+	b.root.UnparsedEntities = b.p.unparsed
+	return b.root, nil
 }
 
 // checkBound detects names whose Space is a raw, unbound prefix rather than

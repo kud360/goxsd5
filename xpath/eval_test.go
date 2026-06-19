@@ -119,14 +119,14 @@ func TestEvalSubtree(t *testing.T) {
 		want bool
 		ok   bool
 	}{
-		{"count(.//@attr1) eq 1", true, true},  // descendant attribute reached
-		{"count(.//ele1) eq 1", true, true},    // descendant element reached
-		{"count(//ele1) eq 1", false, true},    // absolute // is empty → 0
-		{"count(//ele1) eq 0", true, true},     // ... so eq 0 holds
-		{"count(//@attr1) eq 1", false, true},  // absolute //@ is empty → 0
-		{"//ele1", false, true},                // absolute path → empty → false
-		{"exists(.//ele1)", true, true},        // relative descendant exists
-		{"count(.//*) eq 2", true, true},       // subElement2 + ele1
+		{"count(.//@attr1) eq 1", true, true}, // descendant attribute reached
+		{"count(.//ele1) eq 1", true, true},   // descendant element reached
+		{"count(//ele1) eq 1", false, true},   // absolute // is empty → 0
+		{"count(//ele1) eq 0", true, true},    // ... so eq 0 holds
+		{"count(//@attr1) eq 1", false, true}, // absolute //@ is empty → 0
+		{"//ele1", false, true},               // absolute path → empty → false
+		{"exists(.//ele1)", true, true},       // relative descendant exists
+		{"count(.//*) eq 2", true, true},      // subElement2 + ele1
 	}
 	for _, c := range cases {
 		got, ok := EvalBool(c.expr, root, ec)
@@ -151,14 +151,14 @@ func TestEvalSeqUnion(t *testing.T) {
 		want bool
 		ok   bool
 	}{
-		{"5 = (1 to 10, 20, 30)", true, true},   // range + sequence, existential =
-		{"15 = (1 to 10, 20, 30)", false, true}, // not in the set
-		{"20 = (1 to 10, 20, 30)", true, true},  // explicit member
-		{"count(@time | @iterations) = 2", true, true},     // attribute union
-		{"count(@time | @missing) = 1", true, true},        // union with empty side
-		{"@time = ('1', '9', '7')", true, true},            // string sequence membership
-		{"'z' = ('x', 'y')", false, true},                  // not a member
-		{"count(a | b) = 2", true, true},                   // element union
+		{"5 = (1 to 10, 20, 30)", true, true},          // range + sequence, existential =
+		{"15 = (1 to 10, 20, 30)", false, true},        // not in the set
+		{"20 = (1 to 10, 20, 30)", true, true},         // explicit member
+		{"count(@time | @iterations) = 2", true, true}, // attribute union
+		{"count(@time | @missing) = 1", true, true},    // union with empty side
+		{"@time = ('1', '9', '7')", true, true},        // string sequence membership
+		{"'z' = ('x', 'y')", false, true},              // not a member
+		{"count(a | b) = 2", true, true},               // element union
 	}
 	for _, c := range cases {
 		got, ok := EvalBool(c.expr, root, ec)
@@ -181,13 +181,13 @@ func TestEvalVars(t *testing.T) {
 		want bool
 		ok   bool
 	}{
-		{"$value mod 2 = 0", true, true},          // even
-		{"$value = 4", true, true},                // numeric compare
-		{"ends-with($value, '4')", true, true},    // string function on $value
+		{"$value mod 2 = 0", true, true},       // even
+		{"$value = 4", true, true},             // numeric compare
+		{"ends-with($value, '4')", true, true}, // string function on $value
 		{"$value castable as xs:integer", true, true},
-		{"count($list) = 3", true, true},          // multi-item variable
-		{"$list = 'b'", true, true},               // existential over sequence
-		{"$missing > 1", false, false},            // unbound → fail open
+		{"count($list) = 3", true, true}, // multi-item variable
+		{"$list = 'b'", true, true},      // existential over sequence
+		{"$missing > 1", false, false},   // unbound → fail open
 		// current-date() as an ISO string compares chronologically; these hold
 		// for any plausible run date.
 		{"current-date() gt '1900-01-01'", true, true},
@@ -213,7 +213,7 @@ func castDate(typ, val string) bool {
 			if i == 4 || i == 7 {
 				continue
 			}
-			if !(c >= '0' && c <= '9') && c != '+' && c != ':' && c != 'Z' {
+			if (c < '0' || c > '9') && c != '+' && c != ':' && c != 'Z' {
 				return false
 			}
 		}
@@ -309,8 +309,8 @@ func TestEvalAxes(t *testing.T) {
 		{"count(white/..) = 1", true, true},                       // parent of all whites is the one game
 		{"every $w in white satisfies $w/.. = $w/parent::game", true, true},
 		{"result/parent::game/result = 'draw'", true, true},
-		{"count(result/preceding::white) = 3", true, true},     // preceding axis
-		{"count(white[1]/following::*) = 4", true, true},        // following axis from first white
+		{"count(result/preceding::white) = 3", true, true},             // preceding axis
+		{"count(white[1]/following::*) = 4", true, true},               // following axis from first white
 		{"(for $w in white return string-length($w)) = 2", true, true}, // for + string-length
 		{"some $w in white satisfies $w/ancestor::game", true, true},   // ancestor axis
 	}

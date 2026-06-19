@@ -135,12 +135,14 @@ func TestInstanceConformance(t *testing.T) {
 // error, then yields the group's applicable instance tests bound to that schema.
 func collectInstanceCases(t *testing.T) []instanceCase {
 	var setFiles []string
-	filepath.WalkDir(suiteRoot, func(p string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(suiteRoot, func(p string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".testSet") {
 			setFiles = append(setFiles, p)
 		}
 		return nil
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	sort.Strings(setFiles)
 
 	var cases []instanceCase

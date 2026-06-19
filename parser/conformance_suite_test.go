@@ -165,12 +165,14 @@ func capList(s []string, n int) []string {
 // apply to XSD 1.1 with a determinate (valid/invalid) expectation.
 func collectSuiteCases(t *testing.T) []suiteCase {
 	var setFiles []string
-	filepath.WalkDir(suiteRoot, func(p string, d fs.DirEntry, err error) error {
+	if err := filepath.WalkDir(suiteRoot, func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".testSet") {
 			setFiles = append(setFiles, p)
 		}
 		return nil
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	sort.Strings(setFiles)
 
 	var cases []suiteCase
@@ -218,7 +220,7 @@ func runSuiteCase(c suiteCase) (loaded, ok bool) {
 			return false, false
 		}
 	}
-	finish(l, errs)
+	_, _ = finish(l, errs)
 	gotValid := errs.Empty()
 	return true, gotValid == c.wantValid
 }

@@ -288,6 +288,35 @@ func (b *builder) slotRun(rep *rreport, ct *xsd.ComplexType, slots []*baseSlot, 
 // element landing in a named region obeys NameAndTypeOK. Both count bounds are
 // exact witnesses, so no valid restriction is rejected.
 func (b *builder) regionRun(rep *rreport, ct *xsd.ComplexType, regions []baseRegion, bParts, rParts []*xsd.Particle, rTop *xsd.Particle) {
+	rps, ok := buildRestrictParts(rParts, rTop)
+	if !ok {
+		return
+	}
+	reps := collectReps(bParts, rParts)
+
+	// (1) NSCompat.
+	checkNSCompat(rep, ct, regions, rps, reps)
+
+	// The per-region count and type checks below are sound only when the regions
+	// are pairwise disjoint: then every instance element matches exactly one base
+	// particle. When a base wildcard overlaps the element it sits beside (legal in
+	// an xs:all) an element can be absorbed by either, and the real test is a flow
+	// problem we give up on rather than risk a false positive.
+	if !regionsDisjoint(regions, reps) {
+		return
+	}
+
+	// (2) cardinality.
+	checkRegionCardinality(rep, ct, regions, rps, reps, rTop)
+
+	// (3) NameAndTypeOK for named restriction elements landing in a named region.
+	b.checkRegionNameType(rep, ct, regions, rps)
+}
+
+// buildRestrictParts expands the restriction's particles into restrictParts
+// with effective occurrences. ok is false when a wildcard carries a restriction
+// sentinel, which would make the derived witnesses unsound.
+func buildRestrictParts(rParts []*xsd.Particle, rTop *xsd.Particle) ([]restrictPart, bool) {
 	rps := make([]restrictPart, 0, len(rParts))
 	for _, rp := range rParts {
 		e := restrictPart{
@@ -302,16 +331,18 @@ func (b *builder) regionRun(rep *rreport, ct *xsd.ComplexType, regions []baseReg
 			e.accepts = func(q xsd.QName) bool { return q == qn }
 		case *xsd.Wildcard:
 			if wildcardHasSentinel(term) {
-				return // a restriction sentinel would make our witnesses unsound
+				return nil, false // a restriction sentinel would make our witnesses unsound
 			}
 			e.accepts = term.AllowsName
 		}
 		rps = append(rps, e)
 	}
+	return rps, true
+}
 
-	reps := collectReps(bParts, rParts)
-
-	// (1) NSCompat.
+// checkNSCompat reports a restriction element that the base content model does
+// not allow at all.
+func checkNSCompat(rep *rreport, ct *xsd.ComplexType, regions []baseRegion, rps []restrictPart, reps []xsd.QName) {
 	for _, e := range rps {
 		if e.rmax == 0 {
 			continue
@@ -323,17 +354,12 @@ func (b *builder) regionRun(rep *rreport, ct *xsd.ComplexType, regions []baseReg
 			}
 		}
 	}
+}
 
-	// The per-region count and type checks below are sound only when the regions
-	// are pairwise disjoint: then every instance element matches exactly one base
-	// particle. When a base wildcard overlaps the element it sits beside (legal in
-	// an xs:all) an element can be absorbed by either, and the real test is a flow
-	// problem we give up on rather than risk a false positive.
-	if !regionsDisjoint(regions, reps) {
-		return
-	}
-
-	// (2) cardinality.
+// checkRegionCardinality verifies, per disjoint base region, that the
+// restriction can match neither fewer times than the base requires nor more
+// than it permits.
+func checkRegionCardinality(rep *rreport, ct *xsd.ComplexType, regions []baseRegion, rps []restrictPart, reps []xsd.QName, rTop *xsd.Particle) {
 	for i := range regions {
 		reg := &regions[i]
 		minB, maxB := 0, 0
@@ -364,8 +390,11 @@ func (b *builder) regionRun(rep *rreport, ct *xsd.ComplexType, regions []baseReg
 			rep.errf(xsd.SpecCosParticleRestrict, rTop.Pos, "the restriction of %s allows %s more times than the base permits", describeCT(ct), reg.name)
 		}
 	}
+}
 
-	// (3) NameAndTypeOK for named restriction elements landing in a named region.
+// checkRegionNameType runs NameAndTypeOK for each named restriction element
+// landing in the matching named base region.
+func (b *builder) checkRegionNameType(rep *rreport, ct *xsd.ComplexType, regions []baseRegion, rps []restrictPart) {
 	for _, e := range rps {
 		if e.decl == nil {
 			continue
