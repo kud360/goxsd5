@@ -12,27 +12,6 @@ var decimalSeeds = []string{
 	"", " ", "1e3", "NaN", "1.2.3", "--1", "1-", "abc", "+-1", ".",
 }
 
-var durationSeeds = []string{
-	"P1Y", "P1M", "P1D", "PT1H", "PT1M", "PT1S", "P1Y2M3DT4H5M6S",
-	"-P1Y", "P0Y", "PT0.5S", "P1YT1S", "P10675199DT2H48M5.4775807S",
-	"", "P", "PT", "1Y", "P1S", "PT1Y", "P-1Y", "PYM",
-}
-
-var dateTimeSeeds = []string{
-	"2001-10-26T21:32:52", "2001-10-26T21:32:52+02:00", "2001-10-26T21:32:52Z",
-	"2001-10-26", "21:32:52", "2001-10", "2001", "--10-26", "---26", "--10",
-	"-0001-01-01T00:00:00", "9999-12-31T23:59:59.999999999",
-	"24:00:00", "0000-01-01", "2001-13-01", "2001-02-30",
-	"", "T", "Z", "2001-10-26T", "2001-10-26T25:00:00", "not-a-date",
-}
-
-func allKinds() []DateTimeKind {
-	return []DateTimeKind{
-		KindDateTime, KindDate, KindTime, KindGYearMonth,
-		KindGYear, KindGMonthDay, KindGDay, KindGMonth,
-	}
-}
-
 // FuzzParseDecimal asserts the lexical→value mapping never panics and that any
 // value it produces is internally consistent: equal to itself, round-trips
 // through its canonical String(), and reports non-negative digit counts.
@@ -62,49 +41,6 @@ func FuzzParseDecimal(f *testing.F) {
 		}
 		if got := d.Cmp(d2); got != xsd.OrderEqual {
 			t.Fatalf("ParseDecimal(%q) round-trip via %q not equal: %v", s, canon, got)
-		}
-	})
-}
-
-// FuzzParseDuration asserts no panic and reflexive comparability of any value.
-func FuzzParseDuration(f *testing.F) {
-	for _, s := range durationSeeds {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		d, err := ParseDuration(s)
-		if err != nil {
-			return
-		}
-		if d == nil {
-			t.Fatalf("ParseDuration(%q) returned nil value, nil error", s)
-		}
-		if o, ok := d.Compare(d); !ok || o != xsd.OrderEqual {
-			t.Fatalf("ParseDuration(%q): d.Compare(d) = (%v,%v), want (OrderEqual,true)", s, o, ok)
-		}
-	})
-}
-
-// FuzzParseDateTime drives all seven date/time primitives. Each parsed value
-// must compare equal to itself.
-func FuzzParseDateTime(f *testing.F) {
-	for _, s := range dateTimeSeeds {
-		for _, k := range allKinds() {
-			f.Add(int(k), s)
-		}
-	}
-	f.Fuzz(func(t *testing.T, kindIdx int, s string) {
-		kinds := allKinds()
-		kind := kinds[((kindIdx%len(kinds))+len(kinds))%len(kinds)]
-		dt, err := parseByKind(kind, s)
-		if err != nil {
-			return
-		}
-		if dt == nil {
-			t.Fatalf("ParseDateTime(%v,%q) returned nil value, nil error", kind, s)
-		}
-		if o, ok := dt.Compare(dt); !ok || o != xsd.OrderEqual {
-			t.Fatalf("ParseDateTime(%v,%q): self-compare = (%v,%v), want (OrderEqual,true)", kind, s, o, ok)
 		}
 	})
 }

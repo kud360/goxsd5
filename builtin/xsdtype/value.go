@@ -103,11 +103,13 @@ func CompareValues(a, b xsd.Value) (xsd.Order, bool) {
 		}
 	case *DateTime:
 		if bv, ok := b.(*DateTime); ok {
-			return av.Compare(bv)
+			o, c := av.Compare(bv)
+			return xsd.Order(o), c
 		}
 	case *Duration:
 		if bv, ok := b.(*Duration); ok {
-			return av.Compare(bv)
+			o, c := av.Compare(bv)
+			return xsd.Order(o), c
 		}
 	case xsd.ListValue:
 		if bv, ok := b.(xsd.ListValue); ok {

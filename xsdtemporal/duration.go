@@ -1,11 +1,9 @@
-package xsdtype
+package xsdtemporal
 
 import (
 	"fmt"
 	"math/big"
 	"strings"
-
-	"github.com/kud360/goxsd5/xsd"
 )
 
 // Duration is the value space of xs:duration: a months part and an exact
@@ -134,19 +132,19 @@ var durationRefs = []*DateTime{
 
 // Compare implements the duration partial order: d < o iff ref+d < ref+o
 // for all four reference dateTimes.
-func (d *Duration) Compare(o *Duration) (xsd.Order, bool) {
+func (d *Duration) Compare(o *Duration) (Order, bool) {
 	if d.Months == o.Months {
-		return xsd.Order(d.Seconds.Cmp(o.Seconds)), true
+		return Order(d.Seconds.Cmp(o.Seconds)), true
 	}
 	if d.Seconds.Cmp(o.Seconds) == 0 {
 		switch {
 		case d.Months < o.Months:
-			return xsd.OrderLess, true
+			return OrderLess, true
 		default:
-			return xsd.OrderGreater, true
+			return OrderGreater, true
 		}
 	}
-	var first xsd.Order
+	var first Order
 	for i, ref := range durationRefs {
 		a := ref.AddDuration(d)
 		b := ref.AddDuration(o)
@@ -162,7 +160,7 @@ func (d *Duration) Compare(o *Duration) (xsd.Order, bool) {
 			return 0, false
 		}
 	}
-	if first == xsd.OrderEqual {
+	if first == OrderEqual {
 		return 0, false // equal under all refs but different components: incomparable
 	}
 	return first, true

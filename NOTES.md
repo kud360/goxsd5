@@ -7,6 +7,37 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-17 — new leaf pkg xsdtemporal: one home for date/time/duration parsing — 5672/21429 held <<<
+The date/time + duration value space and its lexical parsers were duplicated in
+spirit across two places: xsdtype/datetime.go+duration.go (rigorous, the value
+layer) and xpath/eval.go (a sloppy parseISODate/parseISOTime/stripTimezone that
+fed fn:*-from-* and "failed open"). Unified into ONE pure leaf package
+`xsdtemporal` (stdlib-only imports) that both reach into.
+ - xsdtemporal owns: DateTime (7-property model) + DateTimeKind, Duration, ALL
+   calendar math (daysInMonth/isLeap/dayNumber/civilFromDays/AddDuration),
+   timeline + the two partial-order Compares, and every lexical parser
+   (ParseDateTime/Date/Time/GYear/GYearMonth/GMonth/GDay/GMonthDay → (*DateTime,
+   error); ParseDuration). It can't import xsd, so it defines its OWN
+   `Order` (int, -1/0/1 mirroring xsd.Order); Compare returns it. HasTimezone()
+   stays a method — *DateTime satisfies xsd.TimezoneAware structurally.
+ - builtin/xsdtype is now a THIN adapter (temporal.go): type aliases
+   (DateTime/Duration/DateTimeKind = xsdtemporal.X + Kind* const re-exports),
+   ParseDuration passthrough, and the eight ParseX(s, xsd.ValueContext)
+   (xsd.Value, error) wrappers that lift *DateTime via liftDT (guards the
+   typed-nil-in-interface trap on error). value.go CompareValues converts the
+   leaf Order with xsd.Order(o). builtin.go UNCHANGED (still calls
+   xsdtype.ParseDateTime etc).
+ - xpath/eval.go dateComponent now calls xsdtemporal.ParseDate/Time/DateTime
+   (rigorous, shares the value layer's reader) and reads dt.Year/.Month/... ;
+   seconds via dt.Second.Float64(). Deleted parseISODate/parseISOTime/
+   stripTimezone. xpath gains ONE internal import (a pure leaf), so it stays
+   "depends only on a leaf". Strictly more correct: same components on valid
+   input, still fails open on parse error.
+ - Temporal tests moved with the code: xsdtemporal/temporal_test.go (parse,
+   compare, day-pinning, FuzzParseDuration/DateTime, using local Order);
+   xsdtype keeps only decimal/CompareValues tests. git mv preserved history on
+   datetime.go/duration.go. Full suite green; ratchets held 5672 / 21429.
+
 ## >>> DONE 2026-06-15 — architecture review refactors (2 of 2) — 5672/21429 held <<<
 Post-conformance structural cleanups from an architecture review (no behaviour
 change; both pinned by the ratchets).

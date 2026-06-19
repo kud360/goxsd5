@@ -32,6 +32,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kud360/goxsd5/xsdtemporal"
 )
 
 // Name is an expanded (namespace-qualified) name in the instance tree. Its
@@ -232,7 +234,7 @@ type typeOp struct {
 	kind string // "castable" or "instance"
 	typ  string
 }
-type seqExpr struct{ items []exprNode } // (e1, e2, ...) sequence construction
+type seqExpr struct{ items []exprNode }  // (e1, e2, ...) sequence construction
 type rangeExpr struct{ lo, hi exprNode } // e1 to e2
 type varRef struct{ name string }        // $name variable reference
 
@@ -1457,104 +1459,46 @@ func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // dateComponent extracts the calendar component named by an fn:*-from-*
 // function (year/month/day-from-date·DateTime, hours/minutes/seconds-from-time·
-// DateTime) from an ISO date/dateTime/time lexical. ok is false when the lexical
-// cannot be parsed, so the caller fails open.
+// DateTime) from an ISO date/dateTime/time lexical. The lexical comes from an
+// already-validated date/time value, so it is parsed by the rigorous
+// xsdtemporal reader shared with the value layer; ok is false when parsing
+// fails, so the caller fails open.
 func dateComponent(fn, lex string) (float64, bool) {
 	lex = strings.TrimSpace(lex)
-	var datePart, timePart string
+	var (
+		dt  *xsdtemporal.DateTime
+		err error
+	)
 	switch {
 	case strings.Contains(fn, "from-dateTime"):
-		i := strings.IndexByte(lex, 'T')
-		if i < 0 {
-			return 0, false
-		}
-		datePart, timePart = lex[:i], lex[i+1:]
+		dt, err = xsdtemporal.ParseDateTime(lex)
 	case strings.Contains(fn, "from-time"):
-		timePart = lex
+		dt, err = xsdtemporal.ParseTime(lex)
 	default: // *-from-date
-		datePart = lex
+		dt, err = xsdtemporal.ParseDate(lex)
 	}
-	field := fn[:strings.IndexByte(fn, '-')]
-	switch field {
-	case "year", "month", "day":
-		y, m, d, ok := parseISODate(datePart)
-		if !ok {
-			return 0, false
+	if err != nil {
+		return 0, false
+	}
+	switch fn[:strings.IndexByte(fn, '-')] {
+	case "year":
+		return float64(dt.Year), true
+	case "month":
+		return float64(dt.Month), true
+	case "day":
+		return float64(dt.Day), true
+	case "hours":
+		return float64(dt.Hour), true
+	case "minutes":
+		return float64(dt.Minute), true
+	case "seconds":
+		if dt.Second == nil {
+			return 0, true
 		}
-		switch field {
-		case "year":
-			return float64(y), true
-		case "month":
-			return float64(m), true
-		default:
-			return float64(d), true
-		}
-	case "hours", "minutes", "seconds":
-		hh, mm, ss, ok := parseISOTime(timePart)
-		if !ok {
-			return 0, false
-		}
-		switch field {
-		case "hours":
-			return float64(hh), true
-		case "minutes":
-			return float64(mm), true
-		default:
-			return ss, true
-		}
+		ss, _ := dt.Second.Float64()
+		return ss, true
 	}
 	return 0, false
-}
-
-// stripTimezone removes a trailing "Z" or "[+-]hh:mm" timezone from an ISO
-// date/time lexical.
-func stripTimezone(s string) string {
-	if strings.HasSuffix(s, "Z") {
-		return s[:len(s)-1]
-	}
-	if n := len(s); n >= 6 {
-		if c := s[n-6]; (c == '+' || c == '-') && s[n-3] == ':' {
-			return s[:n-6]
-		}
-	}
-	return s
-}
-
-// parseISODate reads a "[-]YYYY-MM-DD" date (with optional timezone).
-func parseISODate(s string) (y, m, d int, ok bool) {
-	neg := strings.HasPrefix(s, "-")
-	if neg {
-		s = s[1:]
-	}
-	parts := strings.Split(stripTimezone(s), "-")
-	if len(parts) != 3 {
-		return 0, 0, 0, false
-	}
-	y, e1 := strconv.Atoi(parts[0])
-	m, e2 := strconv.Atoi(parts[1])
-	d, e3 := strconv.Atoi(parts[2])
-	if e1 != nil || e2 != nil || e3 != nil {
-		return 0, 0, 0, false
-	}
-	if neg {
-		y = -y
-	}
-	return y, m, d, true
-}
-
-// parseISOTime reads an "hh:mm:ss[.frac]" time (with optional timezone).
-func parseISOTime(s string) (hh, mm int, ss float64, ok bool) {
-	parts := strings.Split(stripTimezone(s), ":")
-	if len(parts) != 3 {
-		return 0, 0, 0, false
-	}
-	hh, e1 := strconv.Atoi(parts[0])
-	mm, e2 := strconv.Atoi(parts[1])
-	ss, e3 := strconv.ParseFloat(parts[2], 64)
-	if e1 != nil || e2 != nil || e3 != nil {
-		return 0, 0, 0, false
-	}
-	return hh, mm, ss, true
 }
 
 func localPart(qname string) string {

@@ -1,12 +1,34 @@
-package xsdtype
+// Package xsdtemporal is the pure value space of the XSD date/time and
+// duration datatypes: the seven-property date/time model and the two-part
+// duration model of XML Schema Part 2 §3.3.6–7, their lexical→value parsers,
+// the proleptic-Gregorian calendar arithmetic, and the partial orders. It is
+// a leaf — it imports only the standard library — so both the builtin value
+// layer (builtin/xsdtype, which adapts these into xsd.Value) and the XPath
+// evaluator (which reads calendar components for fn:*-from-* functions) can
+// reach into it without dragging in the schema model.
+package xsdtemporal
 
 import (
 	"fmt"
 	"math/big"
 	"strings"
-
-	"github.com/kud360/goxsd5/xsd"
 )
+
+// Order is the result of comparing two temporal values: -1, 0, +1, matching
+// the sign convention of math/big's Cmp. The date/time and duration value
+// spaces are only partially ordered, so comparisons return a bool alongside
+// it reporting whether the pair is comparable at all. The constants mirror
+// xsd.Order, into which the builtin layer converts these.
+type Order int
+
+const (
+	OrderLess    Order = -1
+	OrderEqual   Order = 0
+	OrderGreater Order = 1
+)
+
+// bigTen is the base used when accumulating fractional-second digits.
+var bigTen = big.NewInt(10)
 
 // DateTimeKind says which of the seven date/time primitives a DateTime
 // value belongs to (which properties are present).
@@ -40,8 +62,10 @@ type DateTime struct {
 	TZ    int // offset in minutes, range ±840
 }
 
-// HasTimezone implements xsd.TimezoneAware: it reports whether this value
-// carries a timezone offset (drives the explicitTimezone facet).
+// HasTimezone reports whether this value carries a timezone offset. The
+// builtin layer relies on it to satisfy xsd.TimezoneAware (which drives the
+// explicitTimezone facet); the method is structural, so this package needs no
+// knowledge of that interface.
 func (dt *DateTime) HasTimezone() bool { return dt.HasTZ }
 
 func (dt *DateTime) sec() *big.Rat {
@@ -131,16 +155,16 @@ func (dt *DateTime) timeline(tzShift int) *big.Rat {
 // (Part 2 §3.3.7.2): values with timezones compare on the timeline; a
 // timezoned and an untimezoned value compare only if the order is the same
 // with the untimezoned one shifted to both +14:00 and -14:00.
-func (dt *DateTime) Compare(o *DateTime) (xsd.Order, bool) {
+func (dt *DateTime) Compare(o *DateTime) (Order, bool) {
 	if dt.Kind != o.Kind {
 		return 0, false
 	}
 	if dt.HasTZ == o.HasTZ {
-		return xsd.Order(dt.timeline(0).Cmp(o.timeline(0))), true
+		return Order(dt.timeline(0).Cmp(o.timeline(0))), true
 	}
-	lo := xsd.Order(dt.timeline(-840).Cmp(o.timeline(-840)))
-	hi := xsd.Order(dt.timeline(840).Cmp(o.timeline(840)))
-	if lo == hi && lo != xsd.OrderEqual {
+	lo := Order(dt.timeline(-840).Cmp(o.timeline(-840)))
+	hi := Order(dt.timeline(840).Cmp(o.timeline(840)))
+	if lo == hi && lo != OrderEqual {
 		return lo, true
 	}
 	return 0, false
@@ -316,15 +340,16 @@ func newTemporal(kind DateTimeKind, s string) (dt *DateTime, body string, err er
 
 // Each of the eight primitives is parsed by its own function — the lexical
 // grammars genuinely differ, so there is no runtime dispatch on the production
-// path: a caller registering xsd:date calls ParseDate directly (see
-// builtin.go). The doc comment of each gives its Part 2 ·…LexicalRep·.
+// path: a caller registering xsd:date calls ParseDate directly (the builtin
+// layer wraps these into xsd.ParseFunc). The doc comment of each gives its
+// Part 2 ·…LexicalRep·.
 
 // ParseDateTime parses xsd:dateTime (§3.3.7):
 //
 //	dateTimeLexicalRep ::= yearFrag '-' monthFrag '-' dayFrag 'T'
 //	                       ((hourFrag ':' minuteFrag ':' secondFrag) | endOfDayFrag)
 //	                       timezoneFrag?
-func ParseDateTime(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseDateTime(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindDateTime, s)
 	if err != nil {
 		return nil, err
@@ -349,7 +374,7 @@ func ParseDateTime(s string, _ xsd.ValueContext) (xsd.Value, error) {
 // ParseDate parses xsd:date (§3.3.9):
 //
 //	dateLexicalRep ::= yearFrag '-' monthFrag '-' dayFrag timezoneFrag?
-func ParseDate(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseDate(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindDate, s)
 	if err != nil {
 		return nil, err
@@ -364,7 +389,7 @@ func ParseDate(s string, _ xsd.ValueContext) (xsd.Value, error) {
 //
 //	timeLexicalRep ::= ((hourFrag ':' minuteFrag ':' secondFrag) | endOfDayFrag)
 //	                   timezoneFrag?
-func ParseTime(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseTime(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindTime, s)
 	if err != nil {
 		return nil, err
@@ -380,7 +405,7 @@ func ParseTime(s string, _ xsd.ValueContext) (xsd.Value, error) {
 // ParseGYear parses xsd:gYear (§3.3.11):
 //
 //	gYearLexicalRep ::= yearFrag timezoneFrag?
-func ParseGYear(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseGYear(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindGYear, s)
 	if err != nil {
 		return nil, err
@@ -394,7 +419,7 @@ func ParseGYear(s string, _ xsd.ValueContext) (xsd.Value, error) {
 // ParseGYearMonth parses xsd:gYearMonth (§3.3.10):
 //
 //	gYearMonthLexicalRep ::= yearFrag '-' monthFrag timezoneFrag?
-func ParseGYearMonth(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseGYearMonth(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindGYearMonth, s)
 	if err != nil {
 		return nil, err
@@ -415,7 +440,7 @@ func ParseGYearMonth(s string, _ xsd.ValueContext) (xsd.Value, error) {
 // ParseGMonth parses xsd:gMonth (§3.3.14):
 //
 //	gMonthLexicalRep ::= '--' monthFrag timezoneFrag?
-func ParseGMonth(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseGMonth(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindGMonth, s)
 	if err != nil {
 		return nil, err
@@ -432,7 +457,7 @@ func ParseGMonth(s string, _ xsd.ValueContext) (xsd.Value, error) {
 // ParseGDay parses xsd:gDay (§3.3.13):
 //
 //	gDayLexicalRep ::= '---' dayFrag timezoneFrag?
-func ParseGDay(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseGDay(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindGDay, s)
 	if err != nil {
 		return nil, err
@@ -449,7 +474,7 @@ func ParseGDay(s string, _ xsd.ValueContext) (xsd.Value, error) {
 // ParseGMonthDay parses xsd:gMonthDay (§3.3.12):
 //
 //	gMonthDayLexicalRep ::= '--' monthFrag '-' dayFrag timezoneFrag?
-func ParseGMonthDay(s string, _ xsd.ValueContext) (xsd.Value, error) {
+func ParseGMonthDay(s string) (*DateTime, error) {
 	dt, body, err := newTemporal(KindGMonthDay, s)
 	if err != nil {
 		return nil, err
