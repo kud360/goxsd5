@@ -53,28 +53,38 @@ AND (if invoked) xsd-expert SPEC-OK.
 
 ## Guardrails
 
-- **One card per Ship run** — at most 3 merges/day, easy to follow.
-- **Round cap: 5.** If the Implementor ⇄ Evaluator loop doesn't reach GREEN in 5
-  rounds, Ship stops, leaves the PR open with findings, and push-notifies you.
+- **Ship drains the Approved queue** — after each merge it pulls the next
+  Approved card and repeats until the queue is empty or the session quota runs
+  out. No fixed card limit per run; throughput is bounded by quota, not a count.
+- **Round cap: 5 (per card).** If the Implementor ⇄ Evaluator loop doesn't reach
+  GREEN in 5 rounds, Ship leaves that PR open with findings, labels it `blocked`,
+  push-notifies you, and moves on to the next card. This is a per-card
+  convergence guard, not a per-run throttle.
 - **Separate contexts** for Implementor and Evaluator — the Evaluator must keep
   critical distance. They're continued with `SendMessage`, not re-spawned.
 - **Squash-merge** keeps history revertable. The orchestrator merges, never the
   Evaluator.
 - Notifications: **push notification** on plan-ready, on merge, and on stuck.
 
-## Schedule (Phase 4 — wire only after the loop is proven by hand)
+## Schedule (Phase 4 — LIVE)
 
-Timezone `America/New_York` (tracks the zone, not a fixed offset — DST-safe):
+Implemented as **Claude Code cloud routines** (`/schedule` → RemoteTrigger), not
+OS cron. The cloud scheduler is **UTC-only**, so the `America/New_York` target
+times are converted at the EDT offset (UTC−4). This is *not* DST-safe: after ET
+returns to EST (UTC−5) each routine fires one hour earlier in local terms —
+acceptable for an overnight loop; re-convert the crons at the DST boundary if the
+local time matters.
 
-| Routine | Local ET | Cron |
+| Routine | Target ET | UTC cron (live) |
 |---|---|---|
-| Planner | 08:00 daily | `0 8 * * *` |
-| Ship | 02:00, 14:00, 20:00 daily | `0 2,14,20 * * *` |
+| Planner | 08:00 daily | `0 12 * * *` |
+| Ship | 02:00, 14:00, 20:00 daily | `0 0,6,18 * * *` |
 
 ## Rollout phases
 
 - **Phase 0:** `gh auth refresh -s project` (grant the `project` scope).
-- **Phase 1:** these contracts + the board columns exist. *Nothing fires.* ← you are here
-- **Phase 2:** run the Planner once by hand → it populates **Proposed**; approve a few.
-- **Phase 3:** run `/ship` on one Approved card; watch the loop merge it.
-- **Phase 4:** enable the two cron routines above + Ship auto-merge.
+- **Phase 1:** these contracts + the board columns exist. *Nothing fires.* ✅ done
+- **Phase 2:** run the Planner once by hand → it populates **Proposed**; approve a few. ✅ done
+- **Phase 3:** run `/ship` on one Approved card; watch the loop merge it. ✅ done (PR #4)
+- **Phase 4:** the two cloud routines above are live and Ship merges unattended on
+  GREEN. ✅ **active** — the only human gate that remains is **Proposed → Approved**.
