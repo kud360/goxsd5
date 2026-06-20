@@ -7,6 +7,33 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-20 — issue #5: ParseMultiple + xsi:schemaLocation hints wired into cmd/goxsd5 -validate — 5672/21429 held <<<
+Exposed `parser.ParseMultiple(locations, opts)` (parser/parser.go): loads several
+schema roots into one loader and builds the combined set, the loader deduping roots
+by resolved location. Reconciles the long-standing "NOT yet wired into cmd/goxsd5"
+TODO from the 2026-06-15 entry below.
+
+Lifted the hint-augmentation logic into ONE canonical helper alongside
+SchemaLocationHints in parser/instancehints.go so the CLI and the suite harness no
+longer keep divergent copies:
+ - `HintAugmentedPaths(basePaths, instancePath)` reads the instance, resolves each
+   xsi:schemaLocation/noNamespaceSchemaLocation hint relative to the instance dir,
+   and appends those not already present. Dedup key and the path handed to the
+   loader are now the SAME filepath.Join-cleaned string (the basis the loader
+   dedupes roots on) — fixing a latent divergence where the CLI keyed dedup on
+   filepath.Abs but loaded the non-abs path. Fail-open on open/parse errors.
+ - `AugmentSchemasFromHints(base, basePaths, instancePath, opts)` builds on
+   HintAugmentedPaths + ParseMultiple, returning base unchanged when no hint extends
+   the set or on any re-parse error.
+ - cmd/goxsd5/main.go assessInstance now calls AugmentSchemasFromHints (its private
+   copy + the unused xmltree/filepath imports are gone).
+ - parser/instance_suite_test.go:instanceSchemas now calls HintAugmentedPaths too,
+   so the harness and CLI genuinely converge on one implementation.
+Tests: parser TestParseMultiple; CLI TestCLIValidateSchemaLocationHint (root element
+declared only in a hinted schema co-located with the instance, validates exit 0) and
+TestCLIValidateWithoutHintFails (same instance minus the hint is invalid, exit 1) —
+exercising the instance-relative resolution path end to end. Ratchets held 5672 / 21429.
+
 ## >>> DONE 2026-06-20 — particleEmptiable: implement §3.9.6.3 and wire at cos-valid-default.2.2 / src-ct §3.4.2.2 — 5672/21429 held <<<
 Implemented the Particle Emptiable relation (XSD 1.1 §3.9.6.3) in
 parser/restrict.go: `particleEmptiable` recursively decides whether a
@@ -184,8 +211,9 @@ xsi:schemaLocation. A conforming processor follows that hint (§4.3.2).
    genuinely extend the set, so negligible perf cost). KEY: hint paths resolve
    relative to the INSTANCE dir, group paths relative to the testSet dir; filepath.
    Join cleans both to the same string for a shared file, so dedup works.
- - NOT yet wired into cmd/goxsd5 -validate (would need a multi-root parser.Parse);
-   the SchemaLocationHints primitive is ready for it. Remaining instance wrong: 8.
+ - WIRED into cmd/goxsd5 -validate as of 2026-06-20 (issue #5) via parser.ParseMultiple
+   + the shared parser.AugmentSchemasFromHints helper — see the DONE entry at the top.
+   Remaining instance wrong: 8.
 
 ## >>> DONE 2026-06-15 — broad instance push: date fns, cast-as, empty-choice, nested-all (+6) <<<
 Six general fixes across xpath + the xsdwalk matcher, after the assertion cluster.
