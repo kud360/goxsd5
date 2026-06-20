@@ -556,31 +556,9 @@ func hasKey(m map[string]seq, k string) bool { _, ok := m[k]; return ok }
 func (e *evaluator) evalBinary(n *binary, f *focus) (seq, error) {
 	switch n.op {
 	case "and":
-		l, err := e.eval(n.l, f)
-		if err != nil {
-			return nil, err
-		}
-		if !effectiveBool(l) {
-			return seq{false}, nil
-		}
-		r, err := e.eval(n.r, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{effectiveBool(r)}, nil
+		return e.evalAnd(n, f)
 	case "or":
-		l, err := e.eval(n.l, f)
-		if err != nil {
-			return nil, err
-		}
-		if effectiveBool(l) {
-			return seq{true}, nil
-		}
-		r, err := e.eval(n.r, f)
-		if err != nil {
-			return nil, err
-		}
-		return seq{effectiveBool(r)}, nil
+		return e.evalOr(n, f)
 	case "|":
 		l, err := e.eval(n.l, f)
 		if err != nil {
@@ -592,23 +570,7 @@ func (e *evaluator) evalBinary(n *binary, f *focus) (seq, error) {
 		}
 		return unionNodes(l, r)
 	case "+", "-", "*", "div", "mod", "idiv":
-		l, err := e.eval(n.l, f)
-		if err != nil {
-			return nil, err
-		}
-		r, err := e.eval(n.r, f)
-		if err != nil {
-			return nil, err
-		}
-		lf, err := toNumber(l)
-		if err != nil {
-			return nil, err
-		}
-		rf, err := toNumber(r)
-		if err != nil {
-			return nil, err
-		}
-		return seq{arith(n.op, lf, rf)}, nil
+		return e.evalArith(n, f)
 	default:
 		l, err := e.eval(n.l, f)
 		if err != nil {
@@ -624,6 +586,62 @@ func (e *evaluator) evalBinary(n *binary, f *focus) (seq, error) {
 		}
 		return seq{res}, nil
 	}
+}
+
+// evalAnd is the short-circuiting "and": a false left operand yields false
+// without evaluating the right.
+func (e *evaluator) evalAnd(n *binary, f *focus) (seq, error) {
+	l, err := e.eval(n.l, f)
+	if err != nil {
+		return nil, err
+	}
+	if !effectiveBool(l) {
+		return seq{false}, nil
+	}
+	r, err := e.eval(n.r, f)
+	if err != nil {
+		return nil, err
+	}
+	return seq{effectiveBool(r)}, nil
+}
+
+// evalOr is the short-circuiting "or": a true left operand yields true without
+// evaluating the right.
+func (e *evaluator) evalOr(n *binary, f *focus) (seq, error) {
+	l, err := e.eval(n.l, f)
+	if err != nil {
+		return nil, err
+	}
+	if effectiveBool(l) {
+		return seq{true}, nil
+	}
+	r, err := e.eval(n.r, f)
+	if err != nil {
+		return nil, err
+	}
+	return seq{effectiveBool(r)}, nil
+}
+
+// evalArith evaluates the numeric binary operators (+, -, *, div, mod, idiv)
+// after coercing both operands to numbers.
+func (e *evaluator) evalArith(n *binary, f *focus) (seq, error) {
+	l, err := e.eval(n.l, f)
+	if err != nil {
+		return nil, err
+	}
+	r, err := e.eval(n.r, f)
+	if err != nil {
+		return nil, err
+	}
+	lf, err := toNumber(l)
+	if err != nil {
+		return nil, err
+	}
+	rf, err := toNumber(r)
+	if err != nil {
+		return nil, err
+	}
+	return seq{arith(n.op, lf, rf)}, nil
 }
 
 // unionNodes is the "|" operator: the union of two node sequences, de-duplicated

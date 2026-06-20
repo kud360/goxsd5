@@ -100,44 +100,65 @@ func checkFixedInt(errs *ErrorList, d, b *IntFacet, name string) {
 // checkLengthRestriction enforces length/minLength/maxLength narrowing.
 // spec: {length,minLength,maxLength}-valid-restriction — XSD 1.1 Part 2 §4.3.{1,2,3}.5
 func checkLengthRestriction(errs *ErrorList, declared, base *Facets) {
-	if declared.Length != nil && base.Length != nil && declared.Length.Value != base.Length.Value {
+	checkLengthFacet(errs, declared, base)
+	checkMinLengthFacet(errs, declared, base)
+	checkMaxLengthFacet(errs, declared, base)
+}
+
+// checkLengthFacet enforces the declared length against the base length and
+// length range, plus the fixed-facet rule.
+func checkLengthFacet(errs *ErrorList, declared, base *Facets) {
+	if declared.Length == nil {
+		return
+	}
+	if base.Length != nil && declared.Length.Value != base.Length.Value {
 		errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d differs from base length %d", declared.Length.Value, base.Length.Value)
 	}
-	if declared.Length != nil {
-		if base.MinLength != nil && declared.Length.Value < base.MinLength.Value {
-			errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d < base minLength %d", declared.Length.Value, base.MinLength.Value)
-		}
-		if base.MaxLength != nil && declared.Length.Value > base.MaxLength.Value {
-			errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d > base maxLength %d", declared.Length.Value, base.MaxLength.Value)
-		}
+	if base.MinLength != nil && declared.Length.Value < base.MinLength.Value {
+		errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d < base minLength %d", declared.Length.Value, base.MinLength.Value)
 	}
-	if declared.MinLength != nil {
-		if base.MinLength != nil && declared.MinLength.Value < base.MinLength.Value {
-			errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d < base minLength %d", declared.MinLength.Value, base.MinLength.Value)
-		}
-		if base.MaxLength != nil && declared.MinLength.Value > base.MaxLength.Value {
-			errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d > base maxLength %d", declared.MinLength.Value, base.MaxLength.Value)
-		}
-		if base.Length != nil && declared.MinLength.Value > base.Length.Value {
-			errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d > base length %d", declared.MinLength.Value, base.Length.Value)
-		}
-		checkFixedInt(errs, declared.MinLength, base.MinLength, "minLength")
+	if base.MaxLength != nil && declared.Length.Value > base.MaxLength.Value {
+		errs.Addf(SpecLengthValidRestriction, declared.Length.Pos, "length %d > base maxLength %d", declared.Length.Value, base.MaxLength.Value)
 	}
-	if declared.MaxLength != nil {
-		if base.MaxLength != nil && declared.MaxLength.Value > base.MaxLength.Value {
-			errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d > base maxLength %d", declared.MaxLength.Value, base.MaxLength.Value)
-		}
-		if base.MinLength != nil && declared.MaxLength.Value < base.MinLength.Value {
-			errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d < base minLength %d", declared.MaxLength.Value, base.MinLength.Value)
-		}
-		if base.Length != nil && declared.MaxLength.Value < base.Length.Value {
-			errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d < base length %d", declared.MaxLength.Value, base.Length.Value)
-		}
-		checkFixedInt(errs, declared.MaxLength, base.MaxLength, "maxLength")
-	}
-	if declared.Length != nil && base.Length != nil {
+	if base.Length != nil {
 		checkFixedInt(errs, declared.Length, base.Length, "length")
 	}
+}
+
+// checkMinLengthFacet enforces the declared minLength against the base
+// length/minLength/maxLength, plus the fixed-facet rule.
+func checkMinLengthFacet(errs *ErrorList, declared, base *Facets) {
+	if declared.MinLength == nil {
+		return
+	}
+	if base.MinLength != nil && declared.MinLength.Value < base.MinLength.Value {
+		errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d < base minLength %d", declared.MinLength.Value, base.MinLength.Value)
+	}
+	if base.MaxLength != nil && declared.MinLength.Value > base.MaxLength.Value {
+		errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d > base maxLength %d", declared.MinLength.Value, base.MaxLength.Value)
+	}
+	if base.Length != nil && declared.MinLength.Value > base.Length.Value {
+		errs.Addf(SpecMinLengthValidRestriction, declared.MinLength.Pos, "minLength %d > base length %d", declared.MinLength.Value, base.Length.Value)
+	}
+	checkFixedInt(errs, declared.MinLength, base.MinLength, "minLength")
+}
+
+// checkMaxLengthFacet enforces the declared maxLength against the base
+// length/minLength/maxLength, plus the fixed-facet rule.
+func checkMaxLengthFacet(errs *ErrorList, declared, base *Facets) {
+	if declared.MaxLength == nil {
+		return
+	}
+	if base.MaxLength != nil && declared.MaxLength.Value > base.MaxLength.Value {
+		errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d > base maxLength %d", declared.MaxLength.Value, base.MaxLength.Value)
+	}
+	if base.MinLength != nil && declared.MaxLength.Value < base.MinLength.Value {
+		errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d < base minLength %d", declared.MaxLength.Value, base.MinLength.Value)
+	}
+	if base.Length != nil && declared.MaxLength.Value < base.Length.Value {
+		errs.Addf(SpecMaxLengthValidRestriction, declared.MaxLength.Pos, "maxLength %d < base length %d", declared.MaxLength.Value, base.Length.Value)
+	}
+	checkFixedInt(errs, declared.MaxLength, base.MaxLength, "maxLength")
 }
 
 // checkWhiteSpaceRestriction enforces whiteSpace narrowing + fixed.
