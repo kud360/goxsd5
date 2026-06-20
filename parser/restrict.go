@@ -391,6 +391,65 @@ func effectiveOpenContent(ec *xsd.ElementContent) *xsd.OpenContent {
 	return ec.OpenContent
 }
 
+// particleEmptiable reports whether p can match the empty sequence: either the
+// occurrence minimum is zero, or (for group terms) the compositor rule holds
+// recursively. A nil particle is trivially emptiable.
+// spec: Particle Emptiable §3.8.4.1 — XSD 1.1 Part 1.
+func particleEmptiable(p *xsd.Particle) bool {
+	if p == nil {
+		return true
+	}
+	if p.MinOccurs == 0 {
+		return true
+	}
+	switch term := p.Term.(type) {
+	case *xsd.ElementDecl, *xsd.Wildcard:
+		return false // a required element or wildcard always needs one occurrence
+	case *xsd.ModelGroup:
+		switch term.Compositor {
+		case xsd.CompositorChoice:
+			// emptiable if any particle is emptiable
+			for _, c := range term.Particles {
+				if particleEmptiable(c) {
+					return true
+				}
+			}
+			return false
+		default: // all and sequence: emptiable iff every particle is emptiable
+			for _, c := range term.Particles {
+				if !particleEmptiable(c) {
+					return false
+				}
+			}
+			return true
+		}
+	case *xsd.GroupRef:
+		if term.Ref == nil || term.Ref.Group == nil {
+			return true // unresolved group: treat as emptiable to avoid false positives
+		}
+		// A GroupRef particle wraps the group's model group; its own MinOccurs
+		// already gated above, so we check the group's compositor directly.
+		mg := term.Ref.Group
+		switch mg.Compositor {
+		case xsd.CompositorChoice:
+			for _, c := range mg.Particles {
+				if particleEmptiable(c) {
+					return true
+				}
+			}
+			return false
+		default:
+			for _, c := range mg.Particles {
+				if !particleEmptiable(c) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // particleMatchesNonEmpty reports whether p can match at least one element
 // information item: it has a positive maximum occurrence and contains an
 // element or wildcard term (directly or nested) that can itself occur. A nil

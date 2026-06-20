@@ -140,10 +140,16 @@ func (b *builder) checkElementDecls() {
 					b.errf(xsd.SpecCosValidDefault, n.Pos, "default/fixed value %q is not valid for the type of element %s: %v", *vc, e.Name, err)
 				}
 			} else if ct, ok := e.Type.(*xsd.ComplexType); ok {
-				if ec, ok := ct.Content.(*xsd.ElementContent); ok && !ec.Mixed {
-					// spec: cos-valid-default.2.2 — element-only content admits
-					// no value constraint (mixed-emptiable check deferred).
-					b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
+				if ec, ok := ct.Content.(*xsd.ElementContent); ok {
+					if !ec.Mixed {
+						// spec: cos-valid-default.2.2 — element-only content admits
+						// no value constraint.
+						b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
+					} else if !particleEmptiable(ec.Particle) {
+						// spec: cos-valid-default.2.2 — mixed content with a value
+						// constraint requires an emptiable particle.
+						b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has mixed content with a non-emptiable particle and must not have a default or fixed value", e.Name)
+					}
 				}
 			}
 		}

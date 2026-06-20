@@ -30,7 +30,7 @@ constant name in code.
 | src-qname | §3.15.3 | M1 | done | parser/attrcheck.go:47 |
 | src-element | §3.3.3 | M5 | wip (4.3 → M6) | parser/elemtable.go:698 |
 | src-attribute | §3.2.3 | M5 | wip (6.3 → M6) | parser/elemtable.go:726 |
-| src-ct | §3.4.3 | M5/M6 | done (mixed-emptiable clause of 2.2 deferred) | parser/buildcomplex.go:134 |
+| src-ct | §3.4.3 | M5/M6 | done | parser/buildcomplex.go:134 |
 | src-simple-type | §3.16.3 | M5 | done | |
 | src-restriction-base-or-simpleType | §3.16.3 | M5 | done | parser/elemtable.go:207 |
 | src-list-itemType-or-simpleType | §3.16.3 | M5 | done | parser/elemtable.go:224 |
@@ -77,7 +77,7 @@ constant name in code.
 | cos-ct-restricts | §3.4.6 | M6/M9 | deferred (cos-particle-restrict; expectations ratchet tolerates) | |
 | derivation-ok-restriction | §3.4.6 | M6/M9 | wip (base {final} blocks restriction; attribute-wildcard subset; open-content subset clause 9; particle subsumption via cos-particle-restrict) | parser/restrict.go |
 | cos-equiv-class (substitution groups) | §3.3.6 | M6 | deferred (the enforced part — substitution-group final exclusion — is reported under e-props-correct.4; full equivalence-class membership not yet checked under this ID) | |
-| cos-valid-default | §3.3.6 | M6 | done (mixed-emptiable clause deferred) | parser/buildterms.go:110 |
+| cos-valid-default | §3.3.6 | M6 | done | parser/buildterms.go:110 |
 | enumeration-required-notation | Part 2 §3.3.19 | M6 | done | parser/buildterms.go:226 |
 
 ### Instance validation rules (`cvc-*`, the xsdvalidate engine)
