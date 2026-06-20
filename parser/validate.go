@@ -202,52 +202,67 @@ func (w *walker) prunedByConditionalInclusion(n *xmltree.Node) bool {
 		}
 		switch a.Name.Local {
 		case "minVersion", "maxVersion":
-			if _, err := xsdtype.ParseDecimal(a.Value); err != nil {
-				// spec: cip — XSD 1.1 Part 1 §4.2.2: the value must be a valid xs:decimal.
-				w.errf(xsd.SpecCIP, a.Pos, "vc:%s value %q is not a valid xs:decimal", a.Name.Local, a.Value)
-				continue
-			}
-			v, _ := strconv.ParseFloat(strings.TrimSpace(a.Value), 64)
-			if a.Name.Local == "minVersion" && v > xsdVersion {
-				pruned = true
-			}
-			if a.Name.Local == "maxVersion" && v <= xsdVersion {
+			if w.checkVersionAttr(a, n) {
 				pruned = true
 			}
 		case "typeAvailable", "typeUnavailable", "facetAvailable", "facetUnavailable":
-			isType := strings.HasPrefix(a.Name.Local, "type")
-			// An element is pruned when any "Available" item is unknown, or
-			// when every "Unavailable" item is known (empty list = vacuously
-			// every, so it prunes).
-			allKnown, anyUnknown := true, false
-			for _, tok := range strings.Fields(a.Value) {
-				q, err := n.ResolveQName(tok)
-				if err != nil {
-					// spec: cip — the value must be a valid list of xs:QName.
-					w.errf(xsd.SpecCIP, a.Pos, "vc:%s item %q is not a valid QName", a.Name.Local, tok)
-					continue
-				}
-				known := typeAutomaticallyKnown(q)
-				if !isType {
-					known = facetKnown(q)
-				}
-				if !known {
-					allKnown, anyUnknown = false, true
-				}
-			}
-			switch a.Name.Local {
-			case "typeAvailable", "facetAvailable":
-				if anyUnknown {
-					pruned = true
-				}
-			case "typeUnavailable", "facetUnavailable":
-				if allKnown {
-					pruned = true
-				}
+			if w.checkAvailabilityAttr(a, n) {
+				pruned = true
 			}
 		}
 	}
 	return pruned
+}
+
+// checkVersionAttr validates and evaluates one vc:minVersion or vc:maxVersion
+// attribute. It returns true when the attribute condition prunes the element.
+func (w *walker) checkVersionAttr(a *xmltree.Attr, n *xmltree.Node) bool {
+	if _, err := xsdtype.ParseDecimal(a.Value); err != nil {
+		// spec: cip — XSD 1.1 Part 1 §4.2.2: the value must be a valid xs:decimal.
+		w.errf(xsd.SpecCIP, a.Pos, "vc:%s value %q is not a valid xs:decimal", a.Name.Local, a.Value)
+		return false
+	}
+	v, _ := strconv.ParseFloat(strings.TrimSpace(a.Value), 64)
+	if a.Name.Local == "minVersion" && v > xsdVersion {
+		return true
+	}
+	if a.Name.Local == "maxVersion" && v <= xsdVersion {
+		return true
+	}
+	return false
+}
+
+// checkAvailabilityAttr validates and evaluates one vc:typeAvailable,
+// vc:typeUnavailable, vc:facetAvailable, or vc:facetUnavailable attribute.
+// It returns true when the attribute condition prunes the element.
+func (w *walker) checkAvailabilityAttr(a *xmltree.Attr, n *xmltree.Node) bool {
+	isType := strings.HasPrefix(a.Name.Local, "type")
+	// An element is pruned when any "Available" item is unknown, or
+	// when every "Unavailable" item is known (empty list = vacuously
+	// every, so it prunes).
+	allKnown, anyUnknown := true, false
+	for _, tok := range strings.Fields(a.Value) {
+		q, err := n.ResolveQName(tok)
+		if err != nil {
+			// spec: cip — the value must be a valid list of xs:QName.
+			w.errf(xsd.SpecCIP, a.Pos, "vc:%s item %q is not a valid QName", a.Name.Local, tok)
+			continue
+		}
+		known := typeAutomaticallyKnown(q)
+		if !isType {
+			known = facetKnown(q)
+		}
+		if !known {
+			allKnown, anyUnknown = false, true
+		}
+	}
+	switch a.Name.Local {
+	case "typeAvailable", "facetAvailable":
+		return anyUnknown
+	case "typeUnavailable", "facetUnavailable":
+		return allKnown
+	}
+	return false
 }
 
 // checkLocalDeclTargetNamespace enforces src-element.4.3 / src-attribute.6.3:

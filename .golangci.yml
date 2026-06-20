@@ -19,11 +19,11 @@ linters:
       # (gocognit) / 15 (SonarSource), but this is a spec-driven parser/validator
       # where rule-tables and dispatch are inherently complex: 15-20 would flag
       # ~50-105 functions, forcing churn that scatters cohesive algorithms.
-      # 50 isolates the genuinely-unmaintainable outliers (>50) from the long
-      # tail of complex-but-readable routines (~30-50). RATCHET INTENT: lower
+      # 40 isolates the genuinely-unmaintainable outliers (>40) from the long
+      # tail of complex-but-readable routines (~30-40). RATCHET INTENT: lower
       # this toward 30 as functions are simplified -- like the conformance
-      # baseline, but descending.
-      min-complexity: 50
+      # baseline, but descending. Floor: 40 (was 50); next target: 30.
+      min-complexity: 40
     revive:
       rules:
         - name: early-return

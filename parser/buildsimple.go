@@ -259,27 +259,9 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 		case "maxExclusive":
 			f.MaxExclusive = bound(c, xsd.SpecMaxExclValidRestriction)
 		case "whiteSpace":
-			switch v, _ := c.Attr("value"); strings.TrimSpace(v) {
-			case "preserve":
-				f.WhiteSpace = xsd.WSPreserve
-			case "replace":
-				f.WhiteSpace = xsd.WSReplace
-			case "collapse":
-				f.WhiteSpace = xsd.WSCollapse
-			}
-			f.WhiteSpaceFixed = boolAttr(c, "fixed", false)
-			f.WhiteSpacePos = c.Pos
+			applyWhiteSpaceFacet(&f, c)
 		case "explicitTimezone":
-			switch v, _ := c.Attr("value"); strings.TrimSpace(v) {
-			case "optional":
-				f.ExplicitTimezone = xsd.ETZOptional
-			case "required":
-				f.ExplicitTimezone = xsd.ETZRequired
-			case "prohibited":
-				f.ExplicitTimezone = xsd.ETZProhibited
-			}
-			f.ExplicitTimezoneFixed = boolAttr(c, "fixed", false)
-			f.ExplicitTimezonePos = c.Pos
+			applyExplicitTimezoneFacet(&f, c)
 		case "pattern":
 			src, _ := c.Attr("value")
 			re, err := xsdregex.CompileRegex(src)
@@ -290,23 +272,11 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 			}
 			patterns = append(patterns, xsd.Pattern{Source: src, Re: re, Pos: c.Pos})
 		case "enumeration":
-			lex, _ := c.Attr("value")
-			v, err := base.ParseValue(lex, nsContext{c})
-			if err != nil {
-				// spec: enumeration-valid-restriction — XSD 1.1 Part 2
-				// §4.3.5.5: every enumeration value must be valid against
-				// the base type.
-				b.errf(xsd.SpecEnumerationValidRestriction, c.Pos, "enumeration value %q is not valid against the base type %s: %v", lex, base.TypeName(), err)
+			enum, ok := b.buildEnumerationFacet(c, doc, base)
+			if !ok {
 				continue
 			}
-			// For a NOTATION-derived type, an enumeration value must name a
-			// NOTATION declared in the schema (enumeration-required-notation).
-			if prim := base.PrimitiveType(); prim != nil && prim.Name.Local == "NOTATION" && prim.Name.Namespace == xsd.XSDNS {
-				if qv, ok := v.(xsdtype.QNameValue); ok && b.registryFor(doc).lookup(spaceNotation, qv.Name) == nil {
-					b.errf(xsd.SpecEnumNotation, c.Pos, "enumeration value %q does not name a declared notation", lex)
-				}
-			}
-			enums = append(enums, xsd.Enum{Value: v, Lexical: lex, Pos: c.Pos})
+			enums = append(enums, enum)
 		case "assertion":
 			f.Assertions = append(f.Assertions, b.buildAssertion(c, doc))
 		}
@@ -317,6 +287,58 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 	}
 	f.Enumeration = enums
 	return &f
+}
+
+// applyWhiteSpaceFacet sets the whiteSpace fields on f from a <whiteSpace> node.
+func applyWhiteSpaceFacet(f *xsd.Facets, c *xmltree.Node) {
+	switch v, _ := c.Attr("value"); strings.TrimSpace(v) {
+	case "preserve":
+		f.WhiteSpace = xsd.WSPreserve
+	case "replace":
+		f.WhiteSpace = xsd.WSReplace
+	case "collapse":
+		f.WhiteSpace = xsd.WSCollapse
+	}
+	f.WhiteSpaceFixed = boolAttr(c, "fixed", false)
+	f.WhiteSpacePos = c.Pos
+}
+
+// applyExplicitTimezoneFacet sets the explicitTimezone fields on f from an
+// <explicitTimezone> node.
+func applyExplicitTimezoneFacet(f *xsd.Facets, c *xmltree.Node) {
+	switch v, _ := c.Attr("value"); strings.TrimSpace(v) {
+	case "optional":
+		f.ExplicitTimezone = xsd.ETZOptional
+	case "required":
+		f.ExplicitTimezone = xsd.ETZRequired
+	case "prohibited":
+		f.ExplicitTimezone = xsd.ETZProhibited
+	}
+	f.ExplicitTimezoneFixed = boolAttr(c, "fixed", false)
+	f.ExplicitTimezonePos = c.Pos
+}
+
+// buildEnumerationFacet parses and validates one <enumeration> child node.
+// Returns the Enum and ok=true on success; ok=false when the value is invalid
+// and the caller should skip it (the error has already been reported).
+func (b *builder) buildEnumerationFacet(c *xmltree.Node, doc *schemaDoc, base *xsd.SimpleType) (xsd.Enum, bool) {
+	lex, _ := c.Attr("value")
+	v, err := base.ParseValue(lex, nsContext{c})
+	if err != nil {
+		// spec: enumeration-valid-restriction — XSD 1.1 Part 2
+		// §4.3.5.5: every enumeration value must be valid against
+		// the base type.
+		b.errf(xsd.SpecEnumerationValidRestriction, c.Pos, "enumeration value %q is not valid against the base type %s: %v", lex, base.TypeName(), err)
+		return xsd.Enum{}, false
+	}
+	// For a NOTATION-derived type, an enumeration value must name a
+	// NOTATION declared in the schema (enumeration-required-notation).
+	if prim := base.PrimitiveType(); prim != nil && prim.Name.Local == "NOTATION" && prim.Name.Namespace == xsd.XSDNS {
+		if qv, ok := v.(xsdtype.QNameValue); ok && b.registryFor(doc).lookup(spaceNotation, qv.Name) == nil {
+			b.errf(xsd.SpecEnumNotation, c.Pos, "enumeration value %q does not name a declared notation", lex)
+		}
+	}
+	return xsd.Enum{Value: v, Lexical: lex, Pos: c.Pos}, true
 }
 
 // buildAssertion captures an assertion/assert facet without evaluating it.

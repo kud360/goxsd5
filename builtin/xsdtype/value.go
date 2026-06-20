@@ -60,13 +60,7 @@ func CompareValues(a, b xsd.Value) (xsd.Order, bool) {
 	switch av := a.(type) {
 	case String:
 		if bv, ok := b.(String); ok {
-			switch {
-			case av < bv:
-				return xsd.OrderLess, true
-			case av > bv:
-				return xsd.OrderGreater, true
-			}
-			return xsd.OrderEqual, true
+			return compareStrings(av, bv)
 		}
 	case Boolean:
 		if bv, ok := b.(Boolean); ok {
@@ -113,18 +107,35 @@ func CompareValues(a, b xsd.Value) (xsd.Order, bool) {
 		}
 	case xsd.ListValue:
 		if bv, ok := b.(xsd.ListValue); ok {
-			if len(av) != len(bv) {
-				return 0, false
-			}
-			for i := range av {
-				if o, ok := CompareValues(av[i], bv[i]); !ok || o != xsd.OrderEqual {
-					return 0, false
-				}
-			}
-			return xsd.OrderEqual, true
+			return compareListValues(av, bv)
 		}
 	}
 	return 0, false
+}
+
+// compareStrings orders two String values lexicographically.
+func compareStrings(a, b String) (xsd.Order, bool) {
+	switch {
+	case a < b:
+		return xsd.OrderLess, true
+	case a > b:
+		return xsd.OrderGreater, true
+	}
+	return xsd.OrderEqual, true
+}
+
+// compareListValues compares two ListValues item by item; they are equal
+// only when every paired item compares equal.
+func compareListValues(a, b xsd.ListValue) (xsd.Order, bool) {
+	if len(a) != len(b) {
+		return 0, false
+	}
+	for i := range a {
+		if o, ok := CompareValues(a[i], b[i]); !ok || o != xsd.OrderEqual {
+			return 0, false
+		}
+	}
+	return xsd.OrderEqual, true
 }
 
 // compareFloat64 orders IEEE values: NaN equals itself and is incomparable
