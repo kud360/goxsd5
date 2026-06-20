@@ -518,7 +518,7 @@ tractable clusters: xsi:type union derivation, attribute-wildcard, open content.
 Both were identified as "obvious next parser TODOs" after the V0–V4 instance
 validation session (NOTES block above, lines ~67-75): the matcher bug fix
 exposed that ~10 instance negative cases were passing for the wrong reason.
- - cos-aw-intersect (§3.10.6.3): when multiple `<attributeGroup ref>` children
+ - cos-aw-intersect (§3.10.6.4): when multiple `<attributeGroup ref>` children
    contribute wildcards, the effective {attribute wildcard} is their INTERSECTION
    (not the first one). Also applies to the type's own `<anyAttribute>` when
    it appears alongside group refs. New `wildcardIntersect(w1, w2 *xsd.Wildcard)`
