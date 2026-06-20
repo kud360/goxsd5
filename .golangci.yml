@@ -19,11 +19,13 @@ linters:
       # (gocognit) / 15 (SonarSource), but this is a spec-driven parser/validator
       # where rule-tables and dispatch are inherently complex: 15-20 would flag
       # ~50-105 functions, forcing churn that scatters cohesive algorithms.
-      # 40 isolates the genuinely-unmaintainable outliers (>40) from the long
-      # tail of complex-but-readable routines (~30-40). RATCHET INTENT: lower
-      # this toward 30 as functions are simplified -- like the conformance
-      # baseline, but descending. Floor: 40 (was 50); next target: 30.
-      min-complexity: 40
+      # 30 isolates the genuinely-unmaintainable outliers from the long tail of
+      # complex-but-readable routines. RATCHET INTENT: this reached the target
+      # floor of 30 (was 40, was 50) -- the descending counterpart to the
+      # conformance baseline. Hold it here; do not raise. The ceiling applies to
+      # production code only: test harnesses and tools/docscleaner (one-shot doc
+      # tooling, not shipped) are excluded below.
+      min-complexity: 30
     revive:
       rules:
         - name: early-return
@@ -36,6 +38,14 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # The gocognit ceiling pins *production* complexity. Test harnesses
+      # (table-driven suite drivers) and tools/docscleaner (one-shot doc
+      # tooling, not shipped) are intentionally exempt -- all other linters
+      # still apply to them.
+      - linters:
+          - gocognit
+        path: (_test\.go|tools/docscleaner/)
     paths:
       - third_party$
       - examples$
