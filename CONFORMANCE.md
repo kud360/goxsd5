@@ -196,8 +196,8 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | cos-element-consistent (EDC) | §3.8.6 | M9+ | deferred (element declarations consistent) | |
 | cos-ct-derived-ok | §3.4.6 | M9+ | deferred (complex-type derivation OK) | |
 | cos-st-derived-ok | §3.16.6 | M9+ | wip (clause 2.2.4 union-member derivation: transitive membership + intervening-union facet check, applied at particle restriction) | parser/restrict.go |
-| cos-aw-union | §3.10.6 | M9+ | done (full §3.10.6.2 namespace clauses: any∪any, enum∪enum, not∪not, not∪enum; called from buildcomplex.go mergeComplexType) | parser/wildcard.go |
-| cos-aw-intersect | §3.10.6 | M9+ | done (full §3.10.6.3 namespace clauses: any∩any, any∩X, not∩not, not∩enum, enum∩enum; called from buildterms.go buildAttrUses) | parser/wildcard.go |
+| cos-aw-union | §3.10.6 | M9+ | done (full §3.10.6.3 namespace clauses: any∪any, enum∪enum, not∪not, not∪enum; called from buildcomplex.go mergeComplexType) | parser/wildcard.go |
+| cos-aw-intersect | §3.10.6 | M9+ | done (namespace clauses §3.10.6.4 items 1–5; {disallowed names} uses plain union rather than namespace-filtered clauses 1–2 of §3.10.6.4 — see parser/wildcard.go notQNameUnion; called from buildterms.go buildAttrUses) | parser/wildcard.go |
 | cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset relation implemented in parser/wildcard.go; violations reported under derivation-ok-restriction) | |
 | cos-all-limited | §3.8.6 | post-M9 | done (clause 2 + 1.3 nested model groups; clause 1 for all-vs-sequence extension; full top-level placement 1.1/1.2 partial) | parser/buildterms.go:480 |
 | cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
