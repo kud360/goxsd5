@@ -393,8 +393,8 @@ func effectiveOpenContent(ec *xsd.ElementContent) *xsd.OpenContent {
 
 // particleEmptiable reports whether p can match the empty sequence: either the
 // occurrence minimum is zero, or (for group terms) the compositor rule holds
-// recursively. A nil particle is trivially emptiable.
-// spec: Particle Emptiable §3.8.4.1 — XSD 1.1 Part 1.
+// recursively. A nil particle is trivially emptiable. Implements the Particle
+// Emptiable relation (XSD 1.1 Part 1 §3.8.4.1).
 func particleEmptiable(p *xsd.Particle) bool {
 	if p == nil {
 		return true
