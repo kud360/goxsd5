@@ -66,7 +66,7 @@ if res.Valid() {
 Full runnable version: `xsdvalidate/example_test.go` (`ExampleNew`).
 
 Errors are structured `*xsd.Error` values with a `Ref.ID` field that matches
-the XSD 1.1 spec clause (e.g. `cvc-elt.1.a`, `cvc-minInclusive-valid`).
+the XSD 1.1 spec clause (e.g. `cvc-elt`, `cvc-minInclusive-valid`).
 
 ## CLI
 

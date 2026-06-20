@@ -1,8 +1,5 @@
 package parser_test
 
-// ExampleParse demonstrates the primary parse entry point: load an XSD 1.1
-// schema from a file, then inspect the resulting Schema components.
-
 import (
 	"fmt"
 	"os"
@@ -12,6 +9,8 @@ import (
 	"github.com/kud360/goxsd5/parser"
 )
 
+// ExampleParse demonstrates the primary parse entry point: load an XSD 1.1
+// schema from a file, then inspect the resulting Schema components.
 func ExampleParse() {
 	// Write a small schema to a temp file; parser.Parse requires a file path
 	// or URL (use Options.Resolver to serve from memory in your own tests).
