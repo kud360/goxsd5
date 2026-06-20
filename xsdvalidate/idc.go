@@ -27,40 +27,95 @@ type fieldVal struct {
 	s string
 }
 
+// scopedTable is one evaluated key/unique node table tagged with the Euler-tour
+// interval [enter,exit] of the element instance it was scoped at. The interval
+// makes subtree containment a numeric test: a table is within element E's
+// subtree iff E's interval contains [enter,exit].
+type scopedTable struct {
+	ic     *xsd.IdentityConstraint
+	tuples [][]fieldVal
+	enter  int
+	exit   int
+}
+
+// pendingKeyref is one keyref check deferred to the post-walk pass: its evaluated
+// tuples, the scope element's interval (used to find the in-subtree key tables),
+// and the source position for error reporting.
+type pendingKeyref struct {
+	ic     *xsd.IdentityConstraint
+	tuples [][]fieldVal
+	enter  int
+	exit   int
+	pos    xsd.Pos
+}
+
 // checkIdentityConstraints evaluates every identity constraint declared on the
-// element decl, scoped at the element node el.
-func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl) {
+// element decl, scoped at the element node el whose subtree spans the Euler-tour
+// interval [enter,exit]. Key/unique node tables are recorded with that interval
+// so a keyref can later resolve against keys sourced within its own subtree
+// (node tables propagate upward, XSD 1.1 §3.11.4/§3.11.5). Keyref checks are
+// deferred to flushKeyrefs, run after the walk when every key table is recorded.
+func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl, enter, exit int) {
 	if len(decl.IdentityConstraints) == 0 {
 		return
 	}
-	tables := map[*xsd.IdentityConstraint][][]fieldVal{}
 	for _, ic := range decl.IdentityConstraints {
 		if ic.Category == xsd.ICKeyref {
 			continue
 		}
-		tables[ic] = a.evalConstraint(el, ic)
+		a.keyTables = append(a.keyTables, scopedTable{
+			ic:     ic,
+			tuples: a.evalConstraint(el, ic),
+			enter:  enter,
+			exit:   exit,
+		})
 	}
 	for _, ic := range decl.IdentityConstraints {
-		if ic.Category != xsd.ICKeyref {
+		if ic.Category != xsd.ICKeyref || ic.Refer == nil {
 			continue
 		}
-		tuples := a.evalConstraint(el, ic)
-		if ic.Refer == nil {
-			continue
-		}
-		keyTuples, ok := tables[ic.Refer]
-		if !ok {
-			// Referenced key scoped at a different element; cross-scope keyref
-			// resolution is not modelled, so skip rather than misreport.
-			continue
-		}
-		for _, t := range tuples {
+		a.pendingKeyrefs = append(a.pendingKeyrefs, pendingKeyref{
+			ic:     ic,
+			tuples: a.evalConstraint(el, ic),
+			enter:  enter,
+			exit:   exit,
+			pos:    el.Pos(),
+		})
+	}
+}
+
+// flushKeyrefs checks every deferred keyref against the merged node table of all
+// in-scope key/unique tables for its referred constraint. A key table is in
+// scope iff its element interval is contained in the keyref element's interval —
+// the key's source nodes lie within the keyref's subtree (cvc-identity-constraint
+// clause 4.3; node tables propagate upward, §3.11.5). A keyref whose referred
+// constraint was never resolved at schema-build time (ic.Refer == nil) is
+// filtered out before deferral, so every pending keyref here has a referred
+// target; an in-scope no-match is a clause-4.3 error, reported below.
+func (a *assessor) flushKeyrefs() {
+	for _, pk := range a.pendingKeyrefs {
+		keyTuples := a.inScopeKeyTuples(pk.ic.Refer, pk.enter, pk.exit)
+		for _, t := range pk.tuples {
 			if !tupleInSet(t, keyTuples) {
 				// spec: cvc-identity-constraint — XSD 1.1 Part 1 §3.11.4 (cvc-identity-constraint.4.3)
-				a.addf(xsd.SpecCvcIdentity, el.Pos(), "keyref %s value has no matching key in %s", ic.Name, ic.Refer.Name)
+				a.addf(xsd.SpecCvcIdentity, pk.pos, "keyref %s value has no matching key in %s", pk.ic.Name, pk.ic.Refer.Name)
 			}
 		}
 	}
+}
+
+// inScopeKeyTuples merges every node table for the referred constraint that was
+// scoped within the [enter,exit] subtree interval. Tables are appended in walk
+// order, so the merged result is deterministic without sorting.
+func (a *assessor) inScopeKeyTuples(refer *xsd.IdentityConstraint, enter, exit int) [][]fieldVal {
+	var merged [][]fieldVal
+	for _, kt := range a.keyTables {
+		if kt.ic != refer || enter > kt.enter || kt.exit > exit {
+			continue
+		}
+		merged = append(merged, kt.tuples...)
+	}
+	return merged
 }
 
 // evalConstraint selects the target node set and builds the tuple list for one
