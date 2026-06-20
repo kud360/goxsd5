@@ -345,7 +345,7 @@ func (b *builder) buildAttrUses(parent *xmltree.Node, doc *schemaDoc) (uses []*x
 				continue // cyclic, already reported
 			}
 			uses = append(uses, g.Uses...)
-			// spec: cos-aw-intersect — XSD 1.1 Part 1 §3.10.6.3: the effective
+			// spec: cos-aw-intersect — XSD 1.1 Part 1 §3.10.6.4: the effective
 			// attribute wildcard is the intersection of all group wildcards.
 			wc = wildcardIntersect(wc, g.Wildcard)
 		case "anyAttribute":

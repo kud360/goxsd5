@@ -82,9 +82,9 @@ func hasDisallowedKeyword(w *xsd.Wildcard, kw string) bool {
 }
 
 // wildcardIntersect returns the Attribute Wildcard Intersection of W1 and W2
-// per XSD 1.1 Part 1 §3.10.6.3 (cos-aw-intersect). Either argument may be
-// nil (no wildcard); nil means "all allowed" for intersection purposes. When
-// both are nil the result is nil.
+// per XSD 1.1 Part 1 §3.10.6.4 (cos-aw-intersect; xsd.SpecCosAWIntersect).
+// Either argument may be nil (no wildcard); nil means "all allowed" for
+// intersection purposes. When both are nil the result is nil.
 func wildcardIntersect(w1, w2 *xsd.Wildcard) *xsd.Wildcard {
 	if w1 == nil {
 		return w2
@@ -133,10 +133,11 @@ func wildcardIntersect(w1, w2 *xsd.Wildcard) *xsd.Wildcard {
 }
 
 // wildcardUnion returns the Attribute Wildcard Union of W1 and W2 per XSD 1.1
-// Part 1 §3.10.6.2 (cos-aw-union), used to combine an extension's own attribute
-// wildcard (W2) with its base's (W1). A nil argument means "no wildcard"; the
-// union with a present wildcard is that wildcard. The result's {process
-// contents} is taken from W2 (the extension's local wildcard governs).
+// Part 1 §3.10.6.3 (cos-aw-union; xsd.SpecCosAWUnion), used to combine an
+// extension's own attribute wildcard (W2) with its base's (W1). A nil argument
+// means "no wildcard"; the union with a present wildcard is that wildcard.
+// The result's {process contents} is taken from W2 (the extension's local
+// wildcard governs).
 func wildcardUnion(w1, w2 *xsd.Wildcard) *xsd.Wildcard {
 	if w1 == nil {
 		return w2

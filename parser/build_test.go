@@ -1117,7 +1117,7 @@ func TestBuildMaxOccursZeroParticle(t *testing.T) {
 // TestBuildAttrWildcardIntersect verifies that when multiple attributeGroup
 // references (or a mix of attributeGroup refs and a local anyAttribute) all
 // carry wildcards, the effective attribute wildcard is their INTERSECTION
-// (cos-aw-intersect §3.10.6.3) rather than the first one encountered.
+// (cos-aw-intersect §3.10.6.4) rather than the first one encountered.
 func TestBuildAttrWildcardIntersect(t *testing.T) {
 	cases := []struct {
 		name     string
