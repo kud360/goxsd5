@@ -19,7 +19,15 @@ Stop only when the Approved column is empty (report "nothing approved") **or the
 session is cut off by quota/budget** — there is no fixed card limit per run. Don't
 try to estimate remaining quota; just keep pulling the next card until either the
 queue empties or the run is terminated mid-card. A single arg (`$ARGUMENTS`
-naming one card) ships just that card, then stops.
+naming one card) ships just that card, then stops. A mid-card cutoff is **not**
+guarded by guessing quota — it is *recovered* by step 0 on the next run.
+
+0. **Resume in-flight work first.** Before touching the Approved queue, look for a
+   card interrupted by a prior cutoff: one **In Progress** or **In Review** whose
+   issue has an **open, unmerged PR**. If found, read that PR's
+   `🔄 ship-checkpoint` comments to recover where the loop left off (last round,
+   outstanding findings) and **resume its review→fix loop (step 3) from there**
+   before picking any new Approved card.
 
 1. **Pick the card.** `gh project item-list 1 --owner kud360 --format json` →
    first item with status **Approved**. If the Approved column is empty, stop the
@@ -28,7 +36,8 @@ naming one card) ships just that card, then stops.
 
 2. **Implement.** Spawn the `implementor` agent with the issue number/body.
    It branches, implements, runs the gates, and opens a PR. Capture the PR #.
-   Move the card to **In Review**.
+   Move the card to **In Review**, and post the opening `🔄 ship-checkpoint`
+   comment on the PR (see Rules).
 
 3. **Review ⇄ fix loop** (max **5 rounds**):
    - Spawn the `evaluator` agent with the PR #.
@@ -47,6 +56,9 @@ naming one card) ships just that card, then stops.
      branch. Then re-review: `SendMessage` the *same* reviewer agent(s), or — if
      SendMessage is unavailable — spawn a fresh `evaluator` (+ `xsd-expert`) on the
      PR; a fresh reviewer only strengthens independence. Repeat.
+   - **Checkpoint each round:** post a `🔄 ship-checkpoint` comment on the PR with
+     the round #, the Evaluator (and xsd-expert) verdict, and the outstanding
+     findings — so a cutoff mid-loop is resumable by step 0.
 
 4. **On GREEN:** squash-merge the PR (`gh pr merge <#> --squash --delete-branch`),
    move the card to **Done**, and send a push notification:
@@ -76,6 +88,11 @@ naming one card) ships just that card, then stops.
   rounds n/5 · Evaluator <verdict> · xsd-expert <verdict|n/a> · baselines
   5672/21429 · <what changed> · notable: <…>`. This is the loop's durable history
   — the cloud transcripts are ephemeral.
+- **Checkpoint on the PR as you go.** Post a `🔄 ship-checkpoint` comment on the PR
+  at each transition — opened, each round's verdict + outstanding findings,
+  xsd-expert verdict, and final merge/stuck. Use the literal `🔄 ship-checkpoint`
+  marker so a resuming run (step 0) can find them. These are the per-step resume
+  breadcrumbs; the `maint-log` entry is the single high-level per-PR summary.
 - The **orchestrator merges**, never the Evaluator. Merge only on a GREEN verdict
   whose objective gate (5672 / 21429 conformance baselines) actually passed.
 - **Unattended (scheduled) runs merge on GREEN without any further human

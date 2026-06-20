@@ -78,6 +78,11 @@ The loop's history lives in GitHub, not just the ephemeral cloud transcripts:
   GREEN in 5 rounds, Ship leaves that PR open with findings, labels it `blocked`,
   push-notifies you, and moves on to the next card. This is a per-card
   convergence guard, not a per-run throttle.
+- **Resumable / checkpointed.** Ship posts `🔄 ship-checkpoint` comments on the PR
+  as it works and, at the start of each run, resumes any card left mid-ship (Ship
+  step 0). A run cut off by quota never strands a card — at worst it's delayed one
+  cycle. We don't try to predict the cutoff (no quota signal is available); we make
+  it recoverable instead.
 - **Separate contexts** for Implementor and Evaluator — the Evaluator must keep
   critical distance. Continue each with `SendMessage` when available; where it
   isn't (some cloud sessions lack it), re-spawn a fresh agent per round with full
