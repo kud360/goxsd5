@@ -68,35 +68,60 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 
 	// Substitution groups first: an element with no type takes its first
 	// head's type.
-	if v, ok := n.Attr("substitutionGroup"); ok && global {
-		for _, tok := range strings.Fields(v) {
-			q, err := n.ResolveQName(tok)
-			if err != nil {
-				continue // reported by pass 1
-			}
-			d := b.lookupRef(spaceElement, chameleonQName(q, doc), n.Pos, doc)
-			if d == nil {
-				continue
-			}
-			e.SubstitutionGroups = append(e.SubstitutionGroups, b.buildElementDecl(d.node, d.doc, true))
-		}
+	if global {
+		b.buildSubstitutionGroups(e, n, doc)
 	}
 
-	e.Type = b.buildAnonType(n, doc, nil)
-	if e.Type == nil {
-		if q, ok := qnameAttr(n, doc, "type"); ok {
-			e.Type = b.resolveType(q, n.Pos, doc)
-		} else if len(e.SubstitutionGroups) > 0 && e.SubstitutionGroups[0].Type != nil {
-			e.Type = e.SubstitutionGroups[0].Type
-		} else {
-			e.Type = builtin.AnyType
-		}
-	}
+	e.Type = b.elementType(e, n, doc)
 	// Type-dependent validation (NOTATION enumeration, value constraints,
 	// substitution-group derivation) reads the element's type internals and so
 	// is deferred to checkElementDecls, a post-pass that runs once every type
 	// is fully built (see the type shell/finish split in buildComplexType).
 
+	b.buildElementChildren(e, n, doc)
+	return e
+}
+
+// buildSubstitutionGroups resolves a global element's substitutionGroup heads
+// onto e.SubstitutionGroups, skipping tokens whose refs are unresolved (those
+// are reported by pass 1).
+func (b *builder) buildSubstitutionGroups(e *xsd.ElementDecl, n *xmltree.Node, doc *schemaDoc) {
+	v, ok := n.Attr("substitutionGroup")
+	if !ok {
+		return
+	}
+	for _, tok := range strings.Fields(v) {
+		q, err := n.ResolveQName(tok)
+		if err != nil {
+			continue // reported by pass 1
+		}
+		d := b.lookupRef(spaceElement, chameleonQName(q, doc), n.Pos, doc)
+		if d == nil {
+			continue
+		}
+		e.SubstitutionGroups = append(e.SubstitutionGroups, b.buildElementDecl(d.node, d.doc, true))
+	}
+}
+
+// elementType determines an element's type: an anonymous type if present,
+// else the @type reference, else the first substitution-group head's type,
+// else the ur-type.
+func (b *builder) elementType(e *xsd.ElementDecl, n *xmltree.Node, doc *schemaDoc) xsd.Type {
+	if t := b.buildAnonType(n, doc, nil); t != nil {
+		return t
+	}
+	if q, ok := qnameAttr(n, doc, "type"); ok {
+		return b.resolveType(q, n.Pos, doc)
+	}
+	if len(e.SubstitutionGroups) > 0 && e.SubstitutionGroups[0].Type != nil {
+		return e.SubstitutionGroups[0].Type
+	}
+	return builtin.AnyType
+}
+
+// buildElementChildren appends the element's identity constraints and type
+// alternatives from its xsd: child elements.
+func (b *builder) buildElementChildren(e *xsd.ElementDecl, n *xmltree.Node, doc *schemaDoc) {
 	for _, c := range xsdElems(n, doc) {
 		switch c.Name.Local {
 		case "unique", "key", "keyref":
@@ -116,7 +141,6 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 			e.TypeAlternatives = append(e.TypeAlternatives, alt)
 		}
 	}
-	return e
 }
 
 // checkElementDecls runs the per-element validation that reads each element's
@@ -127,51 +151,68 @@ func (b *builder) buildElementDecl(n *xmltree.Node, doc *schemaDoc, global bool)
 func (b *builder) checkElementDecls() {
 	for n, e := range b.elements {
 		b.checkNotationEnum(e.Type, n.Pos)
+		b.checkElementValueConstraint(e, n)
+		b.checkSubstitutionGroupExclusions(e, n)
+	}
+}
 
-		// Value constraints.
-		// spec: e-props-correct.2 / cos-valid-default — XSD 1.1 Part 1 §3.3.6
-		if vc := valueConstraint(e.Default, e.Fixed); vc != nil {
-			if st := contentSimpleType(e.Type); st != nil {
-				// Note: XSD 1.1 dropped the 1.0 rule (old e-props-correct.5)
-				// forbidding value constraints on ID-derived element types; it is
-				// now only a non-normative "should avoid" note, so we no longer
-				// reject it.
-				if _, err := st.ParseValue(*vc, nsContext{n}); err != nil {
-					b.errf(xsd.SpecCosValidDefault, n.Pos, "default/fixed value %q is not valid for the type of element %s: %v", *vc, e.Name, err)
-				}
-			} else if ct, ok := e.Type.(*xsd.ComplexType); ok {
-				if ec, ok := ct.Content.(*xsd.ElementContent); ok {
-					if !ec.Mixed {
-						// spec: cos-valid-default.2.1 — element-only content admits
-						// no value constraint.
-						b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
-					} else if !particleEmptiable(ec.Particle) {
-						// spec: cos-valid-default.2.2 — mixed content with a value
-						// constraint requires an emptiable particle.
-						b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has mixed content with a non-emptiable particle and must not have a default or fixed value", e.Name)
-					}
-				}
-			}
+// checkElementValueConstraint validates an element's default/fixed value
+// against its type. spec: e-props-correct.2 / cos-valid-default — XSD 1.1
+// Part 1 §3.3.6.
+func (b *builder) checkElementValueConstraint(e *xsd.ElementDecl, n *xmltree.Node) {
+	vc := valueConstraint(e.Default, e.Fixed)
+	if vc == nil {
+		return
+	}
+	if st := contentSimpleType(e.Type); st != nil {
+		// Note: XSD 1.1 dropped the 1.0 rule (old e-props-correct.5)
+		// forbidding value constraints on ID-derived element types; it is
+		// now only a non-normative "should avoid" note, so we no longer
+		// reject it.
+		if _, err := st.ParseValue(*vc, nsContext{n}); err != nil {
+			b.errf(xsd.SpecCosValidDefault, n.Pos, "default/fixed value %q is not valid for the type of element %s: %v", *vc, e.Name, err)
 		}
+		return
+	}
+	ct, ok := e.Type.(*xsd.ComplexType)
+	if !ok {
+		return
+	}
+	ec, ok := ct.Content.(*xsd.ElementContent)
+	if !ok {
+		return
+	}
+	if !ec.Mixed {
+		// spec: cos-valid-default.2.1 — element-only content admits
+		// no value constraint.
+		b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
+		return
+	}
+	if !particleEmptiable(ec.Particle) {
+		// spec: cos-valid-default.2.2 — mixed content with a value
+		// constraint requires an emptiable particle.
+		b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has mixed content with a non-emptiable particle and must not have a default or fixed value", e.Name)
+	}
+}
 
-		// Substitution-group exclusions: if the member's type is derived from a
-		// head's type by a method the head's final excludes, membership is
-		// invalid. Unreachable chains are left to the deferred derivation-ok
-		// checks rather than guessed at.
-		for _, head := range e.SubstitutionGroups {
-			if head.Type == nil || e.Type == nil {
-				continue
-			}
-			// spec: e-props-correct.4 — XSD 1.1 Part 1 §3.3.6 — the member's type
-			// must be validly derived from the head's type, and the derivation
-			// methods used must not be among the head's {substitution group
-			// exclusions} ({final}).
-			methods, ok := derivationMethods(e.Type, head.Type)
-			if !ok {
-				b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: its type is not validly derived from the head's type", e.Name, head.Name)
-			} else if methods&head.Final != 0 {
-				b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: the head excludes this derivation", e.Name, head.Name)
-			}
+// checkSubstitutionGroupExclusions reports an element whose type is derived
+// from a substitution-group head's type by a method the head's {final}
+// excludes. Unreachable chains are left to the deferred derivation-ok checks
+// rather than guessed at.
+func (b *builder) checkSubstitutionGroupExclusions(e *xsd.ElementDecl, n *xmltree.Node) {
+	for _, head := range e.SubstitutionGroups {
+		if head.Type == nil || e.Type == nil {
+			continue
+		}
+		// spec: e-props-correct.4 — XSD 1.1 Part 1 §3.3.6 — the member's type
+		// must be validly derived from the head's type, and the derivation
+		// methods used must not be among the head's {substitution group
+		// exclusions} ({final}).
+		methods, ok := derivationMethods(e.Type, head.Type)
+		if !ok {
+			b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: its type is not validly derived from the head's type", e.Name, head.Name)
+		} else if methods&head.Final != 0 {
+			b.errf(xsd.SpecEPropsCorrect, n.Pos, "element %s cannot substitute for %s: the head excludes this derivation", e.Name, head.Name)
 		}
 	}
 }
