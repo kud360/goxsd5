@@ -80,54 +80,68 @@ func TestScanW3CSuiteValidSchemas(t *testing.T) {
 	counts := map[string]int{}
 	var samples []string
 	for _, sf := range setFiles {
-		data, err := os.ReadFile(sf)
-		if err != nil {
-			t.Fatalf("read %s: %v", sf, err)
-		}
-		var ts scanTestSet
-		if err := xml.Unmarshal(data, &ts); err != nil {
-			t.Fatalf("unmarshal %s: %v", sf, err)
-		}
-		for _, g := range ts.Groups {
-			if g.Schema == nil || !scanVersionApplies(g.Version) || !scanVersionApplies(g.Schema.Version) {
-				continue
-			}
-			if scanExpectedValidity(g.Schema.Expected) != "valid" {
-				continue
-			}
-			// All of a group's schema documents form one schema: load them
-			// as roots of a shared loader, then register and build.
-			errs := &xsd.ErrorList{}
-			l := newLoader(FileResolver{}, errs)
-			docOK := true
-			for _, d := range g.Schema.Docs {
-				p := filepath.Join(filepath.Dir(sf), filepath.FromSlash(d.Href))
-				if err := l.loadRoot(p); err != nil {
-					if !os.IsNotExist(err) {
-						parseFail++
-					}
-					docOK = false
-				}
-			}
-			if !docOK {
-				continue
-			}
-			_, _ = finish(l, errs)
-			total++
-			if !errs.Empty() {
-				failed++
-				for _, id := range xsd.RefIDs(errs.Err()) {
-					counts[id]++
-				}
-				if len(samples) < 40 {
-					samples = append(samples, g.Name+": "+fmt.Sprintf("%v", xsd.AllErrors(errs.Err())[0]))
-				}
-			}
-		}
+		scanSetFile(t, sf, &total, &failed, &parseFail, counts, &samples)
 	}
 	t.Logf("valid-expected groups: %d, with pass-1 errors: %d, xml parse failures: %d", total, failed, parseFail)
 	t.Logf("error id histogram: %v", counts)
 	for _, s := range samples {
 		t.Logf("  %s", s)
+	}
+}
+
+// scanSetFile processes one .testSet file, accumulating counts into the
+// caller's totals/samples.
+func scanSetFile(t *testing.T, sf string, total, failed, parseFail *int, counts map[string]int, samples *[]string) {
+	t.Helper()
+	data, err := os.ReadFile(sf)
+	if err != nil {
+		t.Fatalf("read %s: %v", sf, err)
+	}
+	var ts scanTestSet
+	if err := xml.Unmarshal(data, &ts); err != nil {
+		t.Fatalf("unmarshal %s: %v", sf, err)
+	}
+	for _, g := range ts.Groups {
+		if g.Schema == nil || !scanVersionApplies(g.Version) || !scanVersionApplies(g.Schema.Version) {
+			continue
+		}
+		if scanExpectedValidity(g.Schema.Expected) != "valid" {
+			continue
+		}
+		scanGroup(t, sf, g, total, failed, parseFail, counts, samples)
+	}
+}
+
+// scanGroup processes one test group within a .testSet file.
+func scanGroup(t *testing.T, sf string, g scanTestGroup, total, failed, parseFail *int, counts map[string]int, samples *[]string) {
+	t.Helper()
+	// All of a group's schema documents form one schema: load them
+	// as roots of a shared loader, then register and build.
+	errs := &xsd.ErrorList{}
+	l := newLoader(FileResolver{}, errs)
+	docOK := true
+	for _, d := range g.Schema.Docs {
+		p := filepath.Join(filepath.Dir(sf), filepath.FromSlash(d.Href))
+		if err := l.loadRoot(p); err != nil {
+			if !os.IsNotExist(err) {
+				*parseFail++
+			}
+			docOK = false
+		}
+	}
+	if !docOK {
+		return
+	}
+	_, _ = finish(l, errs)
+	*total++
+	if errs.Empty() {
+		return
+	}
+	*failed++
+	for _, id := range xsd.RefIDs(errs.Err()) {
+		counts[id]++
+	}
+	if len(*samples) < 40 {
+		*samples = append(*samples, g.Name+": "+fmt.Sprintf("%v", xsd.AllErrors(errs.Err())[0]))
 	}
 }

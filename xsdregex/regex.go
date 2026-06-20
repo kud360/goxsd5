@@ -349,79 +349,21 @@ func (p *reParser) charClassExpr() (rangeSet, error) {
 	var set rangeSet
 	var sub rangeSet
 	first := true
-	closed := false
-	for !closed {
-		switch c := p.peek(); c {
-		case -1:
-			return nil, fmt.Errorf("unterminated character class")
-		case ']':
-			if first {
-				return nil, fmt.Errorf("empty character class")
-			}
-			p.pos++
-			closed = true
-		case '-':
-			switch {
-			case p.peekAt(1) == '[':
-				// Subtraction: must be the last item of the group.
-				p.pos++
-				s, err := p.charClassExpr()
-				if err != nil {
-					return nil, err
-				}
-				if p.peek() != ']' {
-					return nil, fmt.Errorf("subtraction must end the character class")
-				}
-				sub = s
-			case p.peekAt(1) == '-' && p.peekAt(2) != ']' && p.peekAt(2) != '[':
-				// '-' '-' X would be a charRange whose lower bound is an
-				// unescaped '-', which the spec forbids, e.g. [--z].
-				return nil, fmt.Errorf("'-' cannot be the lower bound of a range")
-			default:
-				// A '-' at the start of a group item is a literal: it is
-				// leading, trailing ([-]), or follows a completed range or
-				// other item (e.g. [a-z-+] = a–z, '-', '+'). A '-' can never
-				// begin a range, so it is always literal here.
-				p.pos++
-				set = addRange(set, '-', '-')
-				first = false
-			}
-		case '[':
-			return nil, fmt.Errorf("unescaped '[' in character class")
-		default:
-			lo, isChar, cset, err := p.classChar()
-			if err != nil {
-				return nil, err
-			}
-			if !isChar {
-				set = union(set, cset)
-				first = false
-				continue
-			}
-			// Possible range: x-y, unless the '-' starts a subtraction
-			// or is the trailing literal '-'.
-			if p.peek() == '-' && p.peekAt(1) != '[' && p.peekAt(1) != ']' {
-				p.pos++
-				if p.peek() == '-' {
-					// A literal (unescaped) '-' may not be the upper bound of
-					// a range, e.g. [!--] is invalid (only \- could end one).
-					return nil, fmt.Errorf("'-' cannot be the upper bound of a range")
-				}
-				hi, isChar2, _, err := p.classChar()
-				if err != nil {
-					return nil, err
-				}
-				if !isChar2 {
-					return nil, fmt.Errorf("multi-character escape cannot end a range")
-				}
-				if hi < lo {
-					return nil, fmt.Errorf("invalid range %q-%q", lo, hi)
-				}
-				set = addRange(set, lo, hi)
-			} else {
-				set = addRange(set, lo, lo)
-			}
+	for {
+		done, added, newSet, newSub, err := p.charGroupStep(set, first)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			break
+		}
+		if added {
 			first = false
+		}
+		if newSub != nil {
+			sub = newSub
+		} else {
+			set = newSet
 		}
 	}
 	if neg {
@@ -431,6 +373,100 @@ func (p *reParser) charClassExpr() (rangeSet, error) {
 		set = subtract(set, sub)
 	}
 	return set, nil
+}
+
+// charGroupStep processes one iteration of the character group loop.
+// done=true means the closing ']' was consumed; added=true means a real item
+// was consumed and first should become false in the caller. Subtraction (-[…])
+// does NOT set added because the left-hand charGroup must be non-empty first.
+// newSub is non-nil only when a -[…] subtraction was parsed.
+func (p *reParser) charGroupStep(set rangeSet, first bool) (done, added bool, newSet, newSub rangeSet, err error) {
+	switch c := p.peek(); c {
+	case -1:
+		return false, false, nil, nil, fmt.Errorf("unterminated character class")
+	case ']':
+		if first {
+			return false, false, nil, nil, fmt.Errorf("empty character class")
+		}
+		p.pos++
+		return true, false, nil, nil, nil
+	case '[':
+		return false, false, nil, nil, fmt.Errorf("unescaped '[' in character class")
+	case '-':
+		newSet, newSub, err = p.charGroupDash(set)
+		// Subtraction is only valid after at least one item (first==false).
+		// Do not set added so first remains true when subtraction is the
+		// very first token — the subsequent ']' will then report "empty class".
+		isSub := newSub != nil
+		return false, err == nil && !isSub, newSet, newSub, err
+	default:
+		newSet, err = p.charGroupDefault(set)
+		return false, err == nil, newSet, nil, err
+	}
+}
+
+// charGroupDash handles a '-' character at the current position inside a
+// character class group. It distinguishes subtraction (-[…]), a forbidden
+// double-dash lower bound, and a literal dash.
+func (p *reParser) charGroupDash(set rangeSet) (newSet, newSub rangeSet, err error) {
+	switch {
+	case p.peekAt(1) == '[':
+		// Subtraction: must be the last item of the group.
+		p.pos++
+		s, err := p.charClassExpr()
+		if err != nil {
+			return nil, nil, err
+		}
+		if p.peek() != ']' {
+			return nil, nil, fmt.Errorf("subtraction must end the character class")
+		}
+		return set, s, nil
+	case p.peekAt(1) == '-' && p.peekAt(2) != ']' && p.peekAt(2) != '[':
+		// '-' '-' X would be a charRange whose lower bound is an
+		// unescaped '-', which the spec forbids, e.g. [--z].
+		return nil, nil, fmt.Errorf("'-' cannot be the lower bound of a range")
+	default:
+		// A '-' at the start of a group item is a literal: it is
+		// leading, trailing ([-]), or follows a completed range or
+		// other item (e.g. [a-z-+] = a–z, '-', '+'). A '-' can never
+		// begin a range, so it is always literal here.
+		p.pos++
+		return addRange(set, '-', '-'), nil, nil
+	}
+}
+
+// charGroupDefault handles the default case inside a character class group:
+// a character or escape sequence, possibly followed by a '-' range operator.
+func (p *reParser) charGroupDefault(set rangeSet) (rangeSet, error) {
+	lo, isChar, cset, err := p.classChar()
+	if err != nil {
+		return nil, err
+	}
+	if !isChar {
+		return union(set, cset), nil
+	}
+	// Possible range: x-y, unless the '-' starts a subtraction
+	// or is the trailing literal '-'.
+	if p.peek() != '-' || p.peekAt(1) == '[' || p.peekAt(1) == ']' {
+		return addRange(set, lo, lo), nil
+	}
+	p.pos++
+	if p.peek() == '-' {
+		// A literal (unescaped) '-' may not be the upper bound of
+		// a range, e.g. [!--] is invalid (only \- could end one).
+		return nil, fmt.Errorf("'-' cannot be the upper bound of a range")
+	}
+	hi, isChar2, _, err := p.classChar()
+	if err != nil {
+		return nil, err
+	}
+	if !isChar2 {
+		return nil, fmt.Errorf("multi-character escape cannot end a range")
+	}
+	if hi < lo {
+		return nil, fmt.Errorf("invalid range %q-%q", lo, hi)
+	}
+	return addRange(set, lo, hi), nil
 }
 
 // classChar parses one character or escape inside a class. Returns either

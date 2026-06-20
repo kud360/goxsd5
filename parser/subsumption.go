@@ -222,47 +222,68 @@ func (b *builder) slotRun(rep *rreport, ct *xsd.ComplexType, slots []*baseSlot, 
 	for _, rp := range rParts {
 		switch term := rp.Term.(type) {
 		case *xsd.ElementDecl:
-			slot, ambiguous := -1, false
-			for i, s := range slots {
-				if s.decl != nil && s.names[term.Name] {
-					if slot != -1 {
-						ambiguous = true
-						break
-					}
-					slot = i
-				}
+			ok := b.slotRunElement(rep, ct, slots, baseWC, rp, term, mapTo)
+			if !ok {
+				return
 			}
-			if ambiguous {
-				return // can't decide which base particle it restricts: give up
-			}
-			if slot != -1 {
-				mapTo(slot, rp)
-				b.nameTypeOK(rep, ct, term, slots[slot].decl, rp.Pos, true)
-				continue
-			}
-			// No base element matches: the element must be accepted by the base
-			// wildcard (NSCompat), else the restriction introduces a name the base
-			// disallows.
-			if baseWC >= 0 && slots[baseWC].wc.AllowsName(term.Name) {
-				mapTo(baseWC, rp)
-				continue
-			}
-			// spec: cos-particle-restrict — §3.4.6.4 clause 1.
-			rep.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s is not allowed by the base content model", term.Name, describeCT(ct))
 		case *xsd.Wildcard:
-			// A restriction wildcard can only restrict the base wildcard, and only
-			// if it is a wildcard subset of it (NSSubset).
-			if baseWC < 0 {
-				rep.errf(xsd.SpecCosParticleRestrict, rp.Pos, "the restriction of %s introduces a wildcard the base content model does not allow", describeCT(ct))
-				continue
-			}
-			if !namespaceConstraintSubset(term, slots[baseWC].wc) {
-				rep.errf(xsd.SpecCosParticleRestrict, rp.Pos, "a wildcard in the restriction of %s allows elements the base wildcard does not", describeCT(ct))
-			}
-			mapTo(baseWC, rp)
+			b.slotRunWildcard(rep, ct, slots, baseWC, rp, term, mapTo)
 		}
 	}
 
+	slotRunCheckSlots(rep, ct, slots, mapped, sumMin, sumMax, rTop)
+}
+
+// slotRunElement maps one restriction element declaration to a base slot.
+// Returns false when the mapping is ambiguous and slotRun must give up.
+func (b *builder) slotRunElement(rep *rreport, ct *xsd.ComplexType, slots []*baseSlot, baseWC int, rp *xsd.Particle, term *xsd.ElementDecl, mapTo func(int, *xsd.Particle)) bool {
+	slot, ambiguous := -1, false
+	for i, s := range slots {
+		if s.decl != nil && s.names[term.Name] {
+			if slot != -1 {
+				ambiguous = true
+				break
+			}
+			slot = i
+		}
+	}
+	if ambiguous {
+		return false // can't decide which base particle it restricts: give up
+	}
+	if slot != -1 {
+		mapTo(slot, rp)
+		b.nameTypeOK(rep, ct, term, slots[slot].decl, rp.Pos, true)
+		return true
+	}
+	// No base element matches: the element must be accepted by the base
+	// wildcard (NSCompat), else the restriction introduces a name the base
+	// disallows.
+	if baseWC >= 0 && slots[baseWC].wc.AllowsName(term.Name) {
+		mapTo(baseWC, rp)
+		return true
+	}
+	// spec: cos-particle-restrict — §3.4.6.4 clause 1.
+	rep.errf(xsd.SpecCosParticleRestrict, rp.Pos, "element %s in the restriction of %s is not allowed by the base content model", term.Name, describeCT(ct))
+	return true
+}
+
+// slotRunWildcard maps one restriction wildcard to the base wildcard slot.
+func (b *builder) slotRunWildcard(rep *rreport, ct *xsd.ComplexType, slots []*baseSlot, baseWC int, rp *xsd.Particle, term *xsd.Wildcard, mapTo func(int, *xsd.Particle)) {
+	// A restriction wildcard can only restrict the base wildcard, and only
+	// if it is a wildcard subset of it (NSSubset).
+	if baseWC < 0 {
+		rep.errf(xsd.SpecCosParticleRestrict, rp.Pos, "the restriction of %s introduces a wildcard the base content model does not allow", describeCT(ct))
+		return
+	}
+	if !namespaceConstraintSubset(term, slots[baseWC].wc) {
+		rep.errf(xsd.SpecCosParticleRestrict, rp.Pos, "a wildcard in the restriction of %s allows elements the base wildcard does not", describeCT(ct))
+	}
+	mapTo(baseWC, rp)
+}
+
+// slotRunCheckSlots verifies that every mapped slot has occurrences within
+// range and every required unmapped slot is present.
+func slotRunCheckSlots(rep *rreport, ct *xsd.ComplexType, slots []*baseSlot, mapped []bool, sumMin, sumMax []int, rTop *xsd.Particle) {
 	for i, s := range slots {
 		if !mapped[i] {
 			if s.min > 0 {
