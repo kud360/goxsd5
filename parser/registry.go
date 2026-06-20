@@ -70,12 +70,18 @@ type registry struct {
 
 // newRegistry returns a registry seeded with the built-in types: xs:anyType
 // and every built-in simple type (xs:anySimpleType and xs:anyAtomicType
-// included).
-func newRegistry() *registry {
+// included). primitives, when non-nil, supplies the simple-type value layer in
+// place of the default builtin.AllBuiltins() — the parse-time hook for an
+// alternative value semantics (e.g. builtin/gotype). xs:anyType and xs:error
+// are structural and always seeded from builtin regardless.
+func newRegistry(primitives []*xsd.SimpleType) *registry {
+	if primitives == nil {
+		primitives = builtin.AllBuiltins()
+	}
 	r := &registry{}
 	r.add(spaceType, &decl{name: builtin.AnyType.Name, builtin: builtin.AnyType})
 	r.add(spaceType, &decl{name: builtin.ErrorType.Name, builtin: builtin.ErrorType})
-	for _, t := range builtin.AllBuiltins() {
+	for _, t := range primitives {
 		r.add(spaceType, &decl{name: t.Name, builtin: t})
 	}
 	// The four built-in XSI attribute declarations (§3.2.7); a reference to

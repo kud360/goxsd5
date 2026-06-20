@@ -215,7 +215,7 @@ func buildSchemaFromDocs(paths []string) (schemas []*xsd.Schema, ok bool) {
 			return nil, false
 		}
 	}
-	built, err := finish(l, errs)
+	built, err := finish(l, nil, errs)
 	if err != nil {
 		return nil, false
 	}

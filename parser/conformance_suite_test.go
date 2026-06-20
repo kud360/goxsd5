@@ -220,7 +220,7 @@ func runSuiteCase(c suiteCase) (loaded, ok bool) {
 			return false, false
 		}
 	}
-	_, _ = finish(l, errs)
+	_, _ = finish(l, nil, errs)
 	gotValid := errs.Empty()
 	return true, gotValid == c.wantValid
 }
