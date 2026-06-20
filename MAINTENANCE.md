@@ -61,7 +61,9 @@ AND (if invoked) xsd-expert SPEC-OK.
   push-notifies you, and moves on to the next card. This is a per-card
   convergence guard, not a per-run throttle.
 - **Separate contexts** for Implementor and Evaluator — the Evaluator must keep
-  critical distance. They're continued with `SendMessage`, not re-spawned.
+  critical distance. Continue each with `SendMessage` when available; where it
+  isn't (some cloud sessions lack it), re-spawn a fresh agent per round with full
+  resume context (branch, PR #, findings) — equivalent, just less context-efficient.
 - **Squash-merge** keeps history revertable. The orchestrator merges, never the
   Evaluator.
 - Notifications: **push notification** on plan-ready, on merge, and on stuck.

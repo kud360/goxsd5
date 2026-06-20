@@ -38,9 +38,15 @@ naming one card) ships just that card, then stops.
      GREEN **and** xsd-expert SPEC-OK.
    - **All green** → break out of the loop.
    - **Otherwise** → merge the Evaluator's CHANGES with any xsd-expert
-     SPEC-ISSUE items and `SendMessage` the *same* `implementor` agent with the
-     combined list (its context is intact — do NOT re-spawn). When it reports
-     back, `SendMessage` the *same* reviewer agent(s) to re-check. Repeat.
+     SPEC-ISSUE items into one combined findings list and send it to the
+     Implementor. **Prefer `SendMessage`** to the *same* `implementor` agent (its
+     context is intact). **If `SendMessage` is unavailable** (some cloud sessions
+     don't have it), **spawn a fresh `implementor`** instead, handing it full
+     resume context: the issue #, the `maint/*` branch + PR #, what is already
+     done, and the combined findings to fix — it picks up from the existing
+     branch. Then re-review: `SendMessage` the *same* reviewer agent(s), or — if
+     SendMessage is unavailable — spawn a fresh `evaluator` (+ `xsd-expert`) on the
+     PR; a fresh reviewer only strengthens independence. Repeat.
 
 4. **On GREEN:** squash-merge the PR (`gh pr merge <#> --squash --delete-branch`),
    move the card to **Done**, and send a push notification:
@@ -57,7 +63,11 @@ naming one card) ships just that card, then stops.
 
 ## Rules
 - Keep Implementor and Evaluator in **separate agent contexts** — the Evaluator's
-  independence is the point. Continue each with `SendMessage`, don't re-spawn.
+  independence is the point. Continue each with `SendMessage` when available; where
+  it isn't (some cloud sessions lack it), re-spawn a fresh agent each round with
+  full resume context (branch, PR #, combined findings). Re-spawning is
+  functionally equivalent — the branch/PR carries the state — just less
+  context-efficient.
 - The **orchestrator merges**, never the Evaluator. Merge only on a GREEN verdict
   whose objective gate (5672 / 21429 conformance baselines) actually passed.
 - **Unattended (scheduled) runs merge on GREEN without any further human
