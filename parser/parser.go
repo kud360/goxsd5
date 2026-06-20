@@ -34,6 +34,27 @@ func Parse(location string, opts *Options) ([]*xsd.Schema, error) {
 	return finish(l, errs)
 }
 
+// ParseMultiple loads the schema documents at each location in locations plus
+// the transitive closure of their imports, includes, redefines, and overrides,
+// and returns the linked schemas as a single merged set. The loader deduplicates
+// by resolved URI, so a location appearing in multiple entries is loaded once.
+// The error is an *xsd.ErrorList aggregate; the returned schemas are still
+// usable alongside a non-nil error.
+func ParseMultiple(locations []string, opts *Options) ([]*xsd.Schema, error) {
+	var resolver SchemaResolver = FileResolver{}
+	if opts != nil && opts.Resolver != nil {
+		resolver = opts.Resolver
+	}
+	errs := &xsd.ErrorList{}
+	l := newLoader(resolver, errs)
+	for _, loc := range locations {
+		if err := l.loadRoot(loc); err != nil {
+			return nil, fmt.Errorf("cannot load %s: %w", loc, err)
+		}
+	}
+	return finish(l, errs)
+}
+
 // finish registers and builds everything the loader discovered.
 func finish(l *loader, errs *xsd.ErrorList) ([]*xsd.Schema, error) {
 	reg := newRegistry()

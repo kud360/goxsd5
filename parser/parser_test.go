@@ -489,3 +489,64 @@ func TestParseMissingRoot(t *testing.T) {
 		t.Fatal("Parse of a missing root succeeded")
 	}
 }
+
+func TestParseMultiple(t *testing.T) {
+	t.Run("two docs spanning two namespaces produce the union schema set", func(t *testing.T) {
+		files := mapResolver{
+			"a.xsd": `<xs:schema ` + xsNS + ` targetNamespace="urn:a">
+  <xs:element name="ea" type="xs:string"/>
+</xs:schema>`,
+			"b.xsd": `<xs:schema ` + xsNS + ` targetNamespace="urn:b">
+  <xs:element name="eb" type="xs:int"/>
+</xs:schema>`,
+		}
+		schemas, err := ParseMultiple([]string{"a.xsd", "b.xsd"}, &Options{Resolver: files})
+		wantNoErr(t, err)
+		if len(schemas) != 2 {
+			t.Fatalf("got %d schemas, want 2", len(schemas))
+		}
+		ns := map[string]bool{}
+		for _, s := range schemas {
+			ns[s.TargetNamespace] = true
+		}
+		if !ns["urn:a"] || !ns["urn:b"] {
+			t.Errorf("namespace set = %v, want {urn:a, urn:b}", ns)
+		}
+		// Verify elements from both docs are present.
+		var sa, sb *xsd.Schema
+		for _, s := range schemas {
+			switch s.TargetNamespace {
+			case "urn:a":
+				sa = s
+			case "urn:b":
+				sb = s
+			}
+		}
+		if sa == nil || sa.Elements[xsd.QName{Namespace: "urn:a", Local: "ea"}] == nil {
+			t.Error("element ea from a.xsd not in schema set")
+		}
+		if sb == nil || sb.Elements[xsd.QName{Namespace: "urn:b", Local: "eb"}] == nil {
+			t.Error("element eb from b.xsd not in schema set")
+		}
+	})
+
+	t.Run("duplicate location is loaded once", func(t *testing.T) {
+		files := mapResolver{
+			"a.xsd": `<xs:schema ` + xsNS + ` targetNamespace="urn:a">
+  <xs:element name="ea" type="xs:string"/>
+</xs:schema>`,
+		}
+		schemas, err := ParseMultiple([]string{"a.xsd", "a.xsd"}, &Options{Resolver: files})
+		wantNoErr(t, err)
+		if len(schemas) != 1 {
+			t.Fatalf("got %d schemas, want 1 (deduped)", len(schemas))
+		}
+	})
+
+	t.Run("missing root returns error", func(t *testing.T) {
+		files := mapResolver{}
+		if _, err := ParseMultiple([]string{"missing.xsd"}, &Options{Resolver: files}); err == nil {
+			t.Fatal("ParseMultiple of a missing root succeeded")
+		}
+	})
+}

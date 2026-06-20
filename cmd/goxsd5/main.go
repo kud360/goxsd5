@@ -16,9 +16,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/kud360/goxsd5/parser"
+	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 	"github.com/kud360/goxsd5/xsdvalidate"
 	"github.com/kud360/goxsd5/xsdvalidate/xmlsrc"
@@ -51,13 +53,17 @@ func main() {
 	}
 
 	if *validate != "" {
-		os.Exit(assessInstance(schemas, *validate, *quiet))
+		os.Exit(assessInstance(schemas, flag.Arg(0), *validate, *quiet))
 	}
 }
 
 // assessInstance validates one instance document and returns the process exit
-// code (0 valid, 1 invalid or unreadable).
-func assessInstance(schemas []*xsd.Schema, path string, quiet bool) int {
+// code (0 valid, 1 invalid or unreadable). schemaPath is the explicitly
+// supplied schema location; it is used to resolve xsi:schemaLocation hints
+// from the instance and to merge any additional schema documents the instance
+// references that are not already covered.
+func assessInstance(schemas []*xsd.Schema, schemaPath, path string, quiet bool) int {
+	schemas = augmentSchemasFromHints(schemas, schemaPath, path)
 	f, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -82,6 +88,51 @@ func assessInstance(schemas []*xsd.Schema, path string, quiet bool) int {
 	}
 	fmt.Fprintf(os.Stderr, "%s: invalid (%d error(s))\n", path, len(errs))
 	return 1
+}
+
+// augmentSchemasFromHints reads the instance at instancePath, extracts any
+// xsi:schemaLocation / xsi:noNamespaceSchemaLocation hints, resolves them
+// relative to the instance file's directory, and re-parses via
+// ParseMultiple when the hints name documents beyond schemaPath. When no
+// hints extend the set the original schemas are returned unchanged.
+func augmentSchemasFromHints(schemas []*xsd.Schema, schemaPath, instancePath string) []*xsd.Schema {
+	f, err := os.Open(instancePath)
+	if err != nil {
+		return schemas
+	}
+	root, err := xmltree.Parse(f, instancePath)
+	f.Close()
+	if err != nil {
+		return schemas
+	}
+
+	absSchema, err := filepath.Abs(schemaPath)
+	if err != nil {
+		return schemas
+	}
+	have := map[string]bool{absSchema: true}
+	locations := []string{schemaPath}
+	added := false
+	for _, loc := range parser.SchemaLocationHints(root) {
+		abs, err := filepath.Abs(filepath.Join(filepath.Dir(instancePath), loc))
+		if err != nil {
+			continue
+		}
+		if have[abs] {
+			continue
+		}
+		have[abs] = true
+		locations = append(locations, filepath.Join(filepath.Dir(instancePath), loc))
+		added = true
+	}
+	if !added {
+		return schemas
+	}
+	augmented, err := parser.ParseMultiple(locations, nil)
+	if err != nil {
+		return schemas
+	}
+	return augmented
 }
 
 // printSummary lists each namespace's component counts and named components.
