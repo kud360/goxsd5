@@ -8,7 +8,7 @@ gate. This file is the contract every (cold-start) agent shares.
 
 | Role | Defined in | Trigger | Mandate |
 |---|---|---|---|
-| **Planner** | `.claude/agents/planner.md` | scheduled, 08:00 ET daily | Discover gaps/features (incl. architecture) → write proposals to **Proposed**. Read-only; never codes. |
+| **Planner** | `.claude/agents/planner.md` | scheduled, 08:00 ET daily | Discover gaps/features (incl. architecture) → write proposals to **Proposed**; refine open proposals from reviewer comments. Read-only on code; never codes. |
 | *(you)* | — | manual | Triage **Proposed** → **Approved** (or reject). Add your own cards straight to **Approved**. |
 | **Ship** | `.claude/skills/ship/SKILL.md` | scheduled, 02:00 / 14:00 / 20:00 ET | Pull one **Approved** card; run the Implementor ⇄ Evaluator loop to green; squash-merge. |
 | **Implementor** | `.claude/agents/implementor.md` | spawned by Ship | Build the change on a `maint/*` branch, open a PR, fix on findings. Never merges. |

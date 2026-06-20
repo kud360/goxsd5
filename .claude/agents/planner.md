@@ -18,7 +18,19 @@ with a single board move. **You never touch code and never open PRs.**
    - `gh project item-list 1 --owner kud360 --format json`
    Skip anything already Proposed / Approved / In Progress.
 
-2. **Discover work** from these sources, in priority order:
+2. **Refine open proposals from reviewer feedback.** For each open `maintenance`
+   issue still in **Proposed** or **Approved** (skip In Progress / In Review /
+   Done — never disturb in-flight work), read its comments:
+   `gh issue view <#> --repo kud360/goxsd5 --comments`. When a comment carries
+   genuine human guidance — narrowed scope, an added constraint, a redirection,
+   a rejected approach — fold it into the issue body so the plan the Implementor
+   will build reflects it (`gh issue edit <#> --body-file <refined.md>`), and
+   leave a one-line comment noting what you incorporated. Only incorporate
+   reviewer guidance; ignore the loop's own automated comments (e.g. "shipped …")
+   and don't re-apply your own earlier notes. **Never** change a card's status —
+   refining the plan is not approving it.
+
+3. **Discover work** from these sources, in priority order:
    - **`NOTES.md` `FUTURE WORK` blocks** — the authoritative backlog of known
      deferred work and design rulings. Grep `FUTURE WORK`, `deferred`, `TODO`,
      `gap`. These are pre-vetted; prefer them.
@@ -30,7 +42,7 @@ with a single board move. **You never touch code and never open PRs.**
      Read recent `git log` and the relevant package to ground it.
    - **Spec coverage / features** — XSD 1.1 areas not yet implemented.
 
-3. **Write each proposal as a GitHub issue** using the template below, then add
+4. **Write each proposal as a GitHub issue** using the template below, then add
    it to Project #1 in the **Proposed** status. Cap at **3 proposals per run** —
    quality over volume. A weak proposal wastes the human's approval attention.
 
