@@ -10,7 +10,7 @@ import (
 )
 
 // assessor holds the per-run state of one Assess call: the immutable validator,
-// the result being built, and the document-scoped tables (cvc-id) the engine
+// the result being built, and the identity-constraint tables (cvc-id) the engine
 // owns because they are not per-datatype.
 type assessor struct {
 	v   *Validator
@@ -33,15 +33,21 @@ type assessor struct {
 	// identity-constraint fields selecting attributes can compare typed values.
 	attrType map[Attribute]*xsd.SimpleType
 
-	// keyTables accumulates each key/unique constraint's tuple table for the
-	// whole document walk, keyed by the constraint component. A keyref's refer
-	// target may be a key declared on a different (typically ancestor) element,
-	// so its table must outlive that element's scope (XSD 1.1 §3.11.2/§3.11.4).
-	keyTables map[*xsd.IdentityConstraint][][]fieldVal
-	// pendingKeyrefs defers keyref tuple checks to a post-walk pass: a keyref's
-	// scope element may be assessed before the referred key's scope element in
-	// the pre-order walk, so the key table is only guaranteed complete afterward.
+	// keyTables records each key/unique constraint's tuple table together with
+	// the Euler-tour interval [enter,exit] of the element instance it was scoped
+	// at. A keyref resolves only against key tables whose interval is contained
+	// in the keyref element's own interval — i.e. key-sequences sourced within
+	// the keyref's subtree (node tables propagate UPWARD, XSD 1.1 §3.11.4/§3.11.5).
+	keyTables []scopedTable
+	// pendingKeyrefs defers keyref tuple checks to a post-walk pass: a key whose
+	// table a keyref must see may be scoped at a descendant assessed earlier in
+	// the post-order walk, so the key tables are only complete afterward.
 	pendingKeyrefs []pendingKeyref
+	// dfsClock is the monotonic Euler-tour counter threaded through the element
+	// walk: each element records its enter index on entry and the clock value
+	// after its children are walked as its exit index, giving every element a
+	// half-open interval that nests within its ancestors'.
+	dfsClock int
 
 	// skipped records elements matched by a processContents="skip" wildcard:
 	// they are not assessed, so they (and their subtrees) are excluded from
@@ -137,6 +143,9 @@ func (a *assessor) resolveRootXSIType(root Element, lexical string) xsd.Type {
 // parent is the element's parent (nil at the validation root); it is the binding
 // target for any xs:ID carried by this element's simple content (§3.3.4.5).
 func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited map[xsd.QName]string, parent Element) {
+	enter := a.dfsClock
+	a.dfsClock++
+
 	// cvc-elt.2: the declaration must not be abstract.
 	if decl.Abstract {
 		a.addf(xsd.SpecCvcElt, el.Pos(), "element %s is declared abstract and cannot appear in an instance", decl.Name)
@@ -183,8 +192,10 @@ func (a *assessor) assessElement(el Element, decl *xsd.ElementDecl, inherited ma
 	// cvc-elt.5: the element is locally valid with respect to its type.
 	a.assessType(el, gov, decl, childInherited(el, gov, inherited), parent)
 
-	// Identity constraints are scoped at this element and read its subtree.
-	a.checkIdentityConstraints(el, decl)
+	// Identity constraints are scoped at this element and read its subtree. The
+	// interval [enter,exit] now spans every descendant assessed above, so a
+	// key/unique table scoped here is recorded with this element's full subtree.
+	a.checkIdentityConstraints(el, decl, enter, a.dfsClock)
 }
 
 // childInherited extends the inherited-attribute set with this element's own

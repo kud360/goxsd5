@@ -7,29 +7,42 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
-## >>> DONE 2026-06-20 — issue #16: cross-scope keyref resolution in xsdvalidate/idc.go — 5672/21429 held <<<
-A keyref whose `refer` names a key declared on a different (typically ancestor)
-element was fail-open: the `tables` map was element-scoped, so the lookup missed
-and the keyref check was skipped (`continue`), silently accepting invalid values
-(XSD 1.1 §3.11.2/§3.11.4).
+## >>> DONE 2026-06-20 — issue #16: keyref resolution scoped to the keyref's subtree (per-instance node tables) — 5672/21429 held <<<
+A keyref whose `refer` names a key declared on a DESCENDANT element was fail-open:
+the per-element `tables` map was discarded once the descendant's scope closed, so
+the lookup missed and the keyref check was skipped, silently accepting invalid
+values. Per XSD 1.1 §3.11.4 cl.4.3 and §3.11.5, node tables propagate UPWARD: a
+keyref on element E resolves only against key-sequences sourced WITHIN E's own
+subtree (E itself or a descendant whose node table reaches E). A key on an
+ancestor or sibling of E does NOT reach E.
 
-Fix — document-scoped key tables flushed post-walk:
- - assessor gained `keyTables map[*xsd.IdentityConstraint][][]fieldVal` (accumulated
-   over the whole walk, never reset per element) and `pendingKeyrefs []pendingKeyref`
-   (xsdvalidate/assess.go).
- - `checkIdentityConstraints` (idc.go) now stores each key/unique table into
-   `a.keyTables[ic]` and ENQUEUES keyrefs (with their evaluated tuples + scope Pos)
-   into `a.pendingKeyrefs` instead of checking inline — a keyref's scope element may
-   be assessed BEFORE the referred key's scope element in the pre-order walk.
- - new `flushKeyrefs()` post-walk pass (idc.go) checks each pending keyref against
-   the now-complete `a.keyTables`; a still-absent referred table (referred key
-   scoped at a DESCENDANT, a schema-design error) stays fail-open as before. Wired
-   in `Validator.Assess` after `assessRoot`, before `checkIDRefs`.
- - Behaviour tests: `TestCrossScopeKeyref` (valid → no error; unresolved → error)
-   in xsdvalidate/idc_test.go.
+Round-1 took a document-scoped `keyTables map[*ic][][]fieldVal` (one global slot
+per constraint), which was wrong twice: last-write-wins on recurring key elements,
+and over-collection (a keyref matched any key tuple anywhere). Redesigned to
+per-instance subtree-scoped tables via an Euler-tour interval:
+ - `assessElement` (assess.go) threads a monotonic `dfsClock`: each element records
+   its `enter` index on entry and the clock value after its children are walked as
+   `exit`, giving every element a half-open interval nested within its ancestors'.
+ - assessor holds `keyTables []scopedTable{ic,tuples,enter,exit}` and
+   `pendingKeyrefs []pendingKeyref{ic,tuples,enter,exit,pos}` (assess.go).
+ - `checkIdentityConstraints` records each key/unique table with the scope element's
+   interval and enqueues keyrefs with theirs (idc.go).
+ - `flushKeyrefs` (post-walk) resolves each keyref against the MERGED node table of
+   every in-scope key table for its referred constraint — in scope iff the key's
+   interval is contained in the keyref's interval (`keyrefEnter <= keyEnter &&
+   keyExit <= keyrefExit`); same-element case has equal intervals → contained.
+ - Deliberate deviation: a keyref whose referred constraint never resolved at
+   schema-build time (`ic.Refer == nil`) is filtered before deferral and left
+   fail-open — documented, not "prior behaviour." An in-scope no-match is a
+   cl.4.3 error (`xsd.SpecCvcIdentity`).
+ - Behaviour tests (idc_test.go): `TestUpwardScopeKeyref` (keyref on E, key on a
+   descendant → resolves; no-match → error), `TestInvertedScopeKeyrefFails` (key on
+   ancestor, keyref on descendant → must FAIL even with a same-valued ancestor key),
+   `TestRepeatedSiblingScopeKeyref` (each section's ref matches its OWN key → valid;
+   ref matching only a sibling's key → error). All fail on the round-1 branch.
 
-Ratchets held: schema 5672, instance 21429 (no instance corpus case exercises a
-cross-scope keyref, so the gain shows only in the new unit tests; both baselines
+Ratchets held: schema 5672, instance 21429 (no instance corpus case exercises an
+out-of-element keyref, so the gain shows only in the new unit tests; both baselines
 unchanged).
 
 ## >>> DONE 2026-06-20 — issue #5: ParseMultiple + xsi:schemaLocation hints wired into cmd/goxsd5 -validate — 5672/21429 held <<<

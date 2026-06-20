@@ -159,12 +159,64 @@ func TestDescendantSelector(t *testing.T) {
 	})
 }
 
-// crossScopeSchema declares the key on the root element <cat> (its table is built
-// over the whole cat subtree), while the keyref is declared on a nested <bag>
-// element. The keyref's refer target therefore lives on an ancestor element —
-// the cross-scope case (XSD 1.1 §3.11.2): the keyref must resolve against the
-// root's key table, which only exists once the root has been assessed.
-const crossScopeSchema = `<?xml version="1.0"?>
+// upwardScopeSchema declares the keyref on the root <cat> while the referred key
+// is declared on a DESCENDANT <reg> element. Per XSD 1.1 §3.11.4/§3.11.5 the
+// descendant's node table propagates upward into <cat>'s subtree, so the keyref
+// at <cat> resolves against the key sourced in <reg> — the legitimate
+// upward-propagation "cross-scope" case. (The inverted direction — key on the
+// ancestor, keyref on a descendant — is illegal under clause 4.3 and must FAIL.)
+const upwardScopeSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="cat">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="reg">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="item" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="id" type="xs:string"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+          <xs:key name="kId">
+            <xs:selector xpath="item"/>
+            <xs:field xpath="@id"/>
+          </xs:key>
+        </xs:element>
+        <xs:element name="ref" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="to" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:keyref name="kRef" refer="kId">
+      <xs:selector xpath="ref"/>
+      <xs:field xpath="@to"/>
+    </xs:keyref>
+  </xs:element>
+</xs:schema>`
+
+func TestUpwardScopeKeyref(t *testing.T) {
+	v := buildSchema(t, upwardScopeSchema)
+	t.Run("valid: keyref resolves to key in descendant subtree", func(t *testing.T) {
+		// The <reg>/<item> key table propagates up to <cat>, where the keyref reads it.
+		assertValid(t, v, `<cat><reg><item id="a"/><item id="b"/></reg><ref to="a"/></cat>`)
+	})
+	t.Run("invalid: keyref value with no matching key in scope", func(t *testing.T) {
+		// cvc-identity-constraint.4.3: no in-scope key tuple matches "zzz".
+		assertInvalid(t, v, `<cat><reg><item id="a"/></reg><ref to="zzz"/></cat>`, "cvc-identity-constraint")
+	})
+}
+
+// invertedScopeSchema is the ILLEGAL inverted direction: the key is declared on
+// the ancestor <cat> and the keyref on a descendant <bag>. The ancestor's node
+// table does NOT reach the descendant (it propagates upward, not downward), so
+// per cvc-identity-constraint clause 4.3 the keyref finds no in-scope key and
+// must FAIL even when a same-valued key exists on the ancestor.
+const invertedScopeSchema = `<?xml version="1.0"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="cat">
     <xs:complexType>
@@ -189,6 +241,8 @@ const crossScopeSchema = `<?xml version="1.0"?>
             <xs:field xpath="@to"/>
           </xs:keyref>
         </xs:element>
+        <!-- keyref refers to kId on the ancestor <cat>; the parser resolves the
+             refer QName by NCName across the schema, so the binding exists. -->
       </xs:sequence>
     </xs:complexType>
     <xs:key name="kId">
@@ -198,15 +252,68 @@ const crossScopeSchema = `<?xml version="1.0"?>
   </xs:element>
 </xs:schema>`
 
-func TestCrossScopeKeyref(t *testing.T) {
-	v := buildSchema(t, crossScopeSchema)
-	t.Run("valid: keyref resolves to ancestor key", func(t *testing.T) {
-		assertValid(t, v, `<cat><item id="a"/><item id="b"/><bag><ref to="a"/></bag></cat>`)
+func TestInvertedScopeKeyrefFails(t *testing.T) {
+	v := buildSchema(t, invertedScopeSchema)
+	// The ancestor key's node table does not propagate down to the <bag> keyref,
+	// so even though item id="a" exists on the ancestor, the keyref to="a" finds
+	// no key within its own subtree → clause 4.3 no-match.
+	assertInvalid(t, v, `<cat><item id="a"/><bag><ref to="a"/></bag></cat>`, "cvc-identity-constraint")
+}
+
+// repeatedSiblingScope declares a key+keyref on a repeating <section>; each
+// section instance has its own subtree-scoped node table. A keyref in one section
+// must resolve only against the key in its OWN section, not a sibling's. This is
+// the case the per-(constraint, instance) scoping fixes: the global-slot model
+// would let a ref match any section's key.
+const repeatedSiblingScope = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="section" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="item" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="id" type="xs:string"/>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="ref" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="to" type="xs:string"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+          <xs:key name="sId">
+            <xs:selector xpath="item"/>
+            <xs:field xpath="@id"/>
+          </xs:key>
+          <xs:keyref name="sRef" refer="sId">
+            <xs:selector xpath="ref"/>
+            <xs:field xpath="@to"/>
+          </xs:keyref>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>`
+
+func TestRepeatedSiblingScopeKeyref(t *testing.T) {
+	v := buildSchema(t, repeatedSiblingScope)
+	t.Run("valid: each ref matches a key in its own section", func(t *testing.T) {
+		assertValid(t, v, `<doc>`+
+			`<section><item id="a"/><ref to="a"/></section>`+
+			`<section><item id="b"/><ref to="b"/></section>`+
+			`</doc>`)
 	})
-	t.Run("invalid: keyref has no matching ancestor key", func(t *testing.T) {
-		// cvc-identity-constraint.4.3: the cross-scope keyref is now actively
-		// checked rather than fail-open, so the unresolved value is reported.
-		assertInvalid(t, v, `<cat><item id="a"/><bag><ref to="zzz"/></bag></cat>`, "cvc-identity-constraint")
+	t.Run("invalid: ref matches only a sibling section's key", func(t *testing.T) {
+		// Section 2's ref to="a" matches only section 1's key, which is out of
+		// scope; section 2 has no item id="a" → clause 4.3 no-match.
+		assertInvalid(t, v, `<doc>`+
+			`<section><item id="a"/></section>`+
+			`<section><item id="b"/><ref to="a"/></section>`+
+			`</doc>`, "cvc-identity-constraint")
 	})
 }
 

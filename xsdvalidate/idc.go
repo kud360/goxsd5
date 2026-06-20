@@ -27,20 +27,35 @@ type fieldVal struct {
 	s string
 }
 
+// scopedTable is one evaluated key/unique node table tagged with the Euler-tour
+// interval [enter,exit] of the element instance it was scoped at. The interval
+// makes subtree containment a numeric test: a table is within element E's
+// subtree iff E's interval contains [enter,exit].
+type scopedTable struct {
+	ic     *xsd.IdentityConstraint
+	tuples [][]fieldVal
+	enter  int
+	exit   int
+}
+
 // pendingKeyref is one keyref check deferred to the post-walk pass: its evaluated
-// tuples and the scope element they were read at (for error positioning).
+// tuples, the scope element's interval (used to find the in-subtree key tables),
+// and the source position for error reporting.
 type pendingKeyref struct {
 	ic     *xsd.IdentityConstraint
 	tuples [][]fieldVal
+	enter  int
+	exit   int
 	pos    xsd.Pos
 }
 
 // checkIdentityConstraints evaluates every identity constraint declared on the
-// element decl, scoped at the element node el. Key/unique tables are recorded in
-// the document-scoped a.keyTables so a cross-scope keyref can resolve against a
-// key declared on another element; keyref checks themselves are deferred to
-// flushKeyrefs, run after the full walk when every key table is complete.
-func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl) {
+// element decl, scoped at the element node el whose subtree spans the Euler-tour
+// interval [enter,exit]. Key/unique node tables are recorded with that interval
+// so a keyref can later resolve against keys sourced within its own subtree
+// (node tables propagate upward, XSD 1.1 §3.11.4/§3.11.5). Keyref checks are
+// deferred to flushKeyrefs, run after the walk when every key table is recorded.
+func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl, enter, exit int) {
 	if len(decl.IdentityConstraints) == 0 {
 		return
 	}
@@ -48,10 +63,12 @@ func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl) {
 		if ic.Category == xsd.ICKeyref {
 			continue
 		}
-		if a.keyTables == nil {
-			a.keyTables = map[*xsd.IdentityConstraint][][]fieldVal{}
-		}
-		a.keyTables[ic] = a.evalConstraint(el, ic)
+		a.keyTables = append(a.keyTables, scopedTable{
+			ic:     ic,
+			tuples: a.evalConstraint(el, ic),
+			enter:  enter,
+			exit:   exit,
+		})
 	}
 	for _, ic := range decl.IdentityConstraints {
 		if ic.Category != xsd.ICKeyref || ic.Refer == nil {
@@ -60,22 +77,24 @@ func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl) {
 		a.pendingKeyrefs = append(a.pendingKeyrefs, pendingKeyref{
 			ic:     ic,
 			tuples: a.evalConstraint(el, ic),
+			enter:  enter,
+			exit:   exit,
 			pos:    el.Pos(),
 		})
 	}
 }
 
-// flushKeyrefs checks every deferred keyref against the document-scoped key
-// tables, which are complete once the element walk has finished. A keyref whose
-// referred key table is still absent — the referred key is scoped at a
-// descendant, a schema-design error rather than our check — is left fail-open,
-// preserving prior behaviour for that edge case.
+// flushKeyrefs checks every deferred keyref against the merged node table of all
+// in-scope key/unique tables for its referred constraint. A key table is in
+// scope iff its element interval is contained in the keyref element's interval —
+// the key's source nodes lie within the keyref's subtree (cvc-identity-constraint
+// clause 4.3; node tables propagate upward, §3.11.5). A keyref whose referred
+// constraint was never resolved at schema-build time (ic.Refer == nil) is
+// filtered out before deferral, so every pending keyref here has a referred
+// target; an in-scope no-match is a clause-4.3 error, reported below.
 func (a *assessor) flushKeyrefs() {
 	for _, pk := range a.pendingKeyrefs {
-		keyTuples, ok := a.keyTables[pk.ic.Refer]
-		if !ok {
-			continue
-		}
+		keyTuples := a.inScopeKeyTuples(pk.ic.Refer, pk.enter, pk.exit)
 		for _, t := range pk.tuples {
 			if !tupleInSet(t, keyTuples) {
 				// spec: cvc-identity-constraint — XSD 1.1 Part 1 §3.11.4 (cvc-identity-constraint.4.3)
@@ -83,6 +102,20 @@ func (a *assessor) flushKeyrefs() {
 			}
 		}
 	}
+}
+
+// inScopeKeyTuples merges every node table for the referred constraint that was
+// scoped within the [enter,exit] subtree interval. Tables are appended in walk
+// order, so the merged result is deterministic without sorting.
+func (a *assessor) inScopeKeyTuples(refer *xsd.IdentityConstraint, enter, exit int) [][]fieldVal {
+	var merged [][]fieldVal
+	for _, kt := range a.keyTables {
+		if kt.ic != refer || enter > kt.enter || kt.exit > exit {
+			continue
+		}
+		merged = append(merged, kt.tuples...)
+	}
+	return merged
 }
 
 // evalConstraint selects the target node set and builds the tuple list for one
