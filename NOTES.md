@@ -7,6 +7,22 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-20 — particleEmptiable: implement §3.9.6.3 and wire at cos-valid-default.2.2 / src-ct §3.4.2.2 — 5672/21429 held <<<
+Implemented the Particle Emptiable relation (XSD 1.1 §3.9.6.3) in
+parser/restrict.go: `particleEmptiable` recursively decides whether a
+particle can match the empty sequence, and a new `mgEmptiable` helper
+consolidates the compositor switch (eliminating duplication between the
+`*xsd.ModelGroup` and `*xsd.GroupRef` arms). An empty `choice` group
+now correctly returns `true` (ETR minimum = 0, §3.8.6.6). Wired at two
+call sites previously guarded only by a TODO:
+ - buildterms.go (cos-valid-default §3.3.6.3): element with mixed
+   content and a non-emptiable particle now rejected at schema build time.
+ - buildcomplex.go (src-ct §3.4.2.2 clause 2): simpleContent restriction
+   of a mixed-content base with a non-emptiable particle now rejected.
+The deferred sub-phrase "mixed-emptiable check for value constraints +
+simpleContent rest of mixed CT (emptiable part)" is removed from the
+Deliberate deferrals list in the M3 section below. Ratchets held 5672 / 21429.
+
 ## >>> DONE 2026-06-17 — new leaf pkg xsdtemporal: one home for date/time/duration parsing — 5672/21429 held <<<
 The date/time + duration value space and its lexical parsers were duplicated in
 spirit across two places: xsdtype/datetime.go+duration.go (rigorous, the value
@@ -1890,10 +1906,8 @@ SimpleContent branch for the in-progress-base case.
 Deliberate deferrals (do NOT implement now): UPA (cos-nonambig), EDC,
 cos-particle-restrict, cos-ct-extends/restricts particle checks, wildcard
 union/intersection (cos-aw-*; first-wildcard-wins approximation in
-buildAttrUses/extendAttrUses), mixed-emptiable check for value
-constraints + simpleContent rest of mixed CT (emptiable part), derived
-vs base mixed consistency (cos-ct-extends), NOTATION enum values resolving
-to declared notations.
+buildAttrUses/extendAttrUses), derived vs base mixed consistency
+(cos-ct-extends), NOTATION enum values resolving to declared notations.
 Gotcha found by smoke test: kitchen sink had GENUINELY invalid XSD
 (final="list union" on a type used as list item/union member;
 finalDefault=restriction outlawing the schema's own restrictions; unique

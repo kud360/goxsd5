@@ -142,7 +142,7 @@ func (b *builder) checkElementDecls() {
 			} else if ct, ok := e.Type.(*xsd.ComplexType); ok {
 				if ec, ok := ct.Content.(*xsd.ElementContent); ok {
 					if !ec.Mixed {
-						// spec: cos-valid-default.2.2 — element-only content admits
+						// spec: cos-valid-default.2.1 — element-only content admits
 						// no value constraint.
 						b.errf(xsd.SpecCosValidDefault, n.Pos, "element %s has element-only content and must not have a default or fixed value", e.Name)
 					} else if !particleEmptiable(ec.Particle) {

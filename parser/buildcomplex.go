@@ -213,7 +213,9 @@ func (b *builder) fillSimpleContent(ct *xsd.ComplexType, sc *xmltree.Node, doc *
 				// spec: src-ct.2 — XSD 1.1 Part 1 §3.4.3
 				b.errf(xsd.SpecSrcCT, r.Pos, "base type %s does not have simple content", base.Name)
 			} else if !particleEmptiable(c.Particle) {
-				// spec: src-ct.2.2 — the base's particle must be emptiable.
+				// §3.4.2.2 clause 2: simpleContent restriction of a mixed base requires an
+				// emptiable particle (§3.9.6.3); a non-emptiable particle produces a type
+				// that cannot satisfy derivation-ok-restriction §3.4.6.3 clause 2.2.2.2.
 				b.errf(xsd.SpecSrcCT, r.Pos, "base type %s has mixed content with a non-emptiable particle; simpleContent restriction requires an emptiable particle", base.Name)
 			}
 			contentST = builtin.AnySimpleType

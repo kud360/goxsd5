@@ -394,7 +394,7 @@ func effectiveOpenContent(ec *xsd.ElementContent) *xsd.OpenContent {
 // particleEmptiable reports whether p can match the empty sequence: either the
 // occurrence minimum is zero, or (for group terms) the compositor rule holds
 // recursively. A nil particle is trivially emptiable. Implements the Particle
-// Emptiable relation (XSD 1.1 Part 1 §3.8.4.1).
+// Emptiable relation (XSD 1.1 Part 1 §3.9.6.3).
 func particleEmptiable(p *xsd.Particle) bool {
 	if p == nil {
 		return true
@@ -406,48 +406,40 @@ func particleEmptiable(p *xsd.Particle) bool {
 	case *xsd.ElementDecl, *xsd.Wildcard:
 		return false // a required element or wildcard always needs one occurrence
 	case *xsd.ModelGroup:
-		switch term.Compositor {
-		case xsd.CompositorChoice:
-			// emptiable if any particle is emptiable
-			for _, c := range term.Particles {
-				if particleEmptiable(c) {
-					return true
-				}
-			}
-			return false
-		default: // all and sequence: emptiable iff every particle is emptiable
-			for _, c := range term.Particles {
-				if !particleEmptiable(c) {
-					return false
-				}
-			}
-			return true
-		}
+		return mgEmptiable(term)
 	case *xsd.GroupRef:
 		if term.Ref == nil || term.Ref.Group == nil {
 			return true // unresolved group: treat as emptiable to avoid false positives
 		}
-		// A GroupRef particle wraps the group's model group; its own MinOccurs
-		// already gated above, so we check the group's compositor directly.
-		mg := term.Ref.Group
-		switch mg.Compositor {
-		case xsd.CompositorChoice:
-			for _, c := range mg.Particles {
-				if particleEmptiable(c) {
-					return true
-				}
-			}
-			return false
-		default:
-			for _, c := range mg.Particles {
-				if !particleEmptiable(c) {
-					return false
-				}
-			}
-			return true
-		}
+		return mgEmptiable(term.Ref.Group)
 	}
 	return false
+}
+
+// mgEmptiable reports whether a model group can match the empty sequence per
+// the Particle Emptiable relation (§3.9.6.3 / §3.8.6.6): a choice group is
+// emptiable when it has no particles or any member particle is emptiable; an
+// all or sequence group is emptiable when every member particle is emptiable
+// (vacuously true for an empty group).
+func mgEmptiable(mg *xsd.ModelGroup) bool {
+	if mg.Compositor == xsd.CompositorChoice {
+		if len(mg.Particles) == 0 {
+			return true // empty choice: ETR min = 0 per §3.8.6.6
+		}
+		for _, c := range mg.Particles {
+			if particleEmptiable(c) {
+				return true
+			}
+		}
+		return false
+	}
+	// all / sequence: emptiable iff every member is emptiable (empty → true)
+	for _, c := range mg.Particles {
+		if !particleEmptiable(c) {
+			return false
+		}
+	}
+	return true
 }
 
 // particleMatchesNonEmpty reports whether p can match at least one element
