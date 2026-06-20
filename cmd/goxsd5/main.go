@@ -51,13 +51,17 @@ func main() {
 	}
 
 	if *validate != "" {
-		os.Exit(assessInstance(schemas, *validate, *quiet))
+		os.Exit(assessInstance(schemas, flag.Arg(0), *validate, *quiet))
 	}
 }
 
 // assessInstance validates one instance document and returns the process exit
-// code (0 valid, 1 invalid or unreadable).
-func assessInstance(schemas []*xsd.Schema, path string, quiet bool) int {
+// code (0 valid, 1 invalid or unreadable). schemaPath is the explicitly
+// supplied schema location; it is used to resolve xsi:schemaLocation hints
+// from the instance and to merge any additional schema documents the instance
+// references that are not already covered.
+func assessInstance(schemas []*xsd.Schema, schemaPath, path string, quiet bool) int {
+	schemas = parser.AugmentSchemasFromHints(schemas, []string{schemaPath}, path, nil)
 	f, err := os.Open(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

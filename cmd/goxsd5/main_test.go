@@ -44,6 +44,18 @@ func write(t *testing.T, name, content string) string {
 }
 
 // exitCode runs the command and returns its process exit code plus combined output.
+// writeIn writes content to name inside dir (shared across files that must be
+// co-located, e.g. an instance and the schema it names by a relative
+// xsi:schemaLocation hint). Returns the file path.
+func writeIn(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	return p
+}
+
 func exitCode(t *testing.T, args ...string) (int, string) {
 	t.Helper()
 	out, err := exec.Command(cliBin, args...).CombinedOutput()
@@ -98,5 +110,50 @@ func TestCLIValidateInvalid(t *testing.T) {
 	}
 	if !strings.Contains(out, "invalid") {
 		t.Fatalf("expected an invalid report:\n%s", out)
+	}
+}
+
+// baseSchema declares only the "other" namespace; the instance's root element
+// "note" lives solely in the hinted schema, so assessment can only succeed when
+// the xsi:noNamespaceSchemaLocation hint is followed.
+const baseSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:other" xmlns="urn:other">
+  <xs:element name="other" type="xs:string"/>
+</xs:schema>`
+
+const hintedSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="note" type="xs:string"/>
+</xs:schema>`
+
+// TestCLIValidateSchemaLocationHint exercises the #5 hint path end to end: the
+// instance's root element is declared only in a second schema named via
+// xsi:noNamespaceSchemaLocation, resolved relative to the instance file's
+// directory (hence the co-location). It must validate (exit 0) only because the
+// hint is followed.
+func TestCLIValidateSchemaLocationHint(t *testing.T) {
+	dir := t.TempDir()
+	base := writeIn(t, dir, "base.xsd", baseSchema)
+	writeIn(t, dir, "note.xsd", hintedSchema)
+	doc := writeIn(t, dir, "note.xml", `<note xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	 xsi:noNamespaceSchemaLocation="note.xsd">hello</note>`)
+
+	if code, out := exitCode(t, "-q", "-validate", doc, base); code != 0 {
+		t.Fatalf("hinted instance: exit %d, want 0\n%s", code, out)
+	}
+}
+
+// TestCLIValidateWithoutHintFails confirms the hint is load-bearing: the same
+// instance without any xsi:schemaLocation hint cannot be assessed against the
+// base schema alone (its root element is undeclared there), so it is invalid.
+func TestCLIValidateWithoutHintFails(t *testing.T) {
+	dir := t.TempDir()
+	base := writeIn(t, dir, "base.xsd", baseSchema)
+	writeIn(t, dir, "note.xsd", hintedSchema)
+	doc := writeIn(t, dir, "note.xml", `<note>hello</note>`)
+
+	if code, _ := exitCode(t, "-q", "-validate", doc, base); code != 1 {
+		t.Fatalf("unhinted instance: exit %d, want 1", code)
 	}
 }

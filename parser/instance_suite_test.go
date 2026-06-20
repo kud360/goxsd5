@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kud360/goxsd5/parser/xmltree"
 	"github.com/kud360/goxsd5/xsd"
 	"github.com/kud360/goxsd5/xsdvalidate"
 	"github.com/kud360/goxsd5/xsdvalidate/xmlsrc"
@@ -230,30 +229,7 @@ func buildSchemaFromDocs(paths []string) (schemas []*xsd.Schema, ok bool) {
 // §4.3.2). When the instance adds no documents, the shared group schema is
 // reused; the build only re-runs when hints genuinely extend the set.
 func instanceSchemas(docPath string, groupSchemas []*xsd.Schema, groupPaths []string) []*xsd.Schema {
-	f, err := os.Open(docPath)
-	if err != nil {
-		return groupSchemas
-	}
-	root, perr := xmltree.Parse(f, docPath)
-	f.Close()
-	if perr != nil {
-		return groupSchemas
-	}
-	have := map[string]bool{}
-	for _, p := range groupPaths {
-		have[p] = true
-	}
-	paths := append([]string{}, groupPaths...)
-	added := false
-	for _, loc := range SchemaLocationHints(root) {
-		p := filepath.Join(filepath.Dir(docPath), filepath.FromSlash(loc))
-		if have[p] {
-			continue
-		}
-		have[p] = true
-		paths = append(paths, p)
-		added = true
-	}
+	paths, added := HintAugmentedPaths(groupPaths, docPath)
 	if !added {
 		return groupSchemas
 	}
