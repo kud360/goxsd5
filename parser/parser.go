@@ -13,6 +13,15 @@ import (
 type Options struct {
 	// Resolver locates composed schema documents. nil means FileResolver.
 	Resolver SchemaResolver
+
+	// Primitives, when non-nil, replaces the built-in simple types the registry
+	// is seeded with — the value-space layer the schema's types resolve their
+	// lexical→value mapping and comparators through. It is how a caller opts into
+	// an alternative value semantics (e.g. builtin/gotype's Go-native, lax set)
+	// at parse time. nil means the default strict built-ins (builtin.AllBuiltins),
+	// so the default behaviour is unchanged. The slice must supply xs:anySimpleType
+	// and xs:anyAtomicType; gotype.AllBuiltins does.
+	Primitives []*xsd.SimpleType
 }
 
 // Parse loads the schema document at location plus the transitive closure
@@ -31,7 +40,7 @@ func Parse(location string, opts *Options) ([]*xsd.Schema, error) {
 	if err := l.loadRoot(location); err != nil {
 		return nil, fmt.Errorf("cannot load %s: %w", location, err)
 	}
-	return finish(l, errs)
+	return finish(l, optPrimitives(opts), errs)
 }
 
 // ParseMultiple loads the schema documents at each location in locations plus
@@ -52,12 +61,23 @@ func ParseMultiple(locations []string, opts *Options) ([]*xsd.Schema, error) {
 			return nil, fmt.Errorf("cannot load %s: %w", loc, err)
 		}
 	}
-	return finish(l, errs)
+	return finish(l, optPrimitives(opts), errs)
 }
 
-// finish registers and builds everything the loader discovered.
-func finish(l *loader, errs *xsd.ErrorList) ([]*xsd.Schema, error) {
-	reg := newRegistry()
+// optPrimitives returns the custom primitive set from opts, or nil when none is
+// configured (the default strict built-ins).
+func optPrimitives(opts *Options) []*xsd.SimpleType {
+	if opts == nil {
+		return nil
+	}
+	return opts.Primitives
+}
+
+// finish registers and builds everything the loader discovered. primitives, when
+// non-nil, seeds the registry with an alternative value-space layer in place of
+// the default built-ins.
+func finish(l *loader, primitives []*xsd.SimpleType, errs *xsd.ErrorList) ([]*xsd.Schema, error) {
+	reg := newRegistry(primitives)
 	l.register(reg)
 	schemas := buildSchemas(reg, l, errs)
 	return schemas, errs.Err()

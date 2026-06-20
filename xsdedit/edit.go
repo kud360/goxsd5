@@ -55,6 +55,40 @@ func reservedType(t *xsd.SimpleType) bool {
 	return t.Name.Namespace == xsd.XSDNS || t.Name.Namespace == xsd.XSINS
 }
 
+// NewPrimitive assembles a custom primitive simple type: a fresh atomic type
+// based on base (xs:anyAtomicType for a true primitive, or another primitive to
+// re-skin its value space) that authors its own lexical→value mapping (parse),
+// value comparator (compare, nil for an unordered/equality-only space that
+// falls back to base), applicable-facet set (applicable, cos-applicable-facets)
+// and fixed whiteSpace. It is the constructor a custom value layer such as
+// builtin/gotype builds on; the resulting type carries Applicable, which is
+// what marks it as a primitive (PrimitiveType detects the boundary that way).
+//
+// The returned type is validated with Validate before it is handed back, so a
+// primitive that the facet engine could not operate on — no Parse, or an empty
+// applicable set — is rejected at construction rather than at first use.
+func NewPrimitive(name xsd.QName, base *xsd.SimpleType, parse xsd.ParseFunc, compare xsd.CompareFunc, applicable xsd.FacetSet, ws xsd.WhiteSpace) (*xsd.SimpleType, error) {
+	if applicable == 0 {
+		// spec: cos-applicable-facets — a primitive with no applicable facets has
+		// no value space the facet engine can constrain; it is malformed.
+		return nil, xsd.NewError(xsd.SpecCosApplicableFacets, xsd.Pos{}, "primitive %s declares no applicable facets", describe(&xsd.SimpleType{Name: name}))
+	}
+	t := &xsd.SimpleType{
+		Name:       name,
+		BaseType:   base,
+		Variety:    xsd.VarietyAtomic,
+		Parse:      parse,
+		Compare:    compare,
+		Applicable: applicable,
+	}
+	t.DeclaredFacets.WhiteSpace = ws
+	t.DeclaredFacets.WhiteSpaceFixed = true
+	if err := Validate(t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
 // AddEnumeration adds enumeration members to t in place. Each lexical must be
 // valid against t's base type (enumeration-valid-restriction). The values
 // accumulate onto t's own derivation step: calling it repeatedly builds up
@@ -168,6 +202,11 @@ func Validate(t *xsd.SimpleType) error {
 		// spec: cvc-datatype-valid — an atomic type must map lexical→value.
 		if resolveParse(t) == nil {
 			errs.Addf(xsd.SpecDatatypeValid, t.Pos, "atomic simple type %s has no lexical mapping (no Parse in its base chain)", describe(t))
+		}
+		// A primitive (Applicable != 0 marks the boundary) authors its own value
+		// space, so it must carry its own Parse rather than borrow an ancestor's.
+		if t.Applicable != 0 && t.Parse == nil {
+			errs.Addf(xsd.SpecDatatypeValid, t.Pos, "primitive %s has no Parse of its own", describe(t))
 		}
 	case xsd.VarietyList:
 		if t.ItemType == nil {

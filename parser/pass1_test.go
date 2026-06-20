@@ -18,7 +18,7 @@ func load(t *testing.T, src string) (*schemaDoc, *registry, *xsd.ErrorList) {
 	}
 	errs := &xsd.ErrorList{}
 	doc := loadDoc(root, "test.xsd", errs)
-	reg := newRegistry()
+	reg := newRegistry(nil)
 	if doc != nil {
 		registerDoc(reg, doc, errs)
 	}

@@ -132,7 +132,7 @@ func scanGroup(t *testing.T, sf string, g scanTestGroup, total, failed, parseFai
 	if !docOK {
 		return
 	}
-	_, _ = finish(l, errs)
+	_, _ = finish(l, nil, errs)
 	*total++
 	if errs.Empty() {
 		return

@@ -241,3 +241,75 @@ func TestValidateListItemList(t *testing.T) {
 		t.Error("Validate accepted a list whose item type is a list")
 	}
 }
+
+func upperParse(s string, _ xsd.ValueContext) (xsd.Value, error) { return s, nil }
+
+func strCompare(a, b xsd.Value) (xsd.Order, bool) {
+	as, aok := a.(string)
+	bs, bok := b.(string)
+	if !aok || !bok {
+		return 0, false
+	}
+	switch {
+	case as < bs:
+		return xsd.OrderLess, true
+	case as > bs:
+		return xsd.OrderGreater, true
+	}
+	return xsd.OrderEqual, true
+}
+
+func TestNewPrimitiveGood(t *testing.T) {
+	q := xsd.QName{Namespace: "urn:custom", Local: "code"}
+	prim, err := xsdedit.NewPrimitive(q, builtin.AnyAtomicType, upperParse, strCompare, xsd.FacetsCommon|xsd.FacetsLength, xsd.WSCollapse)
+	if err != nil {
+		t.Fatalf("NewPrimitive rejected a sound primitive: %v", err)
+	}
+	if prim.PrimitiveType() != prim {
+		t.Error("a custom primitive is not its own PrimitiveType")
+	}
+	if !prim.ApplicableFacets().Has(xsd.FacetLength) {
+		t.Error("custom primitive does not admit its declared applicable facets")
+	}
+	// A length restriction of it must work end to end through the lax value.
+	sub, err := xsdedit.RestrictWith(prim, &xsd.Facets{MaxLength: &xsd.IntFacet{Value: 3}})
+	if err != nil {
+		t.Fatalf("restriction of custom primitive failed: %v", err)
+	}
+	if _, err := sub.ParseValue("ab", nil); err != nil {
+		t.Errorf("custom primitive subtype rejected a valid value: %v", err)
+	}
+}
+
+func TestNewPrimitiveRejectsNoApplicable(t *testing.T) {
+	q := xsd.QName{Namespace: "urn:custom", Local: "code"}
+	_, err := xsdedit.NewPrimitive(q, builtin.AnyAtomicType, upperParse, nil, 0, xsd.WSCollapse)
+	if err == nil {
+		t.Fatal("NewPrimitive accepted a primitive with no applicable facets")
+	}
+	if ids := xsd.RefIDs(err); len(ids) == 0 || ids[0] != "cos-applicable-facets" {
+		t.Errorf("error id = %v, want cos-applicable-facets", ids)
+	}
+}
+
+func TestNewPrimitiveRejectsNoParse(t *testing.T) {
+	q := xsd.QName{Namespace: "urn:custom", Local: "code"}
+	_, err := xsdedit.NewPrimitive(q, builtin.AnyAtomicType, nil, nil, xsd.FacetsCommon, xsd.WSCollapse)
+	if err == nil {
+		t.Error("NewPrimitive accepted a primitive with no Parse")
+	}
+}
+
+func TestValidatePrimitiveNeedsOwnParse(t *testing.T) {
+	// A type that carries Applicable (so it is a primitive) but borrows its
+	// Parse from the base chain is malformed: a primitive defines its own space.
+	st := &xsd.SimpleType{
+		Name:       xsd.QName{Local: "borrow"},
+		Variety:    xsd.VarietyAtomic,
+		BaseType:   builtin.String, // resolves a Parse up the chain
+		Applicable: xsd.FacetsCommon,
+	}
+	if err := xsdedit.Validate(st); err == nil {
+		t.Error("Validate accepted a primitive with no Parse of its own")
+	}
+}

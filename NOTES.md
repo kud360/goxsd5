@@ -7,6 +7,47 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-20 — issue #2: builtin/gotype lax value layer + parser.Options.Primitives + xsdedit.NewPrimitive — 5672/21429 held <<<
+Added a Go-native (lax) sibling to builtin/xsdtype and the parse-time switch to
+select it. Resolves the two standing FUTURE notes below (xsdtype/gotype sibling;
+xsdedit.NewPrimitive YAGNI consumer). Both conformance ratchets held exactly at
+5672 / 21429 — net-new, the default parse path is unchanged.
+ - xsdedit.NewPrimitive(name, base, parse, compare, applicable, ws) — the deferred
+   constructor; validates via xsdedit.Validate before returning. Validate gained a
+   primitive rule: a type carrying Applicable!=0 (the primitive marker) must have
+   its OWN non-nil Parse, not just an inherited one. NewPrimitive guards
+   applicable==0 up front (cos-applicable-facets). Tests: TestNewPrimitive*,
+   TestValidatePrimitiveNeedsOwnParse in xsdedit/edit_test.go.
+ - parser.Options.Primitives []*xsd.SimpleType — when non-nil, newRegistry(primitives)
+   seeds the simple-type layer from it instead of builtin.AllBuiltins(); nil keeps
+   the default (no behaviour change). xs:anyType and xs:error stay structural,
+   always seeded from builtin. Threaded Parse/ParseMultiple → finish(l, prims, errs)
+   → newRegistry(prims). NOTE: the parser's hard-coded builtin.AnySimpleType default
+   base (buildSimpleType/buildSTRestriction/buildSTList when NO base/itemType is
+   named) is intentionally still strict — only NAMED type references resolve through
+   the swapped registry. That covers every type a schema actually names; the no-base
+   anonymous fallback staying strict is an accepted lax limitation, not a bug.
+ - builtin/gotype — pure leaf, imports only stdlib + xsd + xsdedit (xsdregex
+   transitively via xsdedit), matching xsdtype's direction; NO upward import
+   (verified: go list -deps shows no parser/builtin/xsdvalidate). 19 lax primitives
+   built on NewPrimitive + a plain restrict/list ladder (mirrors builtin.go's
+   helpers, NOT RestrictWith — re-validating lax bounds whose space saturates, e.g.
+   unsignedLong>int64, would reject sound derivations). Lax value spaces: string→
+   strVal(string), boolean→bool, decimal/float/double→float64, integer family→int64
+   (xs:integer re-skins decimal via its own Parse/Compare), date/time family→
+   time.Time, duration→time.Duration, hex/base64→binVal([]byte), QName/NOTATION→
+   xsd.QName. gotype carries its OWN minimal xs:anyType stand-in (can't import
+   builtin) — never observed distinctly since "derived from anyType" is by QName and
+   the registry always seeds anyType from builtin. AllBuiltins() mirrors
+   builtin.AllBuiltins() membership one-for-one; Replace(base, lax...) returns a copy
+   of base with named entries swapped (mix strict+lax in one seed). Exported surface
+   kept minimal: AllBuiltins, Replace, the 19 primitive + ladder vars (mirroring
+   builtin's exported table), NewPrimitive, Options.Primitives. Tests:
+   builtin/gotype/gotype_test.go (value kinds, bounds order, Replace, Validate) +
+   parser/primitives_test.go (default-unchanged / lax-switch / Replace-mix end to end).
+ - No CLI flag added: a parse-time value-layer choice has no obvious CLI surface and
+   none was warranted speculatively (issue work-split point 6).
+
 ## >>> DONE 2026-06-20 — issue #16: keyref resolution scoped to the keyref's subtree (per-instance node tables) — 5672/21429 held <<<
 A keyref whose `refer` names a key declared on a DESCENDANT element was fail-open:
 the per-element `tables` map was discarded once the descendant's scope closed, so
@@ -819,6 +860,8 @@ held at 5672 / 26 skips at every step; build + full suite + gofmt clean.
  parse, compare, applicable, ws) constructor + a Validate rule (primitive needs
  Applicable!=0 and non-nil Parse) — only worth adding when builtin/gotype or another
  real custom-primitive consumer lands; YAGNI until then.
+   RESOLVED 2026-06-20 (issue #2): NewPrimitive + the Validate primitive rule landed
+   with builtin/gotype as the consumer. See the DONE block at the top of this file.
 
 ## >>> DONE 2026-06-14 — deferred-SpecRef triage items A + B implemented <<<
 Both genuine-but-unexercised static holes (A: redefine group/attributeGroup
@@ -898,6 +941,8 @@ WHAT CHANGED & WHY:
     xsdedit/edit_test.go (TestValidate*).
 FUTURE (xsdtype/gotype): a sibling builtin/gotype package was discussed for
 Go-native (lax) value semantics vs xsdtype's strict ones — not built yet.
+  RESOLVED 2026-06-20 (issue #2): builtin/gotype built; selected at parse time via
+  parser.Options.Primitives = gotype.AllBuiltins(). See the DONE block at the top.
 
 ## >>> NEXT SESSION — phase-9 iri-001 pushed 5671 → 5672 (+1). Remainder below <<<
 REMAINING 2 GAPS after phase 9 (GOXSD5_CONFORMANCE_GAPS=1 to list); the hard
