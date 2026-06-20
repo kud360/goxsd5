@@ -33,6 +33,16 @@ type assessor struct {
 	// identity-constraint fields selecting attributes can compare typed values.
 	attrType map[Attribute]*xsd.SimpleType
 
+	// keyTables accumulates each key/unique constraint's tuple table for the
+	// whole document walk, keyed by the constraint component. A keyref's refer
+	// target may be a key declared on a different (typically ancestor) element,
+	// so its table must outlive that element's scope (XSD 1.1 §3.11.2/§3.11.4).
+	keyTables map[*xsd.IdentityConstraint][][]fieldVal
+	// pendingKeyrefs defers keyref tuple checks to a post-walk pass: a keyref's
+	// scope element may be assessed before the referred key's scope element in
+	// the pre-order walk, so the key table is only guaranteed complete afterward.
+	pendingKeyrefs []pendingKeyref
+
 	// skipped records elements matched by a processContents="skip" wildcard:
 	// they are not assessed, so they (and their subtrees) are excluded from
 	// identity-constraint target/field selection.

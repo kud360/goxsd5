@@ -27,37 +27,59 @@ type fieldVal struct {
 	s string
 }
 
+// pendingKeyref is one keyref check deferred to the post-walk pass: its evaluated
+// tuples and the scope element they were read at (for error positioning).
+type pendingKeyref struct {
+	ic     *xsd.IdentityConstraint
+	tuples [][]fieldVal
+	pos    xsd.Pos
+}
+
 // checkIdentityConstraints evaluates every identity constraint declared on the
-// element decl, scoped at the element node el.
+// element decl, scoped at the element node el. Key/unique tables are recorded in
+// the document-scoped a.keyTables so a cross-scope keyref can resolve against a
+// key declared on another element; keyref checks themselves are deferred to
+// flushKeyrefs, run after the full walk when every key table is complete.
 func (a *assessor) checkIdentityConstraints(el Element, decl *xsd.ElementDecl) {
 	if len(decl.IdentityConstraints) == 0 {
 		return
 	}
-	tables := map[*xsd.IdentityConstraint][][]fieldVal{}
 	for _, ic := range decl.IdentityConstraints {
 		if ic.Category == xsd.ICKeyref {
 			continue
 		}
-		tables[ic] = a.evalConstraint(el, ic)
+		if a.keyTables == nil {
+			a.keyTables = map[*xsd.IdentityConstraint][][]fieldVal{}
+		}
+		a.keyTables[ic] = a.evalConstraint(el, ic)
 	}
 	for _, ic := range decl.IdentityConstraints {
-		if ic.Category != xsd.ICKeyref {
+		if ic.Category != xsd.ICKeyref || ic.Refer == nil {
 			continue
 		}
-		tuples := a.evalConstraint(el, ic)
-		if ic.Refer == nil {
-			continue
-		}
-		keyTuples, ok := tables[ic.Refer]
+		a.pendingKeyrefs = append(a.pendingKeyrefs, pendingKeyref{
+			ic:     ic,
+			tuples: a.evalConstraint(el, ic),
+			pos:    el.Pos(),
+		})
+	}
+}
+
+// flushKeyrefs checks every deferred keyref against the document-scoped key
+// tables, which are complete once the element walk has finished. A keyref whose
+// referred key table is still absent — the referred key is scoped at a
+// descendant, a schema-design error rather than our check — is left fail-open,
+// preserving prior behaviour for that edge case.
+func (a *assessor) flushKeyrefs() {
+	for _, pk := range a.pendingKeyrefs {
+		keyTuples, ok := a.keyTables[pk.ic.Refer]
 		if !ok {
-			// Referenced key scoped at a different element; cross-scope keyref
-			// resolution is not modelled, so skip rather than misreport.
 			continue
 		}
-		for _, t := range tuples {
+		for _, t := range pk.tuples {
 			if !tupleInSet(t, keyTuples) {
 				// spec: cvc-identity-constraint — XSD 1.1 Part 1 §3.11.4 (cvc-identity-constraint.4.3)
-				a.addf(xsd.SpecCvcIdentity, el.Pos(), "keyref %s value has no matching key in %s", ic.Name, ic.Refer.Name)
+				a.addf(xsd.SpecCvcIdentity, pk.pos, "keyref %s value has no matching key in %s", pk.ic.Name, pk.ic.Refer.Name)
 			}
 		}
 	}

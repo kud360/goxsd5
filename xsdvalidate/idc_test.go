@@ -159,6 +159,57 @@ func TestDescendantSelector(t *testing.T) {
 	})
 }
 
+// crossScopeSchema declares the key on the root element <cat> (its table is built
+// over the whole cat subtree), while the keyref is declared on a nested <bag>
+// element. The keyref's refer target therefore lives on an ancestor element —
+// the cross-scope case (XSD 1.1 §3.11.2): the keyref must resolve against the
+// root's key table, which only exists once the root has been assessed.
+const crossScopeSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="cat">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="item" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="id" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="bag">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="ref" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="to" type="xs:string"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+          <xs:keyref name="kRef" refer="kId">
+            <xs:selector xpath="ref"/>
+            <xs:field xpath="@to"/>
+          </xs:keyref>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:key name="kId">
+      <xs:selector xpath="item"/>
+      <xs:field xpath="@id"/>
+    </xs:key>
+  </xs:element>
+</xs:schema>`
+
+func TestCrossScopeKeyref(t *testing.T) {
+	v := buildSchema(t, crossScopeSchema)
+	t.Run("valid: keyref resolves to ancestor key", func(t *testing.T) {
+		assertValid(t, v, `<cat><item id="a"/><item id="b"/><bag><ref to="a"/></bag></cat>`)
+	})
+	t.Run("invalid: keyref has no matching ancestor key", func(t *testing.T) {
+		// cvc-identity-constraint.4.3: the cross-scope keyref is now actively
+		// checked rather than fail-open, so the unresolved value is reported.
+		assertInvalid(t, v, `<cat><item id="a"/><bag><ref to="zzz"/></bag></cat>`, "cvc-identity-constraint")
+	})
+}
+
 func TestKeyValueSpaceComparison(t *testing.T) {
 	v := buildSchema(t, numKeySchema)
 	t.Run("5 and 5.0 are the same key", func(t *testing.T) {

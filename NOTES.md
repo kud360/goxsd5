@@ -7,6 +7,31 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-20 — issue #16: cross-scope keyref resolution in xsdvalidate/idc.go — 5672/21429 held <<<
+A keyref whose `refer` names a key declared on a different (typically ancestor)
+element was fail-open: the `tables` map was element-scoped, so the lookup missed
+and the keyref check was skipped (`continue`), silently accepting invalid values
+(XSD 1.1 §3.11.2/§3.11.4).
+
+Fix — document-scoped key tables flushed post-walk:
+ - assessor gained `keyTables map[*xsd.IdentityConstraint][][]fieldVal` (accumulated
+   over the whole walk, never reset per element) and `pendingKeyrefs []pendingKeyref`
+   (xsdvalidate/assess.go).
+ - `checkIdentityConstraints` (idc.go) now stores each key/unique table into
+   `a.keyTables[ic]` and ENQUEUES keyrefs (with their evaluated tuples + scope Pos)
+   into `a.pendingKeyrefs` instead of checking inline — a keyref's scope element may
+   be assessed BEFORE the referred key's scope element in the pre-order walk.
+ - new `flushKeyrefs()` post-walk pass (idc.go) checks each pending keyref against
+   the now-complete `a.keyTables`; a still-absent referred table (referred key
+   scoped at a DESCENDANT, a schema-design error) stays fail-open as before. Wired
+   in `Validator.Assess` after `assessRoot`, before `checkIDRefs`.
+ - Behaviour tests: `TestCrossScopeKeyref` (valid → no error; unresolved → error)
+   in xsdvalidate/idc_test.go.
+
+Ratchets held: schema 5672, instance 21429 (no instance corpus case exercises a
+cross-scope keyref, so the gain shows only in the new unit tests; both baselines
+unchanged).
+
 ## >>> DONE 2026-06-20 — issue #5: ParseMultiple + xsi:schemaLocation hints wired into cmd/goxsd5 -validate — 5672/21429 held <<<
 Exposed `parser.ParseMultiple(locations, opts)` (parser/parser.go): loads several
 schema roots into one loader and builds the combined set, the loader deduping roots
@@ -640,7 +665,7 @@ mirrors schema ratchet; `go test ./parser -run TestInstanceConformance
 -update-instance-expectations`). 21434 instance cases, 21231 verdict-correct.
 Schema ratchet unchanged (5672). cmd/goxsd5 gained `-validate doc.xml`.
 REMAINING GAPS (future, not blocking): richer XPath (parent axis `..`, more fns)
-for more assert/CTA cases; cross-scope keyref; simple-type-level assertions; IDC
+for more assert/CTA cases; simple-type-level assertions; IDC
 true namespace resolution; whitespace in empty content type (xsdvalidate gap —
 open012.n3); override + defaultOpenContent/defaultAttributes inheritance for types
 defined within xs:override (open043.n2, open045.n2). cos-aw-intersect +

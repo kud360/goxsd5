@@ -70,6 +70,7 @@ func (v *Validator) typeByName(name xsd.QName) xsd.Type { return v.types[name] }
 func (v *Validator) Assess(root Element) *Result {
 	a := &assessor{v: v, res: newResult()}
 	a.assessRoot(root)
+	a.flushKeyrefs()
 	a.checkIDRefs()
 	return a.res
 }
