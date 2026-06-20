@@ -164,8 +164,9 @@ func (b *builder) mergeComplexType(ct *xsd.ComplexType, am *attrMaterial) {
 		// extension union degenerate to the base wildcard).
 		ct.AttributeWildcard = baseWC
 	} else if am.wc != nil && baseWC != nil && ct.DerivationMethod == xsd.DeriveExtension {
-		// cos-aw-union (§3.10.6.2): an extension's {attribute wildcard} is the
-		// union of the base's wildcard and the extension's own wildcard.
+		// spec: cos-aw-union — XSD 1.1 Part 1 §3.10.6.2 (cos-aw-union): an
+		// extension's {attribute wildcard} is the union of the base's wildcard
+		// and the extension's own wildcard.
 		ct.AttributeWildcard = wildcardUnion(baseWC, am.wc)
 	}
 	if ct.DerivationMethod == xsd.DeriveRestriction && bct != nil {
@@ -357,8 +358,9 @@ func (b *builder) fillElementOnlyContent(ct *xsd.ComplexType, n, content *xmltre
 
 // collectAttrs records the attribute material declared on content into am for
 // the mergeComplexType pass. Extensions unite with the base's uses and fall
-// back to its wildcard (full wildcard union, cos-aw-union, is deferred);
-// restrictions override by name and keep only their own wildcard.
+// back to its wildcard (wildcard union per cos-aw-union is applied in
+// mergeComplexType); restrictions override by name and keep only their own
+// wildcard.
 func (b *builder) collectAttrs(am *attrMaterial, content *xmltree.Node, doc *schemaDoc, override bool, pos xsd.Pos) {
 	am.own, am.wc, am.prohibited = b.buildAttrUses(content, doc)
 	am.override = override
