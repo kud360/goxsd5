@@ -427,6 +427,10 @@ func TestBuilderNegatives(t *testing.T) {
 			`<xs:complexType name="c"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>
 			 <xs:element name="e" type="tns:c" default="x"/>`,
 			[]string{"cos-valid-default"}},
+		{"element default with mixed content and required particle (cos-valid-default.2.2)",
+			`<xs:complexType name="c" mixed="true"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:element name="e" type="tns:c" default="text"/>`,
+			[]string{"cos-valid-default"}},
 
 		// Attribute declarations and uses.
 		{"attribute typed by a complex type",
@@ -456,6 +460,10 @@ func TestBuilderNegatives(t *testing.T) {
 		{"simpleContent extension of an element-only type",
 			`<xs:complexType name="eo"><xs:sequence/></xs:complexType>
 			 <xs:complexType name="c"><xs:simpleContent><xs:extension base="tns:eo"/></xs:simpleContent></xs:complexType>`,
+			[]string{"src-ct"}},
+		{"simpleContent restriction of a mixed base with a required particle (src-ct.2.2)",
+			`<xs:complexType name="b" mixed="true"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:complexType>
+			 <xs:complexType name="c"><xs:simpleContent><xs:restriction base="tns:b"><xs:simpleType><xs:restriction base="xs:string"/></xs:simpleType></xs:restriction></xs:simpleContent></xs:complexType>`,
 			[]string{"src-ct"}},
 		{"complexContent with a simple base",
 			`<xs:complexType name="c"><xs:complexContent><xs:extension base="xs:int"><xs:sequence/></xs:extension></xs:complexContent></xs:complexType>`,
@@ -597,6 +605,28 @@ func TestBuilderNegatives(t *testing.T) {
 			wantIDs(t, errs, tc.ids...)
 		})
 	}
+}
+
+// A mixed element with an optional (minOccurs=0) particle may have a default
+// value constraint (cos-valid-default.2.2): the particle is emptiable.
+// A simpleContent restriction of a mixed base with an emptiable particle is
+// valid (src-ct.2.2): the particle is optional so the base can produce no
+// element children.
+func TestBuildParticleEmptiableValid(t *testing.T) {
+	t.Run("mixed element with optional particle and default", func(t *testing.T) {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
+			<xs:complexType name="c" mixed="true"><xs:sequence><xs:element name="x" type="xs:int" minOccurs="0"/></xs:sequence></xs:complexType>
+			<xs:element name="e" type="tns:c" default="text"/>
+		</xs:schema>`)
+		wantClean(t, errs)
+	})
+	t.Run("simpleContent restriction of a mixed base with optional particle", func(t *testing.T) {
+		_, errs := buildAll(t, `<xs:schema `+xmlnsXS+` xmlns:tns="urn:t" targetNamespace="urn:t">
+			<xs:complexType name="b" mixed="true"><xs:sequence><xs:element name="x" type="xs:int" minOccurs="0"/></xs:sequence></xs:complexType>
+			<xs:complexType name="c"><xs:simpleContent><xs:restriction base="tns:b"><xs:simpleType><xs:restriction base="xs:string"/></xs:simpleType></xs:restriction></xs:simpleContent></xs:complexType>
+		</xs:schema>`)
+		wantClean(t, errs)
+	})
 }
 
 // An attribute group definition with distinct attribute names is valid, even
