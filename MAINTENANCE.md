@@ -14,6 +14,7 @@ gate. This file is the contract every (cold-start) agent shares.
 | **Implementor** | `.claude/agents/implementor.md` | spawned by Ship | Build the change on a `maint/*` branch, open a PR, fix on findings. Never merges. |
 | **Evaluator** | `.claude/agents/evaluator.md` | spawned by Ship | Independently run the gate + review (correctness, conventions, **big-picture/pattern fit**), return GREEN/CHANGES. Never edits, never merges. |
 | **XSD-expert** | `.claude/agents/xsd-expert.md` | spawned by Ship (spec-semantic changes) | Judge **spec fidelity** against `docs/` — normative rule, error-id clause, corner cases. Read-only consultant; returns SPEC-OK / SPEC-ISSUE. |
+| **Retro** | `MAINTENANCE.md` (run on demand) | manual | Reflect on the open `maint-log` cycle → post a synthesis, file actionable improvements as `maintenance` proposals, open the next cycle's log, close the current. Read-only on code. |
 
 ## Board — GitHub Project #1 (`kud360/goxsd5`)
 
@@ -50,6 +51,23 @@ On top of the mechanical gate, a PR must clear the Evaluator's judgment +
 **big-picture/pattern** review, and — for spec-semantic changes — the
 **XSD-expert**'s spec-fidelity verdict. GREEN = gate passes AND Evaluator GREEN
 AND (if invoked) xsd-expert SPEC-OK.
+
+## Activity log & Retro
+
+The loop's history lives in GitHub, not just the ephemeral cloud transcripts:
+
+- **Activity log** — exactly one open issue labeled `maint-log` is the *current
+  cycle's* append-only journal. The Planner appends a one-line summary per run;
+  Ship appends an entry per PR outcome (merge or stuck). Find it with
+  `gh issue list --label maint-log --state open`. It is **not** work (never
+  `maintenance`-labeled, never on the board). Cycle 1 = issue **#11**.
+- **Retro (manual rotation)** — when enough has accumulated, run the Retro. It
+  reads the open `maint-log` cycle, posts a synthesis (what shipped, recurring
+  friction, stuck patterns, lessons + recommended system changes), **files the
+  actionable recommendations as `maintenance` proposals** (so improvements flow
+  through the normal approve→ship pipeline — the loop improving itself, still
+  human-gated at approval), opens the **next** cycle's `maint-log` issue (linking
+  back), and **closes** the current one.
 
 ## Guardrails
 

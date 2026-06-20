@@ -51,15 +51,17 @@ naming one card) ships just that card, then stops.
 4. **On GREEN:** squash-merge the PR (`gh pr merge <#> --squash --delete-branch`),
    move the card to **Done**, and send a push notification:
    *"shipped #<issue>: <title> — baseline held <schema>/<instance>."*
-   Then **return to step 1** for the next Approved card.
+   **Append a log entry** for this PR to the open `maint-log` issue (see Rules),
+   then **return to step 1** for the next Approved card.
 
 5. **On stuck** (5 rounds without GREEN, or the Implementor reports the work
    can't hold the baseline): do **not** merge. Leave the PR open with the
    Evaluator's outstanding findings, move the card to a `blocked` label (not back
    to Approved — it must not be re-picked), and push-notify:
    *"#<issue> stuck after N rounds — needs you."*
-   Then **return to step 1** for the next Approved card — one stuck card must not
-   block the rest of the queue.
+   **Log the stuck outcome** to the open `maint-log` issue (see Rules), then
+   **return to step 1** for the next Approved card — one stuck card must not block
+   the rest of the queue.
 
 ## Rules
 - Keep Implementor and Evaluator in **separate agent contexts** — the Evaluator's
@@ -68,6 +70,12 @@ naming one card) ships just that card, then stops.
   full resume context (branch, PR #, combined findings). Re-spawning is
   functionally equivalent — the branch/PR carries the state — just less
   context-efficient.
+- **Log every PR outcome.** After each merge or stuck, append a one-line entry to
+  the *current open* `maint-log` issue (`gh issue list --label maint-log --state
+  open` → `gh issue comment <#>`): `#<issue> "<title>" → PR #<pr>: MERGED|STUCK ·
+  rounds n/5 · Evaluator <verdict> · xsd-expert <verdict|n/a> · baselines
+  5672/21429 · <what changed> · notable: <…>`. This is the loop's durable history
+  — the cloud transcripts are ephemeral.
 - The **orchestrator merges**, never the Evaluator. Merge only on a GREEN verdict
   whose objective gate (5672 / 21429 conformance baselines) actually passed.
 - **Unattended (scheduled) runs merge on GREEN without any further human

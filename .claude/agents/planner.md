@@ -46,6 +46,10 @@ with a single board move. **You never touch code and never open PRs.**
    it to Project #1 in the **Proposed** status. Cap at **3 proposals per run** —
    quality over volume. A weak proposal wastes the human's approval attention.
 
+5. **Log the run.** Append a one-line summary of what you refined and proposed
+   (or "no new gaps") to the **current open `maint-log` issue**
+   (`gh issue list --repo kud360/goxsd5 --label maint-log --state open`).
+
 ## Proposal template (issue body)
 
 ```
