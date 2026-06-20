@@ -164,7 +164,7 @@ func (b *builder) mergeComplexType(ct *xsd.ComplexType, am *attrMaterial) {
 		// extension union degenerate to the base wildcard).
 		ct.AttributeWildcard = baseWC
 	} else if am.wc != nil && baseWC != nil && ct.DerivationMethod == xsd.DeriveExtension {
-		// spec: cos-aw-union — XSD 1.1 Part 1 §3.10.6.2 (cos-aw-union): an
+		// spec: cos-aw-union — XSD 1.1 Part 1 §3.10.6.3 (cos-aw-union): an
 		// extension's {attribute wildcard} is the union of the base's wildcard
 		// and the extension's own wildcard.
 		ct.AttributeWildcard = wildcardUnion(baseWC, am.wc)
