@@ -5,9 +5,11 @@
 //
 // It depends only on the pure-leaf xsd package. It deliberately carries no
 // instance/infoset knowledge: callers (xsdvalidate today, codegen later) pass
-// in already-resolved QNames and types. Push (exhaustive, schema-only) and
-// pull (instance-guided) drivers both reuse this algebra; the reusable core
-// is the algebra, not the driver.
+// in already-resolved QNames and types. Both drivers reuse this algebra: the
+// pull (instance-guided) driver is the content-model Matcher (automaton.go);
+// the push (exhaustive, schema-only) driver is the Walker (walk.go), which
+// enumerates every path through a complex type's static content model. The
+// reusable core is the algebra, not the driver.
 package xsdwalk
 
 import "github.com/kud360/goxsd5/xsd"
