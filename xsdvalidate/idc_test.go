@@ -319,10 +319,14 @@ func TestRepeatedSiblingScopeKeyref(t *testing.T) {
 
 // nsKeySchema declares a key on the root <cat> whose selector is
 // namespace-qualified (tns:item). The content model admits both a tns:item and,
-// via a lax wildcard, an other-namespace <item> with the SAME local name. A
-// local-name-only matcher would treat both as targets and clash on equal ids;
-// the namespace-qualified selector must match only the tns:item, so two items
-// of the same id in different namespaces do NOT collide.
+// via a lax wildcard, an other-namespace <item> with the SAME local name. The
+// wildcard uses processContents="lax", so the other-namespace <item> IS
+// assessed (it is NOT recorded in a.skipped and so is NOT excluded by
+// applyElementSteps' skip filter) — the namespace comparison in nameMatches is
+// the only thing that can keep it out of the key. A local-name-only matcher
+// would treat both as targets and clash on equal ids; the namespace-qualified
+// selector must match only the tns:item, so two items of the same id in
+// different namespaces do NOT collide.
 const nsKeySchema = `<?xml version="1.0"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns:tns="urn:tns" targetNamespace="urn:tns"
@@ -335,7 +339,7 @@ const nsKeySchema = `<?xml version="1.0"?>
             <xs:attribute name="id" type="xs:string"/>
           </xs:complexType>
         </xs:element>
-        <xs:any namespace="##other" processContents="skip"
+        <xs:any namespace="##other" processContents="lax"
                 minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
     </xs:complexType>

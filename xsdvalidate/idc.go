@@ -12,13 +12,19 @@ import (
 // infoset. A prefixed name test (tns:item, @tns:id) resolves its prefix
 // through the constraint's NamespaceBindings — the in-scope namespaces captured
 // at the declaration — and compares BOTH namespace URI and local name. An
-// unprefixed name test compares local name only: per §3.11.6 the default
-// namespace does not apply to XPath name tests in identity constraints. When
-// NamespaceBindings is empty (or a prefix is unbound) the step falls back to
-// local-name matching, preserving the single-namespace behaviour that
-// dominates the corpus. Field values are compared in the value space (via each field node's
-// type), falling back to the collapsed lexical form only when a node's type is
-// unavailable — so equal-but-differently-written keys (5 vs 5.0) match.
+// unprefixed name test currently carries no namespace constraint and matches by
+// local name only. Note this is a deliberate simplification: XSD 1.1 identity
+// constraints use XPath 2.0 (§3.11.1), under which an unprefixed name test would
+// pick up the default element namespace set by xpathDefaultNamespace (§3.13.6.2
+// XPath Valid clause 2.2.3; §3.13.2). Honoring xpathDefaultNamespace for IDC
+// name tests is a known limitation tracked separately; the local-name fallback
+// is correct only when no xpathDefaultNamespace is in effect, which holds for
+// the entire current corpus. When NamespaceBindings is empty (or a prefix is
+// unbound) the step likewise falls back to local-name matching, preserving the
+// single-namespace behaviour that dominates the corpus. Field values are
+// compared in the value space (via each field node's type), falling back to the
+// collapsed lexical form only when a node's type is unavailable — so
+// equal-but-differently-written keys (5 vs 5.0) match.
 
 // fieldVal is one resolved field of a key tuple: its value-space value plus the
 // type whose comparator governs equality, and the collapsed lexical fallback.
@@ -264,8 +270,11 @@ type icStep struct {
 	local string
 	// ns is the namespace URI a prefixed name test resolved to; nsSet marks a
 	// step that carries a namespace constraint. An unprefixed step leaves nsSet
-	// false and matches by local name only (§3.11.6: the default namespace does
-	// not apply to XPath name tests in identity constraints).
+	// false and matches by local name only. Under XPath 2.0 / XSD 1.1
+	// §3.13.6.2 clause 2.2.3 an unprefixed name test would otherwise pick up
+	// the default element namespace set by xpathDefaultNamespace (§3.13.2);
+	// honoring that is a known limitation tracked separately and absent from
+	// the current corpus.
 	ns    string
 	nsSet bool
 }
@@ -333,8 +342,13 @@ func parsePath(alt string, ns map[string]string) icPath {
 
 // nameStep builds a name test for an element or attribute step, resolving a
 // prefix through ns when present. An unprefixed name carries no namespace
-// constraint; a prefix that does not resolve also carries none, preserving the
-// historical local-name-only behaviour rather than failing to match.
+// constraint (see the icStep.ns note on xpathDefaultNamespace). A prefix that
+// does not resolve also carries none, falling open to local-name matching. Two
+// distinct situations land here: empty ns (no NamespaceBindings recorded) is a
+// legitimate backward-compat fallback, whereas a genuinely unbound prefix in a
+// selector/field XPath is in fact a static schema error (the XPath would be
+// non-conformant per §3.13.6.2 clause 2). We fail open in both cases — the
+// fail-open on a true unbound prefix is an accepted, documented limitation.
 func nameStep(kind icStepKind, qname string, ns map[string]string) icStep {
 	st := icStep{kind: kind, local: localPart(qname)}
 	i := strings.LastIndexByte(qname, ':')

@@ -757,7 +757,13 @@ func (b *builder) buildIC(n *xmltree.Node, doc *schemaDoc) *xsd.IdentityConstrai
 		Annotation: annotationOf(n, doc),
 		Extensions: extensionsOf(n),
 		// In-scope namespaces at the declaration resolve prefixed name tests in
-		// the selector/field XPath subset (§3.11.6).
+		// the selector/field XPath subset (§3.11.6). Per §3.13.2 the {namespace
+		// bindings} formally come from the host element — <selector> for the
+		// selector, each <field> for its field — but we capture them once from
+		// the <key>/<unique>/<keyref> node n. That set equals each child's
+		// in-scope namespaces unless a prefix is re-declared on the <selector>
+		// or <field> element itself, a pathological case absent from the corpus;
+		// the IC-node set is otherwise a correct superset. Documented limitation.
 		NamespaceBindings: n.NS.InScope(),
 	}
 	b.ics[n] = ic
