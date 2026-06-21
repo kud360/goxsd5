@@ -224,6 +224,25 @@ func ComparePrecisionDecimal(a, b *PrecisionDecimal) (xsd.Order, bool) {
 	return xsd.Order(av.Cmp(bv)), true
 }
 
+// Identical implements xsd.Identical: the equality relation the enumeration and
+// pattern facets match by, which differs from the order relation only at NaN.
+// NaN is incomparable in the order relation (including with itself) yet is a
+// single value identical to itself, so enumeration of NaN to NaN succeeds; for
+// every other pair identity is order-equality, so the cohort members 3, 3.0,
+// 3.00 — and ±0 — are identical. The argument is xsd.Value; a non-precisionDecimal
+// is never identical to one.
+func (p *PrecisionDecimal) Identical(other xsd.Value) bool {
+	q, ok := other.(*PrecisionDecimal)
+	if !ok {
+		return false
+	}
+	if p.Kind == pdNaN || q.Kind == pdNaN {
+		return p.Kind == pdNaN && q.Kind == pdNaN
+	}
+	o, c := ComparePrecisionDecimal(p, q)
+	return c && o == xsd.OrderEqual
+}
+
 // pdRank orders the value-space strata for comparison: −INF below all finite
 // values, INF above them. Finite values share a rank and are then compared by
 // magnitude.

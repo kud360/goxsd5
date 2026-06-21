@@ -118,6 +118,8 @@ by the `xsdvalidate` package, not the schema processor.
 | cvc-maxExclusive-valid | §4.3.8.4 | M3 |  | xsd/facets.go:293 |
 | cvc-totalDigits-valid | §4.3.11.4 | M3 |  | xsd/facets.go:299 |
 | cvc-fractionDigits-valid | §4.3.12.4 | M3 |  | xsd/facets.go:303 |
+| cvc-maxScale-valid | precisionDecimal §4.2 | PD | done (engine stage; reachable after PD-3 registration) | xsd/facets.go |
+| cvc-minScale-valid | precisionDecimal §4.3 | PD | done (engine stage; reachable after PD-3 registration) | xsd/facets.go |
 
 ### Intra-facet consistency (facet "Constraints on … Schema Components")
 
@@ -142,6 +144,9 @@ by the `xsdvalidate` package, not the schema processor.
 | maxExclusive-valid-restriction | §4.3.8.5 | M3/M6 | done (incl. base-membership of the lexical) | xsd/facets_check.go:184 |
 | totalDigits-valid-restriction | §4.3.11.5 | M3/M6 | done | xsd/facets_check.go:187 |
 | fractionDigits-valid-restriction | §4.3.12.5 | M3/M6 | done | xsd/facets_check.go:192 |
+| maxScale-valid-restriction | precisionDecimal §4.2 | PD | done | xsd/facets_check.go |
+| minScale-valid-restriction | precisionDecimal §4.3 | PD | done | xsd/facets_check.go |
+| minScale-totalDigits | precisionDecimal §4.3 | PD | done (minScale > maxScale; minScale > totalDigits is NOT an error) | xsd/facets_check.go |
 | explicitTimezone-valid-restriction | §4.3.16.5 | post-M9 | done (required/prohibited base cannot widen) | xsd/facets_check.go:209 |
 
 ### Restriction / narrowing (`cos-st-restricts`, `rcase-*`)
