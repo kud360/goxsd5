@@ -84,6 +84,7 @@ func CheckFacetRestriction(declared, base *Facets, cmp CompareFunc) error {
 	checkWhiteSpaceRestriction(&errs, declared, base)
 	checkBoundsRestriction(&errs, declared, base, cmp)
 	checkDigitsRestriction(&errs, declared, base)
+	checkScaleRestriction(&errs, declared, base)
 	checkTimezoneRestriction(&errs, declared, base)
 	return errs.Err()
 }
@@ -240,6 +241,48 @@ func checkDigitsRestriction(errs *ErrorList, declared, base *Facets) {
 		}
 		checkFixedInt(errs, declared.FractionDigits, base.FractionDigits, "fractionDigits")
 	}
+}
+
+// checkScaleRestriction enforces precisionDecimal maxScale/minScale narrowing:
+// a declared maxScale may not exceed the base maxScale, a declared minScale may
+// not fall below the base minScale, and the effective minScale may not exceed
+// the effective maxScale; fixed scale facets may not change. Per §4.3 a
+// minScale greater than totalDigits is explicitly NOT an error, so no such
+// check appears here.
+// spec: {maxScale,minScale}-valid-restriction — XSD 1.1 precisionDecimal Note §4.2/§4.3
+func checkScaleRestriction(errs *ErrorList, declared, base *Facets) {
+	// spec: maxScale-valid-restriction — XSD 1.1 precisionDecimal Note §4.2 (maxScale-valid-restriction)
+	if declared.MaxScale != nil && base.MaxScale != nil && declared.MaxScale.Value > base.MaxScale.Value {
+		errs.Addf(SpecMaxScaleValidRestriction, declared.MaxScale.Pos, "maxScale %d > base maxScale %d", declared.MaxScale.Value, base.MaxScale.Value)
+	}
+	checkFixedInt(errs, declared.MaxScale, base.MaxScale, "maxScale")
+	// spec: minScale-valid-restriction — XSD 1.1 precisionDecimal Note §4.3 (minScale-valid-restriction)
+	if declared.MinScale != nil && base.MinScale != nil && declared.MinScale.Value < base.MinScale.Value {
+		errs.Addf(SpecMinScaleValidRestriction, declared.MinScale.Pos, "minScale %d < base minScale %d", declared.MinScale.Value, base.MinScale.Value)
+	}
+	checkFixedInt(errs, declared.MinScale, base.MinScale, "minScale")
+
+	// spec: minScale-totalDigits — XSD 1.1 precisionDecimal Note §4.3 (minScale-totalDigits)
+	// The effective minScale may not exceed the effective maxScale (the rule the
+	// spec names minScale-totalDigits despite the name; minScale > totalDigits is
+	// explicitly permitted).
+	effMax, hasMax := effectiveInt(declared.MaxScale, base.MaxScale)
+	effMin, hasMin := effectiveInt(declared.MinScale, base.MinScale)
+	if hasMax && hasMin && effMin.Value > effMax.Value {
+		errs.Addf(SpecMinScaleTotalDigits, effMin.Pos, "minScale %d > maxScale %d", effMin.Value, effMax.Value)
+	}
+}
+
+// effectiveInt resolves an effective integer facet for a restriction step: the
+// declared facet overlays the base's, mirroring MergeFacets.
+func effectiveInt(declared, base *IntFacet) (*IntFacet, bool) {
+	if declared != nil {
+		return declared, true
+	}
+	if base != nil {
+		return base, true
+	}
+	return nil, false
 }
 
 // checkTimezoneRestriction enforces explicitTimezone fixed + narrowing: a

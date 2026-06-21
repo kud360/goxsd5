@@ -38,6 +38,19 @@ type Scaled interface {
 	Scale() (int, bool)
 }
 
+// Identical is implemented by values whose identity relation differs from
+// their order relation. The enumeration and pattern facets match by identity
+// (Part 2 §2.5: "the equality relation"), which for most value spaces is just
+// "compares equal", but for precisionDecimal NaN — incomparable in the order
+// relation, yet a single value identical to itself — the two relations diverge.
+// A value that implements Identical has enumeration matched through it; a value
+// that does not falls back to the order comparator's OrderEqual. (Precedent:
+// double's NaN==NaN, which compareFloat64 already folds into its single
+// comparator because double's bounds never carry a NaN.)
+type Identical interface {
+	Identical(other Value) bool
+}
+
 // TimezoneAware is implemented by values the explicitTimezone facet applies
 // to (the date/time value spaces): it reports whether the value carries a
 // timezone offset.

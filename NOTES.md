@@ -7,6 +7,43 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-21 — issue #24: precisionDecimal maxScale/minScale facet engine (PD-2 of 3) — 5672/21429 held <<<
+PD-2 adds the FACET-ENGINE support for the precisionDecimal-only scale facets and
+the totalDigits §4.1 reading. It is purely ADDITIVE: the new fields/bits/stage are
+OFF when the facets are absent, and the scale facets are reachable only from a
+precisionDecimal base, which is NOT registered until PD-3 (#25). Both ratchets held
+exactly at 5672 / 21429. The corpus cases pdecimal006/007/008 (saxonData/PDecimal)
+exercise enumeration/pattern/totalDigits on a precisionDecimal base and only become
+reachable after PD-3; PD-2 stands them in with unit tests in
+builtin/xsdtype/precisiondecimal_facets_test.go.
+ - Model: `Facets.MaxScale`/`MinScale *IntFacet` + `FacetMaxScale`/`FacetMinScale`
+   bits + `MergeFacets` overlay (xsd/facets.go). Scale values are SIGNED (a scale
+   may be negative, e.g. 3.0e2 → −1), so a new signed sibling of the parser's
+   nonNegativeInteger helper lives in xsd as `xsd.ParseScaleFacetInt` (saturating);
+   the parser-element wiring that CALLS it is PD-3, not done here.
+ - Engine stage: `checkScaleFacets` reads `v.(xsd.Scaled)`; an ABSENT scale (the
+   specials NaN/±INF, `Scale()` → `(_, false)`) ALWAYS passes (§4.2/§4.3 clause 2);
+   otherwise scale > maxScale or scale < minScale errors. New SpecRefs
+   `SpecMaxScaleValid`/`SpecMinScaleValid`.
+ - Narrowing (`checkScaleRestriction`, xsd/facets_check.go): declared maxScale >
+   base maxScale, declared minScale < base minScale, effective minScale > effective
+   maxScale (`minScale-totalDigits`), and {fixed} via the existing checkFixedInt.
+   DELIBERATELY no minScale-vs-totalDigits check — §4.3 says that is NOT an error.
+ - totalDigits §4.1 clause-1 exemption (NaN/±INF/zero) is satisfied by PD-1's value
+   impl: specials report `TotalDigits()`=0 (never exceeds) and zero reports 1 (never
+   exceeds a totalDigits ≥ 1, and totalDigits is always positive). No carve-out
+   needed; covered by TestPDTotalDigitsSpecialExemption.
+ - NaN IDENTITY-VS-ORDER split (the PD-1 carry-forward): kept the ORDER comparator
+   (`ComparePrecisionDecimal`) NaN-incomparable, so bounds + scale facets keep NaN
+   out. Added a new optional `xsd.Identical` capability that the enumeration stage
+   consults (valuesIdentical falls back to the order comparator's OrderEqual for
+   types that don't implement it). `*PrecisionDecimal.Identical` makes NaN==NaN true
+   while every other pair is order-equality, so the cohort 3/3.0/3.00 and ±0 are
+   identical. This is the clean split the PD-1 advisory asked for, not a retrofit;
+   double's `compareFloat64` folds NaN==NaN into its single comparator only because
+   double bounds never carry a NaN. Enumeration on precisionDecimal is reachable only
+   after PD-3, so it is unit-tested here (TestPDNaNIdentityVsOrder).
+
 ## >>> DONE 2026-06-21 — issue #23: xs:precisionDecimal value space + xsd.Scaled (PD-1 of 3) — 5672/21429 held <<<
 PD-1 lands the VALUE SPACE ONLY for `xs:precisionDecimal`. PD-2 (the facets —
 totalDigits/fractionDigits/scale/enumeration/pattern, issue #24) and PD-3 (parser

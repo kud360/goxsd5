@@ -1,6 +1,8 @@
 package xsd
 
 import (
+	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 )
@@ -66,6 +68,30 @@ type IntFacet struct {
 	Pos   Pos
 }
 
+// scaleFacetCap bounds the magnitude of a parsed scale-facet value so an
+// absurd authored maxScale/minScale still fits an int; a real scale never
+// approaches it.
+const scaleFacetCap = 1 << 31
+
+// ParseScaleFacetInt parses the value of a precisionDecimal maxScale/minScale
+// facet: an xs:integer, so SIGNED and unbounded (unlike the non-negative
+// length/digits facets). The magnitude is saturated at scaleFacetCap to fit an
+// int. It is the signed sibling of the parser's nonNegativeInteger helper and
+// is the facet-element parser's lexical→int mapping for the scale facets.
+func ParseScaleFacetInt(v string) (int, error) {
+	i, ok := new(big.Int).SetString(strings.TrimSpace(v), 10)
+	if !ok {
+		return 0, fmt.Errorf("%q is not an integer", v)
+	}
+	if !i.IsInt64() || i.Int64() > scaleFacetCap {
+		return scaleFacetCap, nil
+	}
+	if i.Int64() < -scaleFacetCap {
+		return -scaleFacetCap, nil
+	}
+	return int(i.Int64()), nil
+}
+
 // Bound is a min/max bounds facet value.
 type Bound struct {
 	Value   Value
@@ -125,6 +151,12 @@ type Facets struct {
 	TotalDigits    *IntFacet
 	FractionDigits *IntFacet
 
+	// MaxScale and MinScale are the precisionDecimal-specific scale facets
+	// (Part 2 precisionDecimal Note §4.2/§4.3). Unlike the digit facets their
+	// values are SIGNED (a scale may be negative, e.g. "3.0e2" has scale −1).
+	MaxScale *IntFacet
+	MinScale *IntFacet
+
 	Enumeration []Enum
 
 	Assertions []Assertion
@@ -159,6 +191,8 @@ const (
 	FacetBounds // the four min/max inclusive/exclusive facets
 	FacetTotalDigits
 	FacetFractionDigits
+	FacetMaxScale // precisionDecimal §4.2
+	FacetMinScale // precisionDecimal §4.3
 	FacetAssertion
 	FacetExplicitTimezone
 )
@@ -212,6 +246,12 @@ func MergeFacets(base, declared *Facets) Facets {
 	}
 	if declared.FractionDigits != nil {
 		eff.FractionDigits = declared.FractionDigits
+	}
+	if declared.MaxScale != nil {
+		eff.MaxScale = declared.MaxScale
+	}
+	if declared.MinScale != nil {
+		eff.MinScale = declared.MinScale
 	}
 	if declared.HasEnumeration() {
 		eff.Enumeration = declared.Enumeration
@@ -292,7 +332,7 @@ func incomparable(a, b Value) (Order, bool) { return 0, false }
 //  2. pattern groups (lexical)
 //  3. lexical→value mapping (the space boundary)
 //  4. length facets (value: characters / octets / items)
-//  5. bounds, totalDigits, fractionDigits (value)
+//  5. bounds, totalDigits, fractionDigits, maxScale/minScale (value)
 //  6. enumeration (value)
 //  7. explicitTimezone (value, XSD 1.1)
 //
@@ -342,6 +382,9 @@ func (t *SimpleType) parseValue(lexical string, ctx ValueContext, skipRange bool
 		return nil, err
 	}
 	if err := t.checkRangeFacets(f, v, norm, cmp, skipRange); err != nil {
+		return nil, err
+	}
+	if err := t.checkScaleFacets(f, v, norm); err != nil {
 		return nil, err
 	}
 	if err := t.checkEnumeration(f, v, norm, cmp); err != nil {
@@ -429,19 +472,61 @@ func (t *SimpleType) checkRangeFacets(f *Facets, v Value, norm string, cmp Compa
 	return nil
 }
 
-// checkEnumeration is stage 6: value-space membership. It uses the type's
-// effective comparator so a custom value space's own equality is honored.
+// checkScaleFacets is the precisionDecimal scale stage: maxScale/minScale read
+// the value's scale (arithmeticPrecision) through the Scaled capability. A value
+// with no scale — the special values NaN/±INF — is exempt and always passes
+// (precisionDecimal Note §4.2/§4.3 clause 2).
+func (t *SimpleType) checkScaleFacets(f *Facets, v Value, norm string) error {
+	if f.MaxScale == nil && f.MinScale == nil {
+		return nil
+	}
+	s, ok := v.(Scaled)
+	if !ok {
+		return nil
+	}
+	scale, present := s.Scale()
+	if !present {
+		return nil
+	}
+	// spec: cvc-maxScale-valid — XSD 1.1 precisionDecimal Note §4.2 (cvc-maxScale-valid)
+	if f.MaxScale != nil && scale > f.MaxScale.Value {
+		return NewError(SpecMaxScaleValid, Pos{}, "value %q has scale %d, maxScale is %d", norm, scale, f.MaxScale.Value)
+	}
+	// spec: cvc-minScale-valid — XSD 1.1 precisionDecimal Note §4.3 (cvc-minScale-valid)
+	if f.MinScale != nil && scale < f.MinScale.Value {
+		return NewError(SpecMinScaleValid, Pos{}, "value %q has scale %d, minScale is %d", norm, scale, f.MinScale.Value)
+	}
+	return nil
+}
+
+// checkEnumeration is stage 6: value-space membership. Membership is by the
+// identity relation: a value implementing Identical is matched through it (so
+// precisionDecimal NaN enumerates to NaN despite being order-incomparable),
+// otherwise the type's effective order comparator's OrderEqual stands in, which
+// honors a custom value space's own equality.
 func (t *SimpleType) checkEnumeration(f *Facets, v Value, norm string, cmp CompareFunc) error {
 	if !f.HasEnumeration() {
 		return nil
 	}
 	for i := range f.Enumeration {
-		if o, c := cmp(v, f.Enumeration[i].Value); c && o == OrderEqual {
+		if valuesIdentical(v, f.Enumeration[i].Value, cmp) {
 			return nil
 		}
 	}
 	// spec: cvc-enumeration-valid — XSD 1.1 Part 2 §4.3.5.4 (xmlschema11-2.md#cvc-enumeration-valid)
 	return NewError(SpecEnumerationValid, Pos{}, "value %q not in enumeration of %s", norm, t.describe())
+}
+
+// valuesIdentical reports value-space identity for enumeration matching. A
+// value exposing the Identical capability defines its own identity relation
+// (distinct from its order relation); otherwise identity is the order
+// comparator reporting OrderEqual.
+func valuesIdentical(v, want Value, cmp CompareFunc) bool {
+	if id, ok := v.(Identical); ok {
+		return id.Identical(want)
+	}
+	o, c := cmp(v, want)
+	return c && o == OrderEqual
 }
 
 // checkTimezoneFacet is stage 7: explicitTimezone (XSD 1.1).
