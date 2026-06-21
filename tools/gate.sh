@@ -46,18 +46,42 @@ fi
 
 run "go vet" go vet ./...
 
-# --- lint: requires golangci-lint built with Go >= 1.26 ---
+# --- lint: requires golangci-lint built with Go >= the module's target ---
+# The published golangci-lint releases are frequently built with an older Go
+# than this module targets (see go.mod), so the linter refuses to even load its
+# config ("lower than the targeted Go version"). When we detect that stale
+# condition we self-heal: rebuild the linter once with the module's toolchain,
+# put the fresh binary first on PATH, and re-run. At most one rebuild attempt.
+golangci_install="github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"
 echo "=== golangci-lint ==="
 if ! command -v golangci-lint >/dev/null 2>&1; then
   echo "  FAIL: golangci-lint not installed —"
-  echo "    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+  echo "    go install $golangci_install"
   failures+=("golangci-lint(missing)")
 else
   lint_out="$(golangci-lint run 2>&1)"; lint_rc=$?
   if echo "$lint_out" | grep -q "lower than the targeted Go version"; then
-    echo "  FAIL: golangci-lint is built with an older Go than this module —"
-    echo "    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
-    failures+=("golangci-lint(stale)")
+    # Derive the target toolchain from go.mod's `go X.Y.Z` directive (no hardcode).
+    go_ver="$(awk '/^go [0-9]/ {print $2; exit}' go.mod)"
+    echo "  golangci-lint stale; rebuilding with GOTOOLCHAIN=go${go_ver}…"
+    if GOTOOLCHAIN="go${go_ver}" go install "$golangci_install"; then
+      # Ensure the freshly built binary (in GOPATH/bin) is the one we re-run.
+      PATH="$(go env GOPATH)/bin:$PATH"
+      hash -r 2>/dev/null || true
+      lint_out="$(golangci-lint run 2>&1)"; lint_rc=$?
+    else
+      echo "  (rebuild failed)"
+    fi
+    if echo "$lint_out" | grep -q "lower than the targeted Go version"; then
+      echo "  FAIL: golangci-lint still built with an older Go after rebuild —"
+      echo "    GOTOOLCHAIN=go${go_ver} go install $golangci_install"
+      failures+=("golangci-lint(stale)")
+    elif [ $lint_rc -ne 0 ]; then
+      echo "$lint_out" | sed 's/^/    /'
+      echo "  FAIL: golangci-lint"; failures+=("golangci-lint")
+    else
+      echo "  ok: golangci-lint (after rebuild)"
+    fi
   elif [ $lint_rc -ne 0 ]; then
     echo "$lint_out" | sed 's/^/    /'
     echo "  FAIL: golangci-lint"; failures+=("golangci-lint")
