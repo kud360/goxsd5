@@ -28,6 +28,16 @@ type DigitCounted interface {
 	FractionDigits() int
 }
 
+// Scaled is implemented by values that carry a scale (arithmeticPrecision)
+// distinct from their numerical value — xs:precisionDecimal, whose cohort
+// members (3, 3.0, 3.00) share a numerical value but differ by scale. The
+// bool reports whether a scale is defined: it is absent for the special
+// values (±INF/NaN). The fractionDigits/totalDigits facets on precisionDecimal
+// read scale through this interface.
+type Scaled interface {
+	Scale() (int, bool)
+}
+
 // TimezoneAware is implemented by values the explicitTimezone facet applies
 // to (the date/time value spaces): it reports whether the value carries a
 // timezone offset.
