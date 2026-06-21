@@ -317,6 +317,49 @@ func TestRepeatedSiblingScopeKeyref(t *testing.T) {
 	})
 }
 
+// nsKeySchema declares a key on the root <cat> whose selector is
+// namespace-qualified (tns:item). The content model admits both a tns:item and,
+// via a lax wildcard, an other-namespace <item> with the SAME local name. A
+// local-name-only matcher would treat both as targets and clash on equal ids;
+// the namespace-qualified selector must match only the tns:item, so two items
+// of the same id in different namespaces do NOT collide.
+const nsKeySchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:tns" targetNamespace="urn:tns"
+           elementFormDefault="qualified">
+  <xs:element name="cat">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="item" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="id" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:any namespace="##other" processContents="skip"
+                minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:key name="kId">
+      <xs:selector xpath="tns:item"/>
+      <xs:field xpath="@id"/>
+    </xs:key>
+  </xs:element>
+</xs:schema>`
+
+func TestIDCNamespaceQualifiedSelector(t *testing.T) {
+	v := buildSchema(t, nsKeySchema)
+	t.Run("same id in another namespace does not clash", func(t *testing.T) {
+		// Only the tns:item is a key target; the other-namespace <item id="a">
+		// is outside the namespace-qualified selector, so no duplicate key.
+		assertValid(t, v, `<tns:cat xmlns:tns="urn:tns" xmlns:o="urn:other">`+
+			`<tns:item id="a"/><o:item id="a"/></tns:cat>`)
+	})
+	t.Run("duplicate within the qualified namespace still clashes", func(t *testing.T) {
+		assertInvalid(t, v, `<tns:cat xmlns:tns="urn:tns">`+
+			`<tns:item id="a"/><tns:item id="a"/></tns:cat>`, "cvc-identity-constraint")
+	})
+}
+
 func TestKeyValueSpaceComparison(t *testing.T) {
 	v := buildSchema(t, numKeySchema)
 	t.Run("5 and 5.0 are the same key", func(t *testing.T) {

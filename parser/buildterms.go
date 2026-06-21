@@ -756,6 +756,9 @@ func (b *builder) buildIC(n *xmltree.Node, doc *schemaDoc) *xsd.IdentityConstrai
 		Category:   category,
 		Annotation: annotationOf(n, doc),
 		Extensions: extensionsOf(n),
+		// In-scope namespaces at the declaration resolve prefixed name tests in
+		// the selector/field XPath subset (§3.11.6).
+		NamespaceBindings: n.NS.InScope(),
 	}
 	b.ics[n] = ic
 	if sel := firstChild(n, doc, "selector"); sel != nil {

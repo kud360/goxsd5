@@ -83,6 +83,37 @@ func (c *NSContext) Lookup(prefix string) (string, bool) {
 	return "", false
 }
 
+// InScope returns a flattened copy of every prefix→URI binding in scope at this
+// context, with inner declarations shadowing outer ones. The "" key is the
+// default namespace. Prefixes un-declared by an empty URI are omitted. Returns
+// nil when nothing is in scope. The reserved xml/xmlns prefixes are not
+// included; resolve them via Lookup.
+func (c *NSContext) InScope() map[string]string {
+	if c == nil {
+		return nil
+	}
+	var out map[string]string
+	// Walk leaf→root collecting prefixes; an already-seen prefix is shadowed by
+	// the inner binding, so the first sighting wins.
+	seen := map[string]bool{}
+	for ctx := c; ctx != nil; ctx = ctx.parent {
+		for prefix, uri := range ctx.bindings {
+			if seen[prefix] {
+				continue
+			}
+			seen[prefix] = true
+			if uri == "" {
+				continue // un-declared binding
+			}
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[prefix] = uri
+		}
+	}
+	return out
+}
+
 // ResolveQName resolves a lexical QName ("tns:Foo" or "Foo") appearing in an
 // attribute value, using this node's in-scope namespaces. Unprefixed names
 // resolve to the default namespace if one is declared, else to no namespace.

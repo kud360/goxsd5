@@ -555,6 +555,11 @@ type IdentityConstraint struct {
 	Category ICCategory
 	Selector string
 	Fields   []string
+	// NamespaceBindings maps each namespace prefix in scope at the constraint's
+	// declaration to its namespace URI (the "" key is the default namespace),
+	// used to resolve prefixed name tests in the selector/field XPath subset
+	// (§3.11.6). Empty/nil ⇒ name tests match by local name only.
+	NamespaceBindings map[string]string
 	// Refer is the referenced key for keyrefs.
 	Refer      *IdentityConstraint
 	Annotation *Annotation
