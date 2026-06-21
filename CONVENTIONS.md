@@ -68,8 +68,8 @@ go vet ./...                                      # vet
 golangci-lint run                                 # lint
 go test ./...                                      # unit tests
 .claude/skills/run-goxsd5/smoke.sh                # CLI smoke
-go test ./parser -run TestConformanceSuite        # schema ratchet  (baseline 5672)
-go test ./parser -run TestInstanceConformance     # instance ratchet (baseline 21429)
+go test ./parser -run TestConformanceSuite        # schema ratchet  (baseline 5697)
+go test ./parser -run TestInstanceConformance     # instance ratchet (baseline 21497)
 ```
 
 > **Toolchain note:** `golangci-lint`/`staticcheck` must be **built with Go ≥1.26**

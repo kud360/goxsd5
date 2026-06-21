@@ -172,6 +172,10 @@ func parseDecimalV(s string, _ xsd.ValueContext) (xsd.Value, error) {
 	return xsdtype.ParseDecimal(s)
 }
 
+func parsePrecisionDecimalV(s string, _ xsd.ValueContext) (xsd.Value, error) {
+	return xsdtype.ParsePrecisionDecimal(s)
+}
+
 var floatLexical = regexp.MustCompile(`\A[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?\z`)
 
 func parseFloating(s string) (float64, error) {
@@ -287,11 +291,15 @@ func isNCName(s string) bool {
 // reads it off the primitive.
 // Applicable-facet sets per primitive (cos-applicable-facets, Part 2 §4.1.6).
 const (
-	facetsStringy   = xsd.FacetsCommon | xsd.FacetsLength
-	facetsNumeric   = xsd.FacetsCommon | xsd.FacetBounds
-	facetsDecimal   = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetFractionDigits
-	facetsDateTimey = facetsNumeric | xsd.FacetExplicitTimezone
-	facetsBoolean   = xsd.FacetPattern | xsd.FacetWhiteSpace | xsd.FacetAssertion
+	facetsStringy = xsd.FacetsCommon | xsd.FacetsLength
+	facetsNumeric = xsd.FacetsCommon | xsd.FacetBounds
+	facetsDecimal = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetFractionDigits
+	// precisionDecimal admits totalDigits, maxScale and minScale but NOT
+	// fractionDigits nor the length facets (precisionDecimal Note §4, the
+	// per-facet applicability lists); cos-applicable-facets rejects the rest.
+	facetsPrecisionDecimal = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetMaxScale | xsd.FacetMinScale
+	facetsDateTimey        = facetsNumeric | xsd.FacetExplicitTimezone
+	facetsBoolean          = xsd.FacetPattern | xsd.FacetWhiteSpace | xsd.FacetAssertion
 )
 
 // The authored fundamental-facet base case of each primitive (Part 2 §F.1). Only
@@ -303,6 +311,7 @@ var (
 	fundUnordered = &xsd.Fundamentals{Ordered: xsd.OrderedFalse, Numeric: false}  // string/boolean/binary/anyURI/QName/NOTATION
 	fundDecimal   = &xsd.Fundamentals{Ordered: xsd.OrderedTotal, Numeric: true}   // decimal and its derivations
 	fundFloating  = &xsd.Fundamentals{Ordered: xsd.OrderedPartial, Numeric: true} // float/double
+	fundPDecimal  = &xsd.Fundamentals{Ordered: xsd.OrderedPartial, Numeric: true} // precisionDecimal (±INF/NaN make it partially ordered)
 	fundTemporal  = &xsd.Fundamentals{Ordered: xsd.OrderedPartial}                // duration + the date/time family
 )
 
@@ -312,6 +321,16 @@ var (
 	Decimal = primitive("decimal", xsd.WSCollapse, facetsDecimal, fundDecimal, parseDecimalV)
 	Float   = primitive("float", xsd.WSCollapse, facetsNumeric, fundFloating, parseFloat)
 	Double  = primitive("double", xsd.WSCollapse, facetsNumeric, fundFloating, parseDouble)
+
+	// PrecisionDecimal is xs:precisionDecimal (XSD 1.1's IEEE-754 decimal
+	// floating-point datatype; the precisionDecimal Note §3.2.5). The
+	// unconstrained primitive carries NO scale facets: its value space admits
+	// any scale, so a direct restriction may set minScale/maxScale to any signed
+	// value (corpus pdecimal016/019/020.xsd set negative minScale and are valid).
+	// minScale/maxScale narrowing is enforced only between derivation steps that
+	// both declare the facet (checkScaleRestriction), per the *-valid-restriction
+	// rules.
+	PrecisionDecimal = primitive("precisionDecimal", xsd.WSCollapse, facetsPrecisionDecimal, fundPDecimal, parsePrecisionDecimalV)
 
 	Duration   = primitive("duration", xsd.WSCollapse, facetsNumeric, fundTemporal, parseDurationV)
 	DateTime   = primitive("dateTime", xsd.WSCollapse, facetsDateTimey, fundTemporal, xsdtype.ParseDateTime)
@@ -439,7 +458,7 @@ var (
 func AllBuiltins() []*xsd.SimpleType {
 	return []*xsd.SimpleType{
 		AnySimpleType, AnyAtomicType,
-		String, Boolean, Decimal, Float, Double,
+		String, Boolean, Decimal, Float, Double, PrecisionDecimal,
 		Duration, DateTime, Time, Date, GYearMonth, GYear, GMonthDay, GDay, GMonth,
 		HexBinary, Base64Binary, AnyURI, QName, NOTATION,
 		Integer, NonPositiveInteger, NegativeInteger, Long, Int, Short, Byte,

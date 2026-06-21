@@ -68,7 +68,8 @@ var (
 	asserts   = star(one("assert"))
 	facetsCM  = star(names(
 		"minExclusive", "minInclusive", "maxExclusive", "maxInclusive",
-		"totalDigits", "fractionDigits", "length", "minLength", "maxLength",
+		"totalDigits", "fractionDigits", "maxScale", "minScale",
+		"length", "minLength", "maxLength",
 		"enumeration", "whiteSpace", "pattern", "assertion", "explicitTimezone"))
 )
 
@@ -608,6 +609,8 @@ var elemTable = map[string]*elemSpec{
 	"maxLength":        facetSpec(req(vcNonNegInt), true),
 	"totalDigits":      facetSpec(req(vcPosInt), true),
 	"fractionDigits":   facetSpec(req(vcNonNegInt), true),
+	"maxScale":         facetSpec(req(vcInteger), true),
+	"minScale":         facetSpec(req(vcInteger), true),
 	"whiteSpace":       facetSpec(req(vcEnum("preserve", "replace", "collapse")), true),
 	"explicitTimezone": facetSpec(req(vcEnum("optional", "required", "prohibited")), true),
 	// Value lexicals of bounds/enumerations are parsed with the base type in

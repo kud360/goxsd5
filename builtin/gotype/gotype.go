@@ -13,11 +13,15 @@ func qn(local string) xsd.QName { return xsd.QName{Namespace: xsd.XSDNS, Local: 
 // mirroring builtin's authored sets so a lax type admits exactly the facets its
 // strict sibling does.
 const (
-	facetsStringy   = xsd.FacetsCommon | xsd.FacetsLength
-	facetsNumeric   = xsd.FacetsCommon | xsd.FacetBounds
-	facetsDecimal   = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetFractionDigits
-	facetsDateTimey = facetsNumeric | xsd.FacetExplicitTimezone
-	facetsBoolean   = xsd.FacetPattern | xsd.FacetWhiteSpace | xsd.FacetAssertion
+	facetsStringy = xsd.FacetsCommon | xsd.FacetsLength
+	facetsNumeric = xsd.FacetsCommon | xsd.FacetBounds
+	facetsDecimal = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetFractionDigits
+	// precisionDecimal admits totalDigits + maxScale + minScale but not
+	// fractionDigits/length, mirroring builtin.facetsPrecisionDecimal. The lax
+	// number value has no scale, so the scale facets simply do not constrain.
+	facetsPrecisionDecimal = facetsNumeric | xsd.FacetTotalDigits | xsd.FacetMaxScale | xsd.FacetMinScale
+	facetsDateTimey        = facetsNumeric | xsd.FacetExplicitTimezone
+	facetsBoolean          = xsd.FacetPattern | xsd.FacetWhiteSpace | xsd.FacetAssertion
 )
 
 // mustPrimitive builds a lax primitive through xsdedit.NewPrimitive, panicking
@@ -116,6 +120,9 @@ var (
 	Decimal = mustPrimitive("decimal", anyAtomicType, parseNumber, nil, facetsDecimal, xsd.WSCollapse)
 	Float   = mustPrimitive("float", anyAtomicType, parseNumber, nil, facetsNumeric, xsd.WSCollapse)
 	Double  = mustPrimitive("double", anyAtomicType, parseNumber, nil, facetsNumeric, xsd.WSCollapse)
+	// PrecisionDecimal: the lax number value carries no scale, so maxScale/minScale
+	// are admitted but inert; the type exists to mirror the strict set member-for-member.
+	PrecisionDecimal = mustPrimitive("precisionDecimal", anyAtomicType, parseNumber, nil, facetsPrecisionDecimal, xsd.WSCollapse)
 
 	Duration   = mustPrimitive("duration", anyAtomicType, parseDuration, nil, facetsNumeric, xsd.WSCollapse)
 	DateTime   = mustPrimitive("dateTime", anyAtomicType, parseTemporal("dateTime"), compareTime, facetsDateTimey, xsd.WSCollapse)
@@ -231,7 +238,7 @@ var (
 func AllBuiltins() []*xsd.SimpleType {
 	return []*xsd.SimpleType{
 		anySimpleType, anyAtomicType,
-		String, Boolean, Decimal, Float, Double,
+		String, Boolean, Decimal, Float, Double, PrecisionDecimal,
 		Duration, DateTime, Time, Date, GYearMonth, GYear, GMonthDay, GDay, GMonth,
 		HexBinary, Base64Binary, AnyURI, QName, NOTATION,
 		Integer, NonPositiveInteger, NegativeInteger, Long, Int, Short, Byte,

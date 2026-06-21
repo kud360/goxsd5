@@ -89,6 +89,15 @@ func vcPosInt(v string, _ *xmltree.Node) error {
 	return err
 }
 
+// vcInteger validates a signed xs:integer, the lexical type of the
+// precisionDecimal maxScale/minScale facet values (their scale may be
+// negative). It delegates to xsd.ParseScaleFacetInt, the same saturating
+// lexical→int mapping pass 2 uses to build the facet.
+func vcInteger(v string, _ *xmltree.Node) error {
+	_, err := xsd.ParseScaleFacetInt(v)
+	return err
+}
+
 // occursCap saturates absurdly large occurrence values so they fit an int
 // without rejecting schemas that are technically valid.
 const occursCap = 1 << 31

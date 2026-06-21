@@ -7,6 +7,69 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-21 — issue #25: register precisionDecimal + wire scale facets, re-grade suite (PD-3 of 3) — RATCHET MOVED 5672→5697 / 21429→21497 <<<
+PD-3 makes xs:precisionDecimal REACHABLE, completing the three-card arc (PD-1 value
+space #23, PD-2 facet engine #24, both held the ratchet; PD-3 is the gain). This is
+the card that MOVES both ratchets — schema 5672→5697 (+25), instance 21429→21497 (+68),
+all genuine, regression-guarded.
+ - Registration — option (a), always-on. xs:precisionDecimal is added to
+   builtin.AllBuiltins() (builtin/builtin.go) as the package var `PrecisionDecimal`,
+   built with the existing `primitive(...)` helper (the in-package constructor every
+   other primitive uses — `xsdedit.NewPrimitive` is the EXTERNAL-consumer sibling, not
+   what builtin.go uses internally). Chosen over a gated opt-in because the W3C cases
+   and a recognizing processor assume it present. Applicable set
+   `facetsPrecisionDecimal = facetsNumeric | totalDigits | maxScale | minScale` —
+   NOTABLY EXCLUDES fractionDigits and the length facets (precisionDecimal Note §4
+   applicability lists); pdecimal009.n.xsd (fractionDigits on precisionDecimal) and
+   pdecimal017/018.n.xsd (length/minLength) are schema-INVALID precisely via
+   cos-applicable-facets, which only fires because the set excludes them. Fundamentals
+   ordered=partial/numeric=true (±INF/NaN make it partially ordered). The lax sibling
+   builtin/gotype gains a mirror primitive (parseNumber; scale facets admitted but
+   inert since the lax number has no scale) so gotype.AllBuiltins keeps its
+   one-for-one membership with the strict set (TestAllBuiltinsMirrorsStrict).
+ - {minScale}=0 ACCEPTANCE CRITERION — RE-EVALUATED AND DELIBERATELY NOT MATERIALIZED.
+   PD-2's carry-forward asked PD-3 to give the builtin a default {minScale}=0 so
+   pdecimal016-018.n would not wrongly validate. On inspection the carry-forward rested
+   on a MISREAD of the suite wiring: the `pdecimal016.n.xsd`/`017.n`/`018.n` files on
+   disk are NOT the schemaTest the harness runs. pdecimal016's schemaTest is
+   `pdecimal016.xsd`, expected VALID (it declares minScale=-9 directly on
+   precisionDecimal); 017/018's schemaTests are `0NN.n.xsd`, invalid for length/minLength
+   applicability — none depend on a minScale default. Materializing {minScale}=0 would
+   in fact BREAK the valid cases pdecimal016/019/020.xsd, which set NEGATIVE minScale
+   directly on precisionDecimal: checkScaleRestriction would then fire
+   minScale-valid-restriction (declared -9 < base 0). So the primitive carries NO scale
+   facets; minScale/maxScale narrowing is enforced only between steps that both declare
+   the facet, which is the spec-correct behaviour. Verified: pdecimal016/019/020.xsd
+   validate (VALID), and the invalids fail for the RIGHT id — pdecimal009.n
+   cos-applicable-facets(fractionDigits), 017.n/018.n cos-applicable-facets(length/
+   minLength), 011.n/014.n/015.n minScale-totalDigits(minScale>maxScale). NOT
+   "unknown type".
+ - Facet-element wiring. parser/buildsimple.go: facetNameMask gains maxScale→FacetMaxScale,
+   minScale→FacetMinScale; buildFacets switch gains both cases via a new `scaleFacet`
+   helper that parses with xsd.ParseScaleFacetInt (SIGNED — a scale may be negative),
+   the PD-2 lexical→int mapping. Applicability is gated by the existing
+   `applic.Has(mask)` guard (cos-applicable-facets), mirroring every other facet — no
+   new switch. parser/elemtable.go: facetsCM content model + facet table gain
+   maxScale/minScale as facetSpec(req(vcInteger), true) with a new signed-integer
+   value check `vcInteger` (parser/attrcheck.go, delegates to ParseScaleFacetInt).
+   parser/validate.go: facetKnown gains minScale/maxScale; the stale "deliberately
+   absent" comment is removed.
+ - Suite re-grade (the ratchet move). 25 schema cases converted skip:→pass: IBM
+   precisionDecimal.testSet d3_3_4ii01-02 + d3_3_4v14-24 (13, all expected-valid
+   precisionDecimal-and-its-facets schemas) and Saxon PDecimal.testSet pdecimal001-008,
+   010, 016, 019, 020 (12, mixing valid restrictions — totalDigits/enumeration of
+   NaN+INF/pattern/maxExclusive/negative-scale — with invalids that still correctly fail).
+   The 25 stale "deliberately not implemented" skip lines were removed and the cases
+   recorded pass via -update-expectations. Schema baseline 5672→5697. The 2 remaining
+   unrecorded schema gaps (saxon all308, complex018) are PRE-EXISTING and unrelated.
+   Instance side: registration surfaced 68 previously-unloadable precisionDecimal
+   instance documents (pdecimal006.v1/n1, etc.) which now validate correctly; recorded
+   via -update-instance-expectations. Instance baseline 21429→21497 (a genuine gain, not
+   the "held" the issue tentatively predicted). Baseline labels updated in
+   tools/gate.sh:81/82, CLAUDE.md:17, CONVENTIONS.md gate block.
+ - CLI smoke fixture (.claude/skills/run-goxsd5/smoke.sh): a precisionDecimal element
+   restricted with maxScale=2 — "3.00" validates, "3.000" fails with cvc-maxScale-valid.
+
 ## >>> DONE 2026-06-21 — issue #24: precisionDecimal maxScale/minScale facet engine (PD-2 of 3) — 5672/21429 held <<<
 PD-2 adds the FACET-ENGINE support for the precisionDecimal-only scale facets and
 the totalDigits §4.1 reading. It is purely ADDITIVE: the new fields/bits/stage are

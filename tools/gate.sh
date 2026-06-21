@@ -78,8 +78,8 @@ else
     git submodule update --init testdata/xsdtests || failures+=("submodule-init")
   fi
   if [ -f testdata/xsdtests/suite.xml ]; then
-    run "conformance: schema (baseline 5672)"   go test ./parser -run TestConformanceSuite
-    run "conformance: instance (baseline 21429)" go test ./parser -run TestInstanceConformance
+    run "conformance: schema (baseline 5697)"   go test ./parser -run TestConformanceSuite
+    run "conformance: instance (baseline 21497)" go test ./parser -run TestInstanceConformance
   else
     echo "  FAIL: conformance — submodule unavailable, cannot run the ratchets"
     failures+=("conformance(no-submodule)")
