@@ -43,6 +43,14 @@ builtin/xsdtype/precisiondecimal_facets_test.go.
    double's `compareFloat64` folds NaN==NaN into its single comparator only because
    double bounds never carry a NaN. Enumeration on precisionDecimal is reachable only
    after PD-3, so it is unit-tested here (TestPDNaNIdentityVsOrder).
+ - CARRY-FORWARD / PD-3 (#25) ACCEPTANCE CRITERION: PD-3 MUST give the registered
+   precisionDecimal builtin the default `{minScale}=0` (and the `{maxScale}` default)
+   in its `EffectiveFacets()`. `checkScaleRestriction` only fires
+   `minScale-valid-restriction` when `base.MinScale != nil`, so without the base
+   defaults the corpus cases pdecimal016.n / 017.n / 018.n (derived `minScale` below
+   the implicit base default of 0) would WRONGLY validate. The restriction code is
+   already forward-compatible (it reads `base.EffectiveFacets()`); PD-3 only has to
+   supply the defaults on the builtin.
 
 ## >>> DONE 2026-06-21 — issue #23: xs:precisionDecimal value space + xsd.Scaled (PD-1 of 3) — 5672/21429 held <<<
 PD-1 lands the VALUE SPACE ONLY for `xs:precisionDecimal`. PD-2 (the facets —

@@ -84,7 +84,7 @@ func ParseScaleFacetInt(v string) (int, error) {
 		return 0, fmt.Errorf("%q is not an integer", v)
 	}
 	if !i.IsInt64() || i.Int64() > scaleFacetCap {
-		return scaleFacetCap, nil
+		return i.Sign() * scaleFacetCap, nil
 	}
 	if i.Int64() < -scaleFacetCap {
 		return -scaleFacetCap, nil
