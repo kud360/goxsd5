@@ -14,7 +14,7 @@ XSD 1.1 schema parser + instance validator: a Go **library** (`xsd`, `parser`,
 
 - **Conformance ratchet.** Two gated suites pin behaviour and fail on regression
   *and* on unrecorded improvement: `go test ./parser -run TestConformanceSuite`
-  (baseline **5672**) and `-run TestInstanceConformance` (baseline **21429**).
+  (baseline **5697**) and `-run TestInstanceConformance` (baseline **21497**).
   Never lower a baseline; regenerate `testdata/*-expectations.txt` for genuine gains.
 - **Dependency direction.** `xsd` is a leaf; `xsdtemporal`/`xsdregex` are *pure*
   leaves (stdlib-only). Never add an upward import.

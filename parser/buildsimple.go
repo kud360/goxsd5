@@ -183,6 +183,7 @@ var facetNameMask = map[string]xsd.FacetSet{
 	"minInclusive": xsd.FacetBounds, "maxInclusive": xsd.FacetBounds,
 	"minExclusive": xsd.FacetBounds, "maxExclusive": xsd.FacetBounds,
 	"totalDigits": xsd.FacetTotalDigits, "fractionDigits": xsd.FacetFractionDigits,
+	"maxScale": xsd.FacetMaxScale, "minScale": xsd.FacetMinScale,
 	"assertion": xsd.FacetAssertion, "explicitTimezone": xsd.FacetExplicitTimezone,
 }
 
@@ -201,6 +202,14 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 		i, err := parseNonNegInt(v)
 		if err != nil {
 			return nil // reported by pass 1
+		}
+		return &xsd.IntFacet{Value: i, Fixed: boolAttr(c, "fixed", false), Pos: c.Pos}
+	}
+	scaleFacet := func(c *xmltree.Node) *xsd.IntFacet {
+		v, _ := c.Attr("value")
+		i, err := xsd.ParseScaleFacetInt(v)
+		if err != nil {
+			return nil // reported by pass 1 (signed integer; scale may be negative)
 		}
 		return &xsd.IntFacet{Value: i, Fixed: boolAttr(c, "fixed", false), Pos: c.Pos}
 	}
@@ -250,6 +259,10 @@ func (b *builder) buildFacets(r *xmltree.Node, doc *schemaDoc, base *xsd.SimpleT
 			f.TotalDigits = intFacet(c)
 		case "fractionDigits":
 			f.FractionDigits = intFacet(c)
+		case "maxScale":
+			f.MaxScale = scaleFacet(c)
+		case "minScale":
+			f.MinScale = scaleFacet(c)
 		case "minInclusive":
 			f.MinInclusive = bound(c, xsd.SpecMinInclValidRestriction)
 		case "maxInclusive":

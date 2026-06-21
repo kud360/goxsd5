@@ -317,8 +317,7 @@ func typeAutomaticallyKnown(q xsd.QName) bool {
 }
 
 // facetKnown reports whether q names a constraining facet this processor
-// supports (by the element name used to apply it). xs:minScale / xs:maxScale
-// (precisionDecimal facets) are deliberately absent.
+// supports (by the element name used to apply it).
 func facetKnown(q xsd.QName) bool {
 	if q.Namespace != xsd.XSDNS {
 		return false
@@ -326,7 +325,7 @@ func facetKnown(q xsd.QName) bool {
 	switch q.Local {
 	case "length", "minLength", "maxLength", "pattern", "enumeration", "whiteSpace",
 		"maxInclusive", "maxExclusive", "minInclusive", "minExclusive",
-		"totalDigits", "fractionDigits", "assertion", "explicitTimezone":
+		"totalDigits", "fractionDigits", "minScale", "maxScale", "assertion", "explicitTimezone":
 		return true
 	}
 	return false

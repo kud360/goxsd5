@@ -67,6 +67,36 @@ echo "$out"
 check "invalid instance" "$rc" 1
 echo "$out" | grep -q 'cvc-' && echo "PASS: cvc-* error reported" || { echo "FAIL: no cvc-* error"; fail=1; }
 
+# precisionDecimal (XSD 1.1): a maxScale-constrained restriction exercising the
+# registration + scale-facet wiring (issue #25). price allows at most 2
+# fractional digits, so "3.00" (scale 2) is valid and "3.000" (scale 3) is not.
+cat > "$work/price.xsd" <<'EOF'
+<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="price">
+    <xs:simpleType>
+      <xs:restriction base="xs:precisionDecimal">
+        <xs:maxScale value="2"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:element>
+</xs:schema>
+EOF
+printf '<?xml version="1.0"?>\n<price>3.00</price>\n'  > "$work/price-good.xml"
+printf '<?xml version="1.0"?>\n<price>3.000</price>\n' > "$work/price-bad.xml"
+
+note "precisionDecimal schema summary (-> exit 0)"
+"$bin" "$work/price.xsd"; check "precisionDecimal schema" "$?" 0
+
+note "precisionDecimal instance: within maxScale (-> exit 0)"
+"$bin" -q -validate "$work/price-good.xml" "$work/price.xsd"; check "precisionDecimal valid instance" "$?" 0
+
+note "precisionDecimal instance: exceeds maxScale (-> exit 1, cvc-maxScale-valid)"
+out=$("$bin" -q -validate "$work/price-bad.xml" "$work/price.xsd" 2>&1); rc=$?
+echo "$out"
+check "precisionDecimal invalid instance" "$rc" 1
+echo "$out" | grep -q 'maxScale' && echo "PASS: maxScale error reported" || { echo "FAIL: no maxScale error"; fail=1; }
+
 if [ "${1:-}" = "--suite" ]; then
   note "W3C conformance suites (gated against committed expectations)"
   if [ -e testdata/xsdtests/suite.xml ]; then

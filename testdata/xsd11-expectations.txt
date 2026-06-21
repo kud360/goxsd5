@@ -357,8 +357,8 @@ ibmMeta/openContent.testSet#s3_4_1v08 pass
 ibmMeta/openContent.testSet#s3_4_1v09 pass
 ibmMeta/openContent.testSet#s3_4_1v10 pass
 ibmMeta/openContent.testSet#s3_4_1v11 pass
-ibmMeta/precisionDecimal.testSet#d3_3_4ii01 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4ii02 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
+ibmMeta/precisionDecimal.testSet#d3_3_4ii01 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4ii02 pass
 ibmMeta/precisionDecimal.testSet#d3_3_4si09 pass
 ibmMeta/precisionDecimal.testSet#d3_3_4si10 pass
 ibmMeta/precisionDecimal.testSet#d3_3_4si11 pass
@@ -379,17 +379,17 @@ ibmMeta/precisionDecimal.testSet#d3_3_4si25 pass
 ibmMeta/precisionDecimal.testSet#d3_3_4si26 pass
 ibmMeta/precisionDecimal.testSet#d3_3_4si27 pass
 ibmMeta/precisionDecimal.testSet#d3_3_4si28 pass
-ibmMeta/precisionDecimal.testSet#d3_3_4v14 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v15 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v16 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v17 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v18 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v19 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v20 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v21 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v22 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v23 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-ibmMeta/precisionDecimal.testSet#d3_3_4v24 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
+ibmMeta/precisionDecimal.testSet#d3_3_4v14 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v15 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v16 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v17 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v18 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v19 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v20 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v21 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v22 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v23 pass
+ibmMeta/precisionDecimal.testSet#d3_3_4v24 pass
 ibmMeta/regularExpression.testSet#d6_gii01 pass
 ibmMeta/regularExpression.testSet#d6_gii02 pass
 ibmMeta/regularExpression.testSet#d6_gii03 pass
@@ -4782,26 +4782,26 @@ saxonMeta/Override.testSet#over028 pass
 saxonMeta/Override.testSet#over029 pass
 saxonMeta/Override.testSet#over030 pass
 saxonMeta/Override.testSet#over031 pass
-saxonMeta/PDecimal.testSet#pdecimal001 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal002 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal003 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal004 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal005 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal006 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal007 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal008 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
+saxonMeta/PDecimal.testSet#pdecimal001 pass
+saxonMeta/PDecimal.testSet#pdecimal002 pass
+saxonMeta/PDecimal.testSet#pdecimal003 pass
+saxonMeta/PDecimal.testSet#pdecimal004 pass
+saxonMeta/PDecimal.testSet#pdecimal005 pass
+saxonMeta/PDecimal.testSet#pdecimal006 pass
+saxonMeta/PDecimal.testSet#pdecimal007 pass
+saxonMeta/PDecimal.testSet#pdecimal008 pass
 saxonMeta/PDecimal.testSet#pdecimal009 pass
-saxonMeta/PDecimal.testSet#pdecimal010 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
+saxonMeta/PDecimal.testSet#pdecimal010 pass
 saxonMeta/PDecimal.testSet#pdecimal011 pass
 saxonMeta/PDecimal.testSet#pdecimal012 pass
 saxonMeta/PDecimal.testSet#pdecimal013 pass
 saxonMeta/PDecimal.testSet#pdecimal014 pass
 saxonMeta/PDecimal.testSet#pdecimal015 pass
-saxonMeta/PDecimal.testSet#pdecimal016 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
+saxonMeta/PDecimal.testSet#pdecimal016 pass
 saxonMeta/PDecimal.testSet#pdecimal017 pass
 saxonMeta/PDecimal.testSet#pdecimal018 pass
-saxonMeta/PDecimal.testSet#pdecimal019 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
-saxonMeta/PDecimal.testSet#pdecimal020 skip:precisionDecimal optional datatype (Part 2 §3.2.5) deliberately not implemented
+saxonMeta/PDecimal.testSet#pdecimal019 pass
+saxonMeta/PDecimal.testSet#pdecimal020 pass
 saxonMeta/Simple.testSet#simple001 pass
 saxonMeta/Simple.testSet#simple002 pass
 saxonMeta/Simple.testSet#simple003 pass
