@@ -7,6 +7,39 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-21 — issue #23: xs:precisionDecimal value space + xsd.Scaled (PD-1 of 3) — 5672/21429 held <<<
+PD-1 lands the VALUE SPACE ONLY for `xs:precisionDecimal`. PD-2 (the facets —
+totalDigits/fractionDigits/scale/enumeration/pattern, issue #24) and PD-3 (parser
+parse + builtin registration, issue #25) are still OUT of scope and NOT yet wired;
+nothing constructs a `PrecisionDecimal` from a schema/instance path yet — only the
+type, its parse/canonical/compare, and the new capability interface exist.
+ - Cohort / NO-renormalization model. `PrecisionDecimal` is a
+   `(coefficient, scale, sign)` identity kept VERBATIM — the lexical scale is
+   preserved, never normalized away. So `3`, `3.0`, `3.00` are DISTINCT values
+   (different scale) that nonetheless COMPARE EQUAL numerically — unlike `Decimal`,
+   which renormalizes and collapses them to one value. Load-bearing consequence:
+   `TotalDigits()` COUNTS trailing zeros, so `1234.0` → 5 (the opposite of
+   `Decimal`, where `1234.0` → 4). `FractionDigits()`/`Scale()` likewise read the
+   retained scale directly. Tests: builtin/xsdtype/precisiondecimal_test.go.
+ - New `xsd.Scaled` capability interface (xsd/value.go) — a sibling to the existing
+   capability interfaces (DigitCounted, …). Scale is exposed as a property SEPARATE
+   from numerical value precisely because two equal-valued PDs can differ in scale;
+   a numeric comparison alone can't recover it. `*PrecisionDecimal` satisfies BOTH
+   `Scaled` and `DigitCounted` (TotalDigits/FractionDigits per the cohort counting
+   above). CompareValues gained its `PrecisionDecimal` case (builtin/xsdtype/value.go).
+ - Special-value lexical rule is EXACT-CASE: `INF`, `+INF`, `-INF`, `NaN` are the
+   only accepted special lexicals. Float-style aliases are REJECTED — `Infinity`,
+   any lowercase (`inf`, `nan`), and `+NaN` do not parse. (precisionDecimal's lexical
+   space is deliberately stricter than float/double here.)
+ - CARRY-FORWARD for PD-2 (#24): NaN identity vs. order. The order comparator
+   correctly treats NaN as INCOMPARABLE — returns `(0, false)`, including NaN-vs-NaN
+   — which is right for ordering. But PD-2's `enumeration`/`pattern` facet matching
+   needs NaN IDENTITY (NaN == NaN, a single value) DECOUPLED from NaN order. PD-2
+   must design that comparator/identity split IN, not retrofit it. Precedent already
+   exists: `compareFloat64` in builtin/xsdtype/value.go makes double's NaN == NaN
+   equal (incomparable for `<`/`>` but equal for `=`) for exactly this reason; PD-2
+   should mirror that shape rather than reuse the bare order comparator for identity.
+
 ## >>> DONE 2026-06-20 — issue #2: builtin/gotype lax value layer + parser.Options.Primitives + xsdedit.NewPrimitive — 5672/21429 held <<<
 Added a Go-native (lax) sibling to builtin/xsdtype and the parse-time switch to
 select it. Resolves the two standing FUTURE notes below (xsdtype/gotype sibling;

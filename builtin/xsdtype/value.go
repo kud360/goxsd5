@@ -64,10 +64,7 @@ func CompareValues(a, b xsd.Value) (xsd.Order, bool) {
 		}
 	case Boolean:
 		if bv, ok := b.(Boolean); ok {
-			if av == bv {
-				return xsd.OrderEqual, true
-			}
-			return 0, false
+			return equalOrIncomparable(av == bv)
 		}
 	case Float:
 		if bv, ok := b.(Float); ok {
@@ -81,19 +78,17 @@ func CompareValues(a, b xsd.Value) (xsd.Order, bool) {
 		if bv, ok := b.(*Decimal); ok {
 			return av.Cmp(bv), true
 		}
+	case *PrecisionDecimal:
+		if bv, ok := b.(*PrecisionDecimal); ok {
+			return ComparePrecisionDecimal(av, bv)
+		}
 	case Bytes:
 		if bv, ok := b.(Bytes); ok {
-			if string(av) == string(bv) {
-				return xsd.OrderEqual, true
-			}
-			return 0, false
+			return equalOrIncomparable(string(av) == string(bv))
 		}
 	case QNameValue:
 		if bv, ok := b.(QNameValue); ok {
-			if av.Name == bv.Name {
-				return xsd.OrderEqual, true
-			}
-			return 0, false
+			return equalOrIncomparable(av.Name == bv.Name)
 		}
 	case *DateTime:
 		if bv, ok := b.(*DateTime); ok {
@@ -109,6 +104,15 @@ func CompareValues(a, b xsd.Value) (xsd.Order, bool) {
 		if bv, ok := b.(xsd.ListValue); ok {
 			return compareListValues(av, bv)
 		}
+	}
+	return 0, false
+}
+
+// equalOrIncomparable renders an equality-only comparison: equal values
+// compare equal, unequal ones are incomparable (the value space has no order).
+func equalOrIncomparable(equal bool) (xsd.Order, bool) {
+	if equal {
+		return xsd.OrderEqual, true
 	}
 	return 0, false
 }
