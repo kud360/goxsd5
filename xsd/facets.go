@@ -1,6 +1,7 @@
 package xsd
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"regexp"
@@ -617,7 +618,20 @@ func (t *SimpleType) buildValue(norm, raw string, ctx ValueContext) (Value, erro
 			// only reached by a malformed, detached type.
 			return nil, NewError(SpecDatatypeValid, t.Pos, "atomic type %s has no lexical mapping", t.describe())
 		}
-		return pf(norm, ctx)
+		v, err := pf(norm, ctx)
+		if err != nil {
+			// The builtin lexical→value parsers return plain errors; attach the
+			// governing clause here at the value-space boundary so every atomic
+			// datatype failure carries cvc-datatype-valid like the rest of the
+			// facet checks. An error already carrying a SpecRef is left intact.
+			// spec: cvc-datatype-valid — XSD 1.1 Part 2 §4.1.4 (xmlschema11-2.md#cvc-datatype-valid)
+			var xe *Error
+			if !errors.As(err, &xe) {
+				return nil, WrapError(SpecDatatypeValid, err)
+			}
+			return nil, err
+		}
+		return v, nil
 	}
 }
 

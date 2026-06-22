@@ -7,6 +7,33 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-22 — issue #34: atomic lexical failures now carry cvc-datatype-valid SpecRef — 5697/21497 held <<<
+Behaviour change (observable): instance-validation error output for UNPATTERNED atomic
+lexical failures now carries `[cvc-datatype-valid]` where it previously emitted a raw,
+id-less message (e.g. `<num>xyz</num>` against an integer). The builtin lexical→value
+parsers (`builtin/xsdtype`, gotype) return plain Go errors; that id-less text used to
+leak straight through to the user.
+ - The boundary primitive — `xsd.WrapError(ref, err)` (xsd/errors.go). Attaches a SpecRef
+   to a plain deeper-layer error: `&Error{Ref, Msg: err.Error(), cause: err}` with an
+   UNEXPORTED `cause` field and `func (e *Error) Unwrap() error { return e.cause }`. This
+   preserves the original message VERBATIM (so the user still sees what went wrong) AND
+   keeps the wrapped error reachable via `errors.Is`/`errors.As` — critical because
+   `xsdtype.ErrNeedContext` (QName/NOTATION needing namespace context) is detected by
+   `errors.Is` up the chain; a non-unwrapping wrapper would have broken that detection.
+ - The chokepoint — `SimpleType.buildValue` (xsd/facets.go, atomic default arm ~610-632).
+   After the builtin parseFunc returns, if its error does NOT already carry a SpecRef
+   (`!errors.As(err, &xe)`) it is wrapped with `SpecDatatypeValid` (cvc-datatype-valid,
+   XSD 1.1 Part 2 §4.1.4); an error that already cites a clause is left intact. The union
+   arm already emitted cvc-datatype-valid via NewError, so atomic now matches it — every
+   value-space failure cites §4.1.4 uniformly. The wrap is at the VALUE-SPACE boundary,
+   not per-facet: facet failures already had their own refs.
+ - Invariant tightened — xsdvalidate/fuzz_test.go (~146-157) now `t.Fatalf`s unless EVERY
+   instance error is a SpecRef-bearing `*xsd.Error` (`errors.As` succeeds AND `Ref` is
+   non-zero). Previously id-less plain errors could slip through; the wrap closes that gap.
+   xsdvalidate/result.go doc restored to the now-true statement: each error IS an
+   *xsd.Error carrying a cvc-* SpecRef. Ratchets held (no expectations delta) — the
+   affected cases were already INVALID; only the error id text gained the bracketed ref.
+
 ## >>> DONE 2026-06-22 — issue #38: xsdwalk Walker follow-ups (NOTES entry + lock-behaviour tests) — ratchets HELD 5697/21497 <<<
 Durability/continuity polish deferred from PR #37. Zero conformance impact.
  - PUSH DRIVER NOW COMPLETE. The push/pull dual-driver split anticipated at
