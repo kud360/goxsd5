@@ -382,6 +382,76 @@ func TestRedefine(t *testing.T) {
 	})
 }
 
+// TestRedefineRestriction exercises src-redefine clauses 6.2 / 7.2: a
+// no-self-reference <group>/<attributeGroup> redefinition must be a restriction
+// (subset) of the original it redefines.
+func TestRedefineRestriction(t *testing.T) {
+	files := func(base, redefineChildren string) map[string]string {
+		return map[string]string{
+			"main.xsd": `<xs:schema ` + xsNS + ` xmlns:tns="urn:t" targetNamespace="urn:t">
+  <xs:redefine schemaLocation="base.xsd">` + redefineChildren + `</xs:redefine>
+</xs:schema>`,
+			"base.xsd": `<xs:schema ` + xsNS + ` xmlns:tns="urn:t" targetNamespace="urn:t">` + base + `</xs:schema>`,
+		}
+	}
+
+	t.Run("group redefinition that narrows occurrence is a valid restriction", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int" maxOccurs="3"/></xs:sequence></xs:group>`,
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int" maxOccurs="2"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantNoErr(t, err)
+	})
+
+	t.Run("group redefinition that widens occurrence fails src-redefine", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int" maxOccurs="2"/></xs:sequence></xs:group>`,
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int" maxOccurs="5"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
+	})
+
+	t.Run("group redefinition that adds a new element fails src-redefine", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:group>`,
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int"/><xs:element name="y" type="xs:int"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
+	})
+
+	t.Run("group redefinition dropping an optional element is a valid restriction", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int"/><xs:element name="y" type="xs:int" minOccurs="0"/></xs:sequence></xs:group>`,
+			`<xs:group name="g"><xs:sequence><xs:element name="x" type="xs:int"/></xs:sequence></xs:group>`,
+		), "main.xsd")
+		wantNoErr(t, err)
+	})
+
+	t.Run("attributeGroup redefinition that is a strict subset is valid", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/><xs:attribute name="b" type="xs:int"/></xs:attributeGroup>`,
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/></xs:attributeGroup>`,
+		), "main.xsd")
+		wantNoErr(t, err)
+	})
+
+	t.Run("attributeGroup redefinition adding a required attribute fails src-redefine", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/></xs:attributeGroup>`,
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/><xs:attribute name="b" type="xs:int" use="required"/></xs:attributeGroup>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
+	})
+
+	t.Run("attributeGroup redefinition dropping a required attribute fails src-redefine", func(t *testing.T) {
+		_, err := parseMap(t, files(
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int" use="required"/></xs:attributeGroup>`,
+			`<xs:attributeGroup name="ag"><xs:attribute name="a" type="xs:int"/></xs:attributeGroup>`,
+		), "main.xsd")
+		wantErrIDs(t, err, "src-redefine")
+	})
+}
+
 func TestOverride(t *testing.T) {
 	t.Run("override replaces pervasively, unmatched children are ignored", func(t *testing.T) {
 		schemas, err := parseMap(t, map[string]string{

@@ -52,6 +52,11 @@ type builder struct {
 	// component belongs to the target document, so the target's schema-level
 	// defaults (defaultAttributes) apply to it, not the overriding schema's.
 	overrideTarget map[*xmltree.Node]*schemaDoc
+
+	// redefineRestrict holds the no-self-reference group/attributeGroup
+	// redefinitions whose restriction-subset relation (src-redefine 6.2.2 / 7.2.2)
+	// is decided in runStaticTypeChecks, once both components are compiled.
+	redefineRestrict []redefinePair
 }
 
 // ctFinishEntry locates the source nodes a complex type's finish pass needs.

@@ -49,6 +49,19 @@ type replacement struct {
 
 type docKey struct{ uri, tns string }
 
+// redefinePair records a no-self-reference <group>/<attributeGroup> redefinition
+// (src-redefine clause 6.2 / 7.2): the new definition must be a restriction of
+// the original. Both components are compiled by the builder, which then runs the
+// restriction-subset check — a comparison the loader cannot make on raw nodes.
+type redefinePair struct {
+	kind     string // "group" or "attributeGroup"
+	newNode  *xmltree.Node
+	newDoc   *schemaDoc
+	origNode *xmltree.Node
+	origDoc  *schemaDoc
+	pos      xsd.Pos
+}
+
 type loader struct {
 	resolver SchemaResolver
 	errs     *xsd.ErrorList
@@ -58,6 +71,10 @@ type loader struct {
 	docs      map[docKey]*schemaDoc
 	order     []*schemaDoc
 	reps      []*replacement
+	// redefineRestrict collects the no-self-reference group/attributeGroup
+	// redefinitions whose restriction-subset relation (clauses 6.2.2 / 7.2.2) is
+	// decided at build time once both components are compiled.
+	redefineRestrict []redefinePair
 }
 
 func newLoader(resolver SchemaResolver, errs *xsd.ErrorList) *loader {
@@ -332,7 +349,7 @@ func (l *loader) registerReplacement(reg *registry, rep *replacement) {
 				// must redefine a component of the redefined document.
 				l.errs.Addf(xsd.SpecSrcRedefine, c.Pos, "redefined %s %s is not declared in the redefined document", s, q)
 			}
-			l.checkRedefineSelfBase(c, rep.owner, q)
+			l.checkRedefineSelfBase(c, rep.owner, q, orig)
 			// The child resolves its own name to the original; every other
 			// reference (here and elsewhere) sees the redefinition.
 			pdoc := *rep.owner
@@ -349,7 +366,7 @@ func (l *loader) registerReplacement(reg *registry, rep *replacement) {
 // checkRedefineSelfBase enforces that a redefining type derives from the
 // type it redefines.
 // spec: src-redefine.5 — XSD 1.1 Part 1 §4.2.4 (src-redefine)
-func (l *loader) checkRedefineSelfBase(c *xmltree.Node, doc *schemaDoc, q xsd.QName) {
+func (l *loader) checkRedefineSelfBase(c *xmltree.Node, doc *schemaDoc, q xsd.QName, orig *decl) {
 	var base xsd.QName
 	found := false
 	switch c.Name.Local {
@@ -364,10 +381,10 @@ func (l *loader) checkRedefineSelfBase(c *xmltree.Node, doc *schemaDoc, q xsd.QN
 			}
 		}
 	case "group":
-		l.checkRedefineGroupSelfRef(c, doc, q)
+		l.checkRedefineGroupSelfRef(c, doc, q, orig)
 		return
 	case "attributeGroup":
-		l.checkRedefineAttrGroupSelfRef(c, doc, q)
+		l.checkRedefineAttrGroupSelfRef(c, doc, q, orig)
 		return
 	default:
 		return
@@ -377,15 +394,16 @@ func (l *loader) checkRedefineSelfBase(c *xmltree.Node, doc *schemaDoc, q xsd.QN
 	}
 }
 
-// checkRedefineGroupSelfRef enforces src-redefine clause 6.1: a redefined
+// checkRedefineGroupSelfRef enforces src-redefine clause 6: a redefined
 // <group> that references itself does so exactly once (6.1.1) and that
 // self-reference's minOccurs and maxOccurs are both 1 or absent (6.1.2).
 // A self-reference inside an <element> ancestor does not count (clause 6.1).
-// The no-self-reference case (6.2, restriction) needs the model-group subset
-// relation and is left deferred; its existence requirement is already covered
-// by the orig==nil check in registerReplacement.
+// When there is no self-reference (clause 6.2) the new definition must be a
+// restriction of the original (6.2.2): that model-group subset relation needs
+// both components compiled, so the pair is recorded here and decided by the
+// builder in checkRedefineRestrict.
 // spec: src-redefine — XSD 1.1 Part 1 §4.2.4 (src-redefine clause 6)
-func (l *loader) checkRedefineGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xsd.QName) {
+func (l *loader) checkRedefineGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xsd.QName, orig *decl) {
 	var refs []*xmltree.Node
 	var walk func(n *xmltree.Node, inElement bool)
 	walk = func(n *xmltree.Node, inElement bool) {
@@ -412,14 +430,21 @@ func (l *loader) checkRedefineGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xs
 			l.errs.Addf(xsd.SpecSrcRedefine, r.Pos, "the self-reference in redefined group %s must have minOccurs = maxOccurs = 1", q)
 		}
 	}
+	if len(refs) == 0 && orig != nil && orig.node != nil {
+		l.redefineRestrict = append(l.redefineRestrict, redefinePair{
+			kind: "group", newNode: c, newDoc: doc, origNode: orig.node, origDoc: orig.doc, pos: c.Pos,
+		})
+	}
 }
 
-// checkRedefineAttrGroupSelfRef enforces src-redefine clause 7.1: a redefined
-// <attributeGroup> that references itself does so exactly once. The
-// no-self-reference restriction case (7.2) is left deferred; its existence
-// requirement is already covered by the orig==nil check in registerReplacement.
+// checkRedefineAttrGroupSelfRef enforces src-redefine clause 7: a redefined
+// <attributeGroup> that references itself does so exactly once (7.1). When there
+// is no self-reference (clause 7.2) the new definition's attribute uses must be a
+// restriction (subset) of the original's per clause 3 of derivation-ok-restriction
+// (7.2.2); that comparison needs both components compiled, so the pair is recorded
+// here and decided by the builder in checkRedefineRestrict.
 // spec: src-redefine — XSD 1.1 Part 1 §4.2.4 (src-redefine clause 7)
-func (l *loader) checkRedefineAttrGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xsd.QName) {
+func (l *loader) checkRedefineAttrGroupSelfRef(c *xmltree.Node, doc *schemaDoc, q xsd.QName, orig *decl) {
 	var refs []*xmltree.Node
 	for _, ch := range xsdElems(c, doc) {
 		if ch.Name.Local != "attributeGroup" {
@@ -431,5 +456,10 @@ func (l *loader) checkRedefineAttrGroupSelfRef(c *xmltree.Node, doc *schemaDoc, 
 	}
 	if len(refs) > 1 {
 		l.errs.Addf(xsd.SpecSrcRedefine, refs[1].Pos, "redefined attribute group %s has %d self-references; exactly one is allowed", q, len(refs))
+	}
+	if len(refs) == 0 && orig != nil && orig.node != nil {
+		l.redefineRestrict = append(l.redefineRestrict, redefinePair{
+			kind: "attributeGroup", newNode: c, newDoc: doc, origNode: orig.node, origDoc: orig.doc, pos: c.Pos,
+		})
 	}
 }
