@@ -18,6 +18,7 @@ import (
 // namespace first).
 func buildSchemas(reg *registry, l *loader, errs *xsd.ErrorList) []*xsd.Schema {
 	b := newBuilder(reg, errs)
+	b.redefineRestrict = l.redefineRestrict
 	// Record which top-level component nodes are declared inside an <xs:override>
 	// (and the document they override): §4.2.4 places them in the target document,
 	// so the target's schema-level defaults apply to them.
@@ -222,6 +223,7 @@ func (b *builder) runStaticTypeChecks() {
 	}
 	b.checkSubstitutionCycles()
 	b.checkTypeAlternatives()
+	b.checkRedefineRestrict(accepted, globalsByName)
 }
 
 // checkTypeAlternatives enforces Element Declaration Properties Correct clause 7
