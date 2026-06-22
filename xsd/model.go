@@ -558,12 +558,18 @@ type IdentityConstraint struct {
 	// NamespaceBindings maps each namespace prefix in scope at the constraint's
 	// declaration to its namespace URI (the "" key is the default namespace),
 	// used to resolve prefixed name tests in the selector/field XPath subset
-	// (§3.11.6). Empty/nil ⇒ name tests match by local name only. The default
-	// ("") binding is recorded but not yet applied to unprefixed name tests:
-	// under XPath 2.0 / XSD 1.1 §3.13.6.2 clause 2.2.3 an unprefixed name test
-	// would pick up the default element namespace set by xpathDefaultNamespace
-	// (§3.13.2), which is a known limitation tracked separately.
+	// (§3.11.6). Empty/nil ⇒ prefixed name tests fall back to local-name only.
 	NamespaceBindings map[string]string
+	// DefaultNamespace is the default element namespace in effect for the
+	// selector/field XPath, resolved from xpathDefaultNamespace at the
+	// constraint's declaration (§3.13.2, with ##targetNamespace / ##local /
+	// ##defaultNamespace / an explicit URI expanded). Under XPath 2.0 / XSD 1.1
+	// §3.13.6.2 clause 2.2.3 it is the default element/type namespace of the
+	// static context, so an UNPREFIXED element name test resolves against it.
+	// Empty ⇒ no default element namespace, so unprefixed element name tests
+	// match by local name only (backward-compatible). Attribute name tests are
+	// unaffected — XPath 2.0's default namespace applies to elements only.
+	DefaultNamespace string
 	// Refer is the referenced key for keyrefs.
 	Refer      *IdentityConstraint
 	Annotation *Annotation
