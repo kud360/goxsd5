@@ -9,22 +9,27 @@ import (
 // Identity-constraint evaluation (cvc-identity-constraint, Part 1 §3.11.4).
 //
 // The selector/field XPath subset (§3.11.6) is evaluated directly over the
-// infoset. A prefixed name test (tns:item, @tns:id) resolves its prefix
-// through the constraint's NamespaceBindings — the in-scope namespaces captured
-// at the declaration — and compares BOTH namespace URI and local name. An
-// unprefixed name test currently carries no namespace constraint and matches by
-// local name only. Note this is a deliberate simplification: XSD 1.1 identity
-// constraints use XPath 2.0 (§3.11.1), under which an unprefixed name test would
-// pick up the default element namespace set by xpathDefaultNamespace (§3.13.6.2
-// XPath Valid clause 2.2.3; §3.13.2). Honoring xpathDefaultNamespace for IDC
-// name tests is a known limitation tracked separately; the local-name fallback
-// is correct only when no xpathDefaultNamespace is in effect, which holds for
-// the entire current corpus. When NamespaceBindings is empty (or a prefix is
-// unbound) the step likewise falls back to local-name matching, preserving the
-// single-namespace behaviour that dominates the corpus. Field values are
-// compared in the value space (via each field node's type), falling back to the
-// collapsed lexical form only when a node's type is unavailable — so
-// equal-but-differently-written keys (5 vs 5.0) match.
+// infoset. XSD 1.1 identity constraints use XPath 2.0 (§3.11.1), whose static
+// context sets a default element namespace from xpathDefaultNamespace (§3.13.2;
+// §3.13.6.2 XPath Valid clause 2.2.3). Name tests resolve accordingly:
+//
+//   - A prefixed element/attribute name test (tns:item, @tns:id) resolves its
+//     prefix through the constraint's NamespaceBindings — the in-scope
+//     namespaces captured at the declaration — and compares BOTH namespace URI
+//     and local name.
+//   - An unprefixed ELEMENT name test resolves against the constraint's
+//     DefaultNamespace (xpathDefaultNamespace). When that is empty (no default
+//     element namespace in effect) it matches by local name only.
+//   - An unprefixed ATTRIBUTE name test (@id) always matches by local name with
+//     no namespace — XPath 2.0's default namespace applies to element/type
+//     names, not attributes.
+//
+// When NamespaceBindings is empty (or a prefix is unbound) a prefixed step
+// falls back to local-name matching, preserving the single-namespace behaviour
+// that dominates the corpus. Field values are compared in the value space (via
+// each field node's type), falling back to the collapsed lexical form only when
+// a node's type is unavailable — so equal-but-differently-written keys (5 vs
+// 5.0) match.
 
 // fieldVal is one resolved field of a key tuple: its value-space value plus the
 // type whose comparator governs equality, and the collapsed lexical fallback.
@@ -128,13 +133,13 @@ func (a *assessor) inScopeKeyTuples(refer *xsd.IdentityConstraint, enter, exit i
 // evalConstraint selects the target node set and builds the tuple list for one
 // constraint, reporting field-cardinality, missing-key, and uniqueness errors.
 func (a *assessor) evalConstraint(el Element, ic *xsd.IdentityConstraint) [][]fieldVal {
-	targets := a.selectTargets(el, ic.Selector, ic.NamespaceBindings)
+	targets := a.selectTargets(el, ic.Selector, ic.NamespaceBindings, ic.DefaultNamespace)
 	var tuples [][]fieldVal
 	for _, target := range targets {
 		tuple := make([]fieldVal, len(ic.Fields))
 		missing, bad := false, false
 		for i, f := range ic.Fields {
-			nodes := a.selectFieldNodes(target, f, ic.NamespaceBindings)
+			nodes := a.selectFieldNodes(target, f, ic.NamespaceBindings, ic.DefaultNamespace)
 			switch {
 			case len(nodes) > 1:
 				// spec: cvc-identity-constraint — §3.11.4 (cvc-identity-constraint.3)
@@ -268,13 +273,12 @@ const (
 type icStep struct {
 	kind  icStepKind
 	local string
-	// ns is the namespace URI a prefixed name test resolved to; nsSet marks a
-	// step that carries a namespace constraint. An unprefixed step leaves nsSet
-	// false and matches by local name only. Under XPath 2.0 / XSD 1.1
-	// §3.13.6.2 clause 2.2.3 an unprefixed name test would otherwise pick up
-	// the default element namespace set by xpathDefaultNamespace (§3.13.2);
-	// honoring that is a known limitation tracked separately and absent from
-	// the current corpus.
+	// ns is the namespace URI a name test resolved to; nsSet marks a step that
+	// carries a namespace constraint. A prefixed step resolves its prefix; an
+	// unprefixed ELEMENT step picks up the default element namespace from
+	// xpathDefaultNamespace (XPath 2.0 / §3.13.6.2 clause 2.2.3, §3.13.2). An
+	// unprefixed attribute step, or an element step with no default namespace
+	// in effect, leaves nsSet false and matches by local name only.
 	ns    string
 	nsSet bool
 }
@@ -293,15 +297,15 @@ type fieldNode struct {
 	owner Element
 }
 
-func parsePaths(expr string, ns map[string]string) []icPath {
+func parsePaths(expr string, ns map[string]string, defNS string) []icPath {
 	var out []icPath
 	for _, alt := range strings.Split(expr, "|") {
-		out = append(out, parsePath(alt, ns))
+		out = append(out, parsePath(alt, ns, defNS))
 	}
 	return out
 }
 
-func parsePath(alt string, ns map[string]string) icPath {
+func parsePath(alt string, ns map[string]string, defNS string) icPath {
 	s := strings.TrimSpace(alt)
 	p := icPath{}
 	switch {
@@ -328,31 +332,39 @@ func parsePath(alt string, ns map[string]string) icPath {
 			if a == "*" {
 				st = icStep{kind: stepAttrAny}
 			} else {
-				st = nameStep(stepAttrName, a, ns)
+				// Attribute name tests never take the default element
+				// namespace (XPath 2.0 applies it to elements only).
+				st = nameStep(stepAttrName, a, ns, "")
 			}
 		case strings.HasSuffix(part, ":*"):
 			st = icStep{kind: stepAny}
 		default:
-			st = nameStep(stepName, part, ns)
+			st = nameStep(stepName, part, ns, defNS)
 		}
 		p.steps = append(p.steps, st)
 	}
 	return p
 }
 
-// nameStep builds a name test for an element or attribute step, resolving a
-// prefix through ns when present. An unprefixed name carries no namespace
-// constraint (see the icStep.ns note on xpathDefaultNamespace). A prefix that
-// does not resolve also carries none, falling open to local-name matching. Two
-// distinct situations land here: empty ns (no NamespaceBindings recorded) is a
-// legitimate backward-compat fallback, whereas a genuinely unbound prefix in a
-// selector/field XPath is in fact a static schema error (the XPath would be
-// non-conformant per §3.13.6.2 clause 2). We fail open in both cases — the
-// fail-open on a true unbound prefix is an accepted, documented limitation.
-func nameStep(kind icStepKind, qname string, ns map[string]string) icStep {
+// nameStep builds a name test for an element or attribute step. A prefixed name
+// resolves its prefix through ns. An unprefixed name takes defNS — the default
+// element namespace from xpathDefaultNamespace (§3.13.6.2 clause 2.2.3) for
+// element steps, "" for attribute steps — as its namespace constraint; an empty
+// defNS leaves the step local-name only. A prefix that does not resolve carries
+// no namespace constraint, falling open to local-name matching. Two distinct
+// situations produce an unresolved prefix: empty ns (no NamespaceBindings
+// recorded) is a legitimate backward-compat fallback, whereas a genuinely
+// unbound prefix in a selector/field XPath is in fact a static schema error
+// (the XPath would be non-conformant per §3.13.6.2 clause 2). We fail open in
+// both cases — the fail-open on a true unbound prefix is an accepted,
+// documented limitation.
+func nameStep(kind icStepKind, qname string, ns map[string]string, defNS string) icStep {
 	st := icStep{kind: kind, local: localPart(qname)}
 	i := strings.LastIndexByte(qname, ':')
 	if i < 0 {
+		if defNS != "" {
+			st.ns, st.nsSet = defNS, true
+		}
 		return st
 	}
 	if uri, ok := ns[qname[:i]]; ok {
@@ -381,10 +393,10 @@ func nameMatches(st icStep, name Name) bool {
 // selectTargets evaluates a selector relative to scope, yielding the target
 // element set (deduplicated). Elements inside processContents="skip" regions
 // are not assessed and so are excluded from identity-constraint scope.
-func (a *assessor) selectTargets(scope Element, expr string, ns map[string]string) []Element {
+func (a *assessor) selectTargets(scope Element, expr string, ns map[string]string, defNS string) []Element {
 	var out []Element
 	seen := map[Element]bool{}
-	for _, p := range parsePaths(expr, ns) {
+	for _, p := range parsePaths(expr, ns, defNS) {
 		base := []Element{scope}
 		if p.descendant {
 			base = a.selfAndDescendants(scope)
@@ -401,7 +413,7 @@ func (a *assessor) selectTargets(scope Element, expr string, ns map[string]strin
 
 // selectFieldNodes evaluates a field relative to a target, returning the
 // selected element or attribute nodes.
-func (a *assessor) selectFieldNodes(target Element, expr string, ns map[string]string) []fieldNode {
+func (a *assessor) selectFieldNodes(target Element, expr string, ns map[string]string, defNS string) []fieldNode {
 	var out []fieldNode
 	seen := map[fieldNode]bool{}
 	add := func(n fieldNode) {
@@ -410,7 +422,7 @@ func (a *assessor) selectFieldNodes(target Element, expr string, ns map[string]s
 			out = append(out, n)
 		}
 	}
-	for _, p := range parsePaths(expr, ns) {
+	for _, p := range parsePaths(expr, ns, defNS) {
 		base := []Element{target}
 		if p.descendant {
 			base = a.selfAndDescendants(target)

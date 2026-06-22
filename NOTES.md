@@ -7,6 +7,37 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-22 — issue #36: IDC unprefixed name tests honor xpathDefaultNamespace — ratchets HELD 5697/21497 <<<
+Closes the unprefixed gap left by #31/PR #35 (which fixed only PREFIXED selector/field
+name tests). XSD 1.1 IDCs use XPath 2.0 (§3.11.1), whose static context sets a default
+element namespace from xpathDefaultNamespace (§3.13.2; §3.13.6.2 XPath Valid clause
+2.2.3). Previously an UNPREFIXED selector/field element step matched by local name only,
+ignoring any default element namespace — wrong when xpathDefaultNamespace was in effect.
+ - DATA MODEL — `xsd.IdentityConstraint.DefaultNamespace string` (xsd/model.go). The
+   default element namespace for the selector/field XPath. Empty ⇒ prior local-name
+   behaviour (backward-compatible). Mirrors the existing `Assertion.DefaultNamespace`.
+ - PARSER — `buildIC` (parser/buildterms.go) populates it via the existing
+   `xpathDefaultNS(n, doc)` resolver (buildsimple.go:370), which expands ##targetNamespace
+   / ##local / ##defaultNamespace / explicit URI. Captured once from the <key>/<unique>/
+   <keyref> node n, same documented per-host simplification as NamespaceBindings.
+ - MATCHER — xsdvalidate/idc.go: `nameStep` now takes a `defNS` arg; an UNPREFIXED step
+   with non-empty defNS sets ns/nsSet so `nameMatches` compares namespace URI + local.
+   `parsePath` passes defNS for ELEMENT steps and "" for ATTRIBUTE steps — XPath 2.0's
+   default namespace applies to element/type names, NOT attributes, so `@id` stays
+   local-name/no-namespace. Prefixed steps keep the #31 behaviour. `selectTargets` /
+   `selectFieldNodes` / `parsePaths` thread ic.DefaultNamespace through.
+ - TEST — xsdvalidate/idc_test.go `TestIDCXPathDefaultNamespaceSelector`: schema with
+   xpathDefaultNamespace="##targetNamespace" + unprefixed selector "item"/field "@id";
+   a same-local-name urn:other <item> (admitted via lax ##other wildcard, so genuinely
+   assessed) does NOT clash, while two urn:tns items with equal id DO. Mutation-verified
+   sensitive: degrading buildIC's DefaultNamespace to "" makes the no-clash case fail
+   with `duplicate {urn:tns}kId value`.
+ - RECONCILED the #31 "known limitation" wording: idc.go header, icStep.ns doc, nameStep
+   doc, xsd/model.go field docs, and the CONFORMANCE.md cvc-identity-constraint note all
+   updated from "tracked separately / local-name only" to the now-true behaviour.
+ - Ratchets HELD (no expectations delta): the W3C IDC corpus uses prefixed selectors and
+   has no unprefixed-selector + xpathDefaultNamespace case, as the issue predicted.
+
 ## >>> DONE 2026-06-22 — issue #34: atomic lexical failures now carry cvc-datatype-valid SpecRef — 5697/21497 held <<<
 Behaviour change (observable): instance-validation error output for UNPATTERNED atomic
 lexical failures now carries `[cvc-datatype-valid]` where it previously emitted a raw,

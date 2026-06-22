@@ -765,6 +765,14 @@ func (b *builder) buildIC(n *xmltree.Node, doc *schemaDoc) *xsd.IdentityConstrai
 		// or <field> element itself, a pathological case absent from the corpus;
 		// the IC-node set is otherwise a correct superset. Documented limitation.
 		NamespaceBindings: n.NS.InScope(),
+		// DefaultNamespace is xpathDefaultNamespace resolved at the constraint
+		// node (§3.13.2). Under XPath 2.0 / §3.13.6.2 clause 2.2.3 it sets the
+		// default element namespace an unprefixed selector/field element name
+		// test resolves against. As with NamespaceBindings, it is formally a
+		// property of the <selector>/<field> host but captured once from n —
+		// xpathDefaultNamespace is virtually always set on the <schema> root or
+		// inherited, so the per-host distinction is immaterial in practice.
+		DefaultNamespace: xpathDefaultNS(n, doc),
 	}
 	b.ics[n] = ic
 	if sel := firstChild(n, doc, "selector"); sel != nil {

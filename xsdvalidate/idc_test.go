@@ -364,6 +364,54 @@ func TestIDCNamespaceQualifiedSelector(t *testing.T) {
 	})
 }
 
+// xpathDefaultNSSchema sets xpathDefaultNamespace="##targetNamespace" on the
+// schema and uses an UNPREFIXED selector/field (item / @id). Under XPath 2.0
+// (§3.13.6.2 clause 2.2.3) the unprefixed element step "item" resolves against
+// the default element namespace urn:tns, so it must match the target-namespace
+// <item> and NOT a same-local-name <item> in another namespace, which arrives
+// via the lax ##other wildcard and IS assessed. A local-name-only matcher would
+// treat both as targets and clash on equal ids; honoring xpathDefaultNamespace
+// keeps the other-namespace item out of the key. The @id field stays
+// local-name (attributes are unaffected by the default namespace), so the
+// unprefixed attribute still selects the target item's id.
+const xpathDefaultNSSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:tns" targetNamespace="urn:tns"
+           elementFormDefault="qualified"
+           xpathDefaultNamespace="##targetNamespace">
+  <xs:element name="cat">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="item" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="id" type="xs:string"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:any namespace="##other" processContents="lax"
+                minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+    <xs:key name="kId">
+      <xs:selector xpath="item"/>
+      <xs:field xpath="@id"/>
+    </xs:key>
+  </xs:element>
+</xs:schema>`
+
+func TestIDCXPathDefaultNamespaceSelector(t *testing.T) {
+	v := buildSchema(t, xpathDefaultNSSchema)
+	t.Run("same id in another namespace does not clash", func(t *testing.T) {
+		// The unprefixed "item" selector resolves to urn:tns via
+		// xpathDefaultNamespace, so the urn:other <item id="a"> is not a target.
+		assertValid(t, v, `<tns:cat xmlns:tns="urn:tns" xmlns:o="urn:other">`+
+			`<tns:item id="a"/><o:item id="a"/></tns:cat>`)
+	})
+	t.Run("duplicate within the default namespace still clashes", func(t *testing.T) {
+		assertInvalid(t, v, `<tns:cat xmlns:tns="urn:tns">`+
+			`<tns:item id="a"/><tns:item id="a"/></tns:cat>`, "cvc-identity-constraint")
+	})
+}
+
 func TestKeyValueSpaceComparison(t *testing.T) {
 	v := buildSchema(t, numKeySchema)
 	t.Run("5 and 5.0 are the same key", func(t *testing.T) {
