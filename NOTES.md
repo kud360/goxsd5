@@ -38,8 +38,18 @@ ZERO ratchet movement (5697/21497 unchanged, expectations files untouched).
    translates to an explicit newline-excluding set and `^`/`$` are literal
    characters, so `s`/`m` would have NO effect on the translated form; accepting
    them would silently give wrong answers, and RE2 cannot express `x`
-   (free-spacing). So `s`/`m`/`x`/any other flag is an ERROR → errDynamic, not
+   (free-spacing). So `s`/`m`/`x`/`q`/any other flag is an ERROR → errDynamic, not
    silently ignored.
+ - REGEX-FLAVOR GAP (DISCLOSED) — XSD 1.1 normatively binds assertion `fn:matches`
+   to the F&O (XQuery/XPath 2.0 Functions & Operators) regex grammar, but this
+   implementation reuses the XSD Part 2 Appendix-G flavor via xsdregex. The two
+   flavors diverge: in the XSD flavor `^`/`$` are LITERAL characters (no
+   anchoring), there are no back-references or reluctant quantifiers, and only the
+   `i` flag is meaningful. So an anchored F&O pattern silently means something
+   different here — disclosed in CONFORMANCE.md's cvc-assertion V4 row rather than
+   left as a silent wrong-answer. A full F&O-flavor fn:matches (honouring anchor
+   metacharacters and the `s`/`m` flags) would need an F&O-flavor translator
+   distinct from xsdregex's pattern-facet path; left as a documented future gap.
  - DYNAMIC-ERROR DIRECTION — a type mismatch (non-numeric operand, non-numeric
    substring start) or bad/uncompilable pattern / unsupported flag raises
    errDynamic, NOT errUnsupported. EvalBool folds errDynamic into a definite
