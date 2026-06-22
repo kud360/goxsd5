@@ -156,3 +156,35 @@ func TestNillability(t *testing.T) {
 		assertValid(t, v, `<n `+xsi+` xsi:nil="false">5</n>`)
 	})
 }
+
+const atomicLexicalSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="when" type="xs:dateTime"/>
+  <xs:element name="flag" type="xs:boolean"/>
+  <xs:element name="num" type="xs:double"/>
+  <xs:element name="blob" type="xs:hexBinary"/>
+  <xs:element name="span" type="xs:duration"/>
+</xs:schema>`
+
+// A bad lexical for an unpatterned atomic type fails at the value-space mapping,
+// not at any facet. The resulting error must still cite cvc-datatype-valid like
+// every other cvc-* failure, rather than surfacing as a raw, id-less error.
+func TestAtomicLexicalCarriesDatatypeValid(t *testing.T) {
+	v := buildSchema(t, atomicLexicalSchema)
+
+	t.Run("dateTime", func(t *testing.T) {
+		assertInvalid(t, v, `<when>garbage</when>`, "cvc-datatype-valid")
+	})
+	t.Run("boolean", func(t *testing.T) {
+		assertInvalid(t, v, `<flag>maybe</flag>`, "cvc-datatype-valid")
+	})
+	t.Run("double", func(t *testing.T) {
+		assertInvalid(t, v, `<num>xyz</num>`, "cvc-datatype-valid")
+	})
+	t.Run("hexBinary", func(t *testing.T) {
+		assertInvalid(t, v, `<blob>zz</blob>`, "cvc-datatype-valid")
+	})
+	t.Run("duration", func(t *testing.T) {
+		assertInvalid(t, v, `<span>P</span>`, "cvc-datatype-valid")
+	})
+}

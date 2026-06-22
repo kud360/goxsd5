@@ -3,8 +3,9 @@ package xsdvalidate
 import "github.com/kud360/goxsd5/xsd"
 
 // Result is the outcome of an assessment: the accumulated validation errors
-// (each an *xsd.Error carrying a cvc-* SpecRef) plus a PSVI-lite record of the
-// type assigned to each assessed element. It is the interpreter's analog of the
+// (typically *xsd.Error values carrying a cvc-* SpecRef, though a deeper layer
+// may occasionally surface a plain error) plus a PSVI-lite record of the type
+// assigned to each assessed element. It is the interpreter's analog of the
 // post-schema-validation infoset; identity-constraint and assertion evaluation
 // read from it, and a future codegen back-end can populate the same shape.
 type Result struct {

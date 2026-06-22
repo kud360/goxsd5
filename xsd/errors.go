@@ -15,6 +15,10 @@ type Error struct {
 	OtherPos Pos
 	Ref      SpecRef
 	Msg      string
+	// cause is an optional underlying error, set when an *Error wraps a
+	// plain error reported by a deeper layer (e.g. a builtin lexical parser).
+	// It preserves errors.Is/As over that error without exposing it in Error().
+	cause error
 }
 
 func (e *Error) Error() string {
@@ -39,6 +43,17 @@ func (e *Error) Error() string {
 func NewError(ref SpecRef, pos Pos, format string, args ...any) *Error {
 	return &Error{Pos: pos, Ref: ref, Msg: fmt.Sprintf(format, args...)}
 }
+
+// WrapError attaches a SpecRef (the governing clause) to err, an error that a
+// deeper layer reported without one — e.g. a builtin atomic parser's plain
+// lexical-invalidity error. The original message is preserved verbatim and the
+// wrapped error stays reachable via errors.Is/As.
+func WrapError(ref SpecRef, err error) *Error {
+	return &Error{Ref: ref, Msg: err.Error(), cause: err}
+}
+
+// Unwrap exposes the wrapped cause so errors.Is/As traverse it.
+func (e *Error) Unwrap() error { return e.cause }
 
 // ErrorList accumulates many *Error values so one parse reports every
 // problem found rather than stopping at the first.

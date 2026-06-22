@@ -111,16 +111,13 @@ var instanceSeeds = []string{
 //   - no panic anywhere in the parse/assess pipeline (the harness fails on one);
 //   - when the body parses as XML, the Result is internally consistent —
 //     Valid() iff Err() is nil, and Errors() agrees with Valid();
-//   - any reported error that IS an *xsd.Error carries a non-empty SpecRef.
+//   - every reported error is an *xsd.Error carrying a non-empty SpecRef.
 //
-// We deliberately do NOT require every instance error to be an *xsd.Error: a
-// bad lexical for an unpatterned atomic type (e.g. xs:dateTime "garbage",
+// Bad lexicals for unpatterned atomic types (e.g. xs:dateTime "garbage",
 // xs:boolean, xs:double, or hexBinary/base64Binary/duration/QName at type
-// level) surfaces as a plain error from the builtin parse funcs, passed through
-// unwrapped by SimpleType.parseValue and added raw by assessor.addValueErr.
-// That raw-error/cvc-datatype-valid gap is a production concern tracked
-// separately; this test-only harness asserts the engine never panics and stays
-// internally consistent, not that every error carries a SpecRef.
+// level) yield plain errors from the builtin parse funcs, but SimpleType's
+// value-space boundary wraps them in cvc-datatype-valid, so they reach the
+// Result as structured errors like every other cvc-* failure.
 func FuzzValidateInstance(f *testing.F) {
 	v := buildFuzzValidator(f)
 	for _, s := range instanceSeeds {
@@ -147,11 +144,14 @@ func FuzzValidateInstance(f *testing.F) {
 			t.Fatalf("Validate(%q): Valid()=%v but Errors() has %d entries", body, res.Valid(), len(errs))
 		}
 		for i, e := range errs {
-			// Not every instance error is an *xsd.Error (see the function
-			// doc): unpatterned atomic lexicals yield raw errors. But any
-			// error that does carry the structured type must keep its SpecRef.
+			// Every instance error must be a structured *xsd.Error carrying a
+			// SpecRef — including unpatterned atomic lexicals, now wrapped in
+			// cvc-datatype-valid at the value-space boundary.
 			var xe *xsd.Error
-			if errors.As(e, &xe) && xe.Ref.IsZero() {
+			if !errors.As(e, &xe) {
+				t.Fatalf("Validate(%q): error %d is not an *xsd.Error: %v", body, i, e)
+			}
+			if xe.Ref.IsZero() {
 				t.Fatalf("Validate(%q): error %d is an *xsd.Error with an empty SpecRef: %v", body, i, xe)
 			}
 		}
