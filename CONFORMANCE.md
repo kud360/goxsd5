@@ -52,8 +52,8 @@ constant name in code.
 | src-import | §4.2.6.2 | M5/M7 | done (1.1/1.2 same-ns + no-ns, 3 imported-doc ns match; unresolvable location tolerated) | parser/elemtable.go:136 |
 | src-include | §4.2.3 | M5/M7 | done (2.1 ns match, unresolvable location errors) | parser/loader.go:213 |
 | src-include.2 (chameleon) | §4.2.3 | M7 | done (absorbed ns + unqualified-reference remapping) | |
-| src-redefine | §4.2.5 | M5/M7 | done (pervasive replacement, existence check, type self-derivation, group/attrGroup self-reference occurrence checks, and the no-self-ref restriction-subset checks 6.2.2/7.2.2 via the particle-restriction engine) | parser/loader.go:337, parser/redefine.go |
-| src-override | §4.2.4 | M5/M7 | done (pervasive transitive replacement, unmatched children ignored) | |
+| src-redefine | §4.2.4 | M5/M7 | done (pervasive replacement, existence check, type self-derivation, group/attrGroup self-reference occurrence checks, and the no-self-ref restriction-subset checks 6.2.2/7.2.2 via the particle-restriction engine) | parser/loader.go:337, parser/redefine.go |
+| src-override | §4.2.5 | M5/M7 | done (pervasive transitive replacement, unmatched children ignored) | |
 | src-resolve | §3.15.3 | M6/M7 | done (cross-document via global registry; 4.2 namespace-not-imported check) | parser/builder.go:101 |
 
 ### Schema Component Constraints — props-correct (`*-props-correct`)

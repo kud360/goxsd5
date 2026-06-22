@@ -2149,8 +2149,16 @@ Triage tip: GOXSD5_CONFORMANCE_GAPS=1 go test ./parser -run TestConformanceSuite
   the original (self-derivation per src-redefine.5, checked for types);
   override children with no matching original are IGNORED per the
   override transformation (not added). Unmatched redefine = src-redefine
-  error. Group/attrGroup redefine occurrence checks (exactly-one self-ref
-  min=max=1 / superset) deferred.
+  error. The no-self-reference restriction-subset cases (src-redefine
+  clauses 6.2.2 / 7.2.2) are ENFORCED at build time in runStaticTypeChecks
+  via checkRedefineRestrict: a group's redefinition must validly restrict
+  the original (reusing particleRestrictUnified, with the original viewed
+  as base and the redefinition as a restriction of it), and an attribute
+  group's redefinition must be an attribute-use subset of the original
+  (per-use validlyDerivedByRestriction on matching attributes + presence
+  subset). The self-reference occurrence cases (6.2.1 / 7.2.1, exactly-one
+  self-ref with min=max=1) remain handled by the existing redefine
+  self-reference checks.
 - Chameleon reference remapping: qnameAttr is doc-aware; chameleonQName
   maps a reference resolved to "" → absorbed TNS. Token-list sites
   (memberTypes, substitutionGroup, notQName) mapped too;
