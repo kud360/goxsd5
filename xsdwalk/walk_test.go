@@ -177,6 +177,47 @@ func TestWalkWildcard(t *testing.T) {
 	}
 }
 
+func TestWalkAllCompositor(t *testing.T) {
+	// The `all` compositor is walked through the same walkGroup path as
+	// sequence/choice: its particles are visited as direct children, in order.
+	root := part(1, 1, allGroup(part(1, 1, elem("a")), part(0, 1, elem("b")), part(1, 1, elem("c"))))
+	terms, depths := visit(ct(root), always)
+
+	wantTerms := []string{"group:all", "elem:a", "elem:b", "elem:c"}
+	wantDepths := []int{0, 1, 1, 1}
+	if !eqStrings(terms, wantTerms) {
+		t.Errorf("terms = %v, want %v", terms, wantTerms)
+	}
+	if !eqInts(depths, wantDepths) {
+		t.Errorf("depths = %v, want %v", depths, wantDepths)
+	}
+
+	if got := elemNames(Elements(ct(root))); !eqStrings(got, []string{"a", "b", "c"}) {
+		t.Errorf("Elements = %v, want [a b c]", got)
+	}
+}
+
+func TestWalkSiblingGroupRefNotOverPruned(t *testing.T) {
+	// A non-recursive named group referenced twice in disjoint sibling branches
+	// must be walked BOTH times: the cycle guard is path/stack-scoped (deleted on
+	// exit), not a global visited-set. choice( ref:g, ref:g ) with g{ (x, y) }.
+	g := &xsd.Group{Name: qn("g"), Group: seqGroup(part(1, 1, elem("x")), part(1, 1, elem("y")))}
+	root := part(1, 1, choiceGroup(
+		part(1, 1, &xsd.GroupRef{Ref: g}),
+		part(1, 1, &xsd.GroupRef{Ref: g}),
+	))
+	terms, _ := visit(ct(root), always)
+
+	// Both sibling references expand: a global visited-set would prune the second.
+	wantTerms := []string{"group:choice", "ref:g", "elem:x", "elem:y", "ref:g", "elem:x", "elem:y"}
+	if !eqStrings(terms, wantTerms) {
+		t.Errorf("terms = %v, want %v", terms, wantTerms)
+	}
+	if got := elemNames(Elements(ct(root))); !eqStrings(got, []string{"x", "y", "x", "y"}) {
+		t.Errorf("Elements = %v, want [x y x y]", got)
+	}
+}
+
 func TestWalkRecursiveGroupRefTerminates(t *testing.T) {
 	// group g{ sequence(a, group-ref g) } referenced from the type: the self
 	// reference must be detected and skipped, not looped forever.
