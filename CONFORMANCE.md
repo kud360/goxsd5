@@ -73,9 +73,9 @@ constant name in code.
 
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
-| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts + 1.4.3.2.2.1 mixed consistency + all-group extension merge & cos-particle-extend.3.1 minOccurs done; sequence particle subsumption deferred) | parser/buildcomplex.go:188 |
-| cos-ct-restricts | §3.4.6 | M6/M9 | deferred (cos-particle-restrict; expectations ratchet tolerates) | |
-| derivation-ok-restriction | §3.4.6 | M6/M9 | wip (base {final} blocks restriction; attribute-wildcard subset; open-content subset clause 9; particle subsumption via cos-particle-restrict) | parser/restrict.go |
+| cos-ct-extends | §3.4.6 | M6 | wip (1.4.2 + attr-use conflicts + 1.4.3.2.2.1 mixed consistency + all-group extension merge & cos-particle-extend.3.1 minOccurs done; cos-particle-extend §3.9.6.2 clause 2 — the extended particle must be sequence{base, extension} — is satisfied by construction: `finishExtensionParticle` builds exactly that sequence, so no separate subsumption check is needed) | parser/buildschema.go:645 |
+| cos-ct-restricts | §3.4.6 | M6/M9 | deferred (umbrella ID — its sub-checks are enforced under their own constraints: particle subsumption via cos-particle-restrict (`checkParticleRestrict`, wired from `runStaticTypeChecks`), and attribute/open-content/wildcard restriction via derivation-ok-restriction. No call site emits SpecCosCTRestricts itself, so the constant stays reserved; no separate SpecRef wiring is needed) | |
+| derivation-ok-restriction | §3.4.6 | M6/M9 | wip (base {final} blocks restriction; attribute-use/inheritability restriction; attribute-wildcard subset; open-content subset clause 9; clause 5.4.2 particle subsumption is enforced under cos-particle-restrict via `checkParticleRestrict`, wired from `runStaticTypeChecks` at parser/buildschema.go:219) | parser/restrict.go |
 | cos-equiv-class (substitution groups) | §3.3.6 | M6 | deferred (the enforced part — substitution-group final exclusion — is reported under e-props-correct.4; full equivalence-class membership not yet checked under this ID) | |
 | cos-valid-default | §3.3.6 | M6 | done | parser/buildterms.go:110 |
 | enumeration-required-notation | Part 2 §3.3.19 | M6 | done | parser/buildterms.go:226 |
@@ -197,16 +197,16 @@ an enforcing file that carries the matching `// spec:` annotation, and every
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
 | cos-nonambig (UPA) | §3.8.6 | post-M9 | done (<all>-group pairwise competition + sequence/choice Glushkov position automaton) | parser/upa.go |
-| cos-particle-restrict | §3.9.6 | M9+ | wip (per-name occurrence/type bag check for flat all/sequence element/wildcard models, incl. a choice of flat branches checked per-branch; in an <all> base, a named element shadowing a wildcard is type-checked when the restriction drops it onto the wildcard; multi-base-wildcard packing deferred) | parser/restrict.go |
+| cos-particle-restrict | §3.9.6 | M9+ | wip (per-name occurrence/type bag check for flat all/sequence element/wildcard models, incl. a choice of flat branches checked per-branch; in an <all> base, a named element shadowing a wildcard is type-checked when the restriction drops it onto the wildcard; multi-base-wildcard packing done — ≥2 base wildcards handled by the region-run check `regionRun`) | parser/subsumption.go:112 |
 | cos-element-consistent (EDC) | §3.8.6 | M9+ | done (element declarations consistent — two like-named particles with differing types or type tables; wildcard-bound global with conflicting type table) | parser/buildschema.go:417 |
 | cos-ct-derived-ok | §3.4.6 | M9+ | deferred (complex-type derivation OK) | |
-| cos-st-derived-ok | §3.16.6 | M9+ | wip (clause 2.2.4 union-member derivation: transitive membership + intervening-union facet check, applied at particle restriction) | parser/restrict.go |
+| cos-st-derived-ok | §3.16.6 | M9+ | wip (clause 2.2.4 union-member derivation fully implemented — `stDerivedFromUnion`: exact transitive-membership walk + intervening-union facet check; appealed as the diagnostic ID via `derivationFailureRef` when a particle restriction's base element type is a union. Remaining: the generic clause 1 / 2.1–2.2.3 derivation chains are not separately enforced under this ID — they surface through cos-particle-restrict / derivation-ok-restriction) | parser/restrict.go:622 |
 | cos-aw-union | §3.10.6 | M9+ | done (full §3.10.6.3 namespace clauses: any∪any, enum∪enum, not∪not, not∪enum; called from buildcomplex.go mergeComplexType) | parser/wildcard.go |
 | cos-aw-intersect | §3.10.6 | M9+ | done (namespace clauses §3.10.6.4 items 1–5; {disallowed names} uses plain union rather than namespace-filtered clauses 1–2 of §3.10.6.4 — see parser/wildcard.go notQNameUnion; called from buildterms.go buildAttrUses) | parser/wildcard.go |
 | cos-ns-subset | §3.10.6 | M9+ | deferred (wildcard subset relation implemented in parser/wildcard.go; violations reported under derivation-ok-restriction) | |
 | cos-all-limited | §3.8.6 | post-M9 | done (clause 2 + 1.3 nested model groups; clause 1 for all-vs-sequence extension; full top-level placement 1.1/1.2 partial) | parser/buildterms.go:480 |
 | cvc-assertions-valid | §3.13.4 | N/A | deferred (assertions stored, evaluated only at instance validation) | |
-| ag-props-correct | §3.6.6 | M9+ | wip (clause 2: no duplicate attribute name in an attribute group definition) | parser/buildterms.go:434 |
+| ag-props-correct | §3.6.6 | M9+ | done (clause 2: no duplicate attribute name in an attribute group definition — `checkAttrGroupDefDups` covers the never-referenced-definition case; referenced groups are caught post-merge under ct-props-correct.4) | parser/buildterms.go:484 |
 | w-props-correct | §3.10.6 | post-M9 | done (rule 4: notQName namespaces must be allowed; intersection/union rules deferred) | parser/buildterms.go:567 |
 | mgd-props-correct | §3.7.6 | M9+ | deferred (model group definition properties) | |
 | st-restrict-facets | §4.1.6 | M9+ | deferred (companion to cos-st-restricts facet recursion) | |
