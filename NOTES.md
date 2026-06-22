@@ -7,6 +7,34 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-22 — issue #38: xsdwalk Walker follow-ups (NOTES entry + lock-behaviour tests) — ratchets HELD 5697/21497 <<<
+Durability/continuity polish deferred from PR #37. Zero conformance impact.
+ - PUSH DRIVER NOW COMPLETE. The push/pull dual-driver split anticipated at
+   NOTES.md:875 and :893 (xsdwalk "Serves a PUSH/exhaustive walk … AND a
+   PULL/demand-driven walk … The reusable core is the algebra, not the driver")
+   is now realized on both sides. The PULL driver is the instance-guided content-
+   model Matcher (xsdwalk/automaton.go); the PUSH driver landed in PR #37 as
+   `xsdwalk.Walker` (xsdwalk/walk.go) with `NewWalker`/`(*Walker).Walk`/`Elements`.
+   Walk is the exhaustive, schema-only depth-first traversal of a complex type's
+   effective content model, enumerating every particle reachable through its
+   sequences/choices/all-groups and named-group references (cycle-guarded on group
+   identity, path/stack-scoped). Substitution groups are NOT expanded (instance-
+   time concern); open content (xs:openContent) is not a particle and is not
+   visited — read it off the content type directly. Next cold-start agent: the
+   algebra now has both drivers; the M10 codegen back-end (NOTES.md:893) is the
+   intended push-driver consumer.
+ - LOCK-BEHAVIOUR TESTS added to xsdwalk/walk_test.go for two properties that were
+   correct by construction but unpinned: (a) the `all` compositor is walked via the
+   same walkGroup path as sequence/choice (uniform compositor handling), and
+   (b) non-over-prune — a non-recursive named group referenced twice in disjoint
+   sibling branches is walked BOTH times (the cycle guard is path/stack-scoped,
+   deleting on exit), distinct from a genuinely recursive ref that terminates. A
+   regression toward a global visited-set would over-prune the sibling case; these
+   tests catch it.
+ - DEFERRED: item 3 (open-content accessor) — per the card, it "may reasonably wait
+   until the M10 codegen consumer that validates its shape." No speculative API
+   surface added; re-file when M10 needs it.
+
 ## >>> DONE 2026-06-21 — issue #25: register precisionDecimal + wire scale facets, re-grade suite (PD-3 of 3) — RATCHET MOVED 5672→5697 / 21429→21497 <<<
 PD-3 makes xs:precisionDecimal REACHABLE, completing the three-card arc (PD-1 value
 space #23, PD-2 facet engine #24, both held the ratchet; PD-3 is the gain). This is
