@@ -67,6 +67,13 @@ var evalExprs = []string{
 	"string-length($value) gt 0",
 	"$value cast as xs:int > 0",
 	". = $value",
+	"abs($value) >= 0",
+	"floor($value) <= ceiling($value)",
+	"round($value) = round($value)",
+	"substring($value, 2, 3) = substring($value, 2, 3)",
+	"substring-before($value, '-') = substring-before($value, '-')",
+	"matches($value, '[0-9]+')",
+	"matches($value, 'a.c', 'i')",
 }
 
 // valueSeeds are the numeric, date/time, and string lexicals used across the

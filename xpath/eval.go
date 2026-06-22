@@ -29,10 +29,12 @@ package xpath
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kud360/goxsd5/xsdregex"
 	"github.com/kud360/goxsd5/xsdtemporal"
 )
 
@@ -1142,6 +1144,9 @@ func (e *evaluator) evalCall(n *call, f *focus) (seq, error) {
 	if s, ok, err := e.evalStringFn(n, f); ok {
 		return s, err
 	}
+	if s, ok, err := e.evalNumericFn(n, f); ok {
+		return s, err
+	}
 	if s, ok, err := e.evalAggregateFn(n, f); ok {
 		return s, err
 	}
@@ -1306,8 +1311,167 @@ func (e *evaluator) evalStringFn(n *call, f *focus) (seq, bool, error) {
 			b.WriteString(seqString(v))
 		}
 		return seq{b.String()}, true, nil
+	case "substring":
+		return e.evalSubstring(n, f)
+	case "substring-before", "substring-after":
+		return e.evalSubstringPart(n, f)
+	case "matches":
+		return e.evalMatches(n, f)
 	}
 	return nil, false, nil
+}
+
+// evalSubstringPart implements fn:substring-before and fn:substring-after: the
+// portion of $input before / after the first occurrence of $sub. An absent or
+// empty search string yields "" per F&O.
+func (e *evaluator) evalSubstringPart(n *call, f *focus) (seq, bool, error) {
+	a, err := e.arg(n, 0, f)
+	if err != nil {
+		return nil, true, err
+	}
+	b, err := e.arg(n, 1, f)
+	if err != nil {
+		return nil, true, err
+	}
+	s, sub := seqString(a), seqString(b)
+	i := strings.Index(s, sub)
+	if sub == "" || i < 0 {
+		return seq{""}, true, nil
+	}
+	if n.name == "substring-before" {
+		return seq{s[:i]}, true, nil
+	}
+	return seq{s[i+len(sub):]}, true, nil
+}
+
+// evalSubstring implements fn:substring (1-based, rounding semantics per F&O):
+// it returns the characters at positions p with round(start) <= p <
+// round(start)+round(length); the 2-arg form has no upper bound. start/length
+// are rounded with fn:round (half to positive infinity), positions count
+// codepoints, and an empty string operand yields "".
+func (e *evaluator) evalSubstring(n *call, f *focus) (seq, bool, error) {
+	src, err := e.arg(n, 0, f)
+	if err != nil {
+		return nil, true, err
+	}
+	start, err := e.numArg(n, 1, f)
+	if err != nil {
+		return nil, true, err
+	}
+	runes := []rune(seqString(src))
+	lo := xpathRound(start)
+	hi := math.Inf(1)
+	if len(n.args) >= 3 {
+		length, err := e.numArg(n, 2, f)
+		if err != nil {
+			return nil, true, err
+		}
+		hi = lo + xpathRound(length)
+	}
+	var b strings.Builder
+	for i, r := range runes {
+		p := float64(i + 1) // 1-based position
+		if p >= lo && p < hi {
+			b.WriteRune(r)
+		}
+	}
+	return seq{b.String()}, true, nil
+}
+
+// evalMatches implements fn:matches($input, $pattern[, $flags]), delegating the
+// XSD-syntax regex to xsdregex (the same translator the pattern facet uses). A
+// bad/uncompilable pattern or unsupported flag is a dynamic error, so a failed
+// match in an assertion counts as unsatisfied rather than failing open.
+func (e *evaluator) evalMatches(n *call, f *focus) (seq, bool, error) {
+	a, err := e.arg(n, 0, f)
+	if err != nil {
+		return nil, true, err
+	}
+	p, err := e.arg(n, 1, f)
+	if err != nil {
+		return nil, true, err
+	}
+	flags := ""
+	if len(n.args) >= 3 {
+		fl, err := e.arg(n, 2, f)
+		if err != nil {
+			return nil, true, err
+		}
+		flags = seqString(fl)
+	}
+	ok, err := xsdregex.Matches(seqString(p), flags, seqString(a))
+	if err != nil {
+		return nil, true, errDynamic
+	}
+	return seq{ok}, true, nil
+}
+
+// evalNumericFn handles the single-operand numeric functions. Each rounds or
+// transforms one xs:decimal/float/double argument; an empty sequence yields the
+// empty sequence (F&O), and a non-numeric operand is a type error reported as
+// errDynamic — so a bad cast in an assertion makes it unsatisfied, never fails
+// open. The evaluator models all numbers as float64, so the result is numeric
+// (an integral value prints without a fractional part), matching count/sum/number.
+func (e *evaluator) evalNumericFn(n *call, f *focus) (seq, bool, error) {
+	switch n.name {
+	case "abs", "floor", "ceiling", "round":
+		v, err := e.arg(n, 0, f)
+		if err != nil {
+			return nil, true, err
+		}
+		atoms := atomizeAll(v)
+		if len(atoms) == 0 {
+			return seq{}, true, nil
+		}
+		if len(atoms) != 1 {
+			return nil, true, errDynamic
+		}
+		x, ok := asNumber(atoms[0])
+		if !ok {
+			return nil, true, errDynamic
+		}
+		switch n.name {
+		case "abs":
+			return seq{math.Abs(x)}, true, nil
+		case "floor":
+			return seq{math.Floor(x)}, true, nil
+		case "ceiling":
+			return seq{math.Ceil(x)}, true, nil
+		default:
+			return seq{xpathRound(x)}, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+// numArg evaluates argument i as a single number. A missing or non-numeric
+// argument is a dynamic (type) error.
+func (e *evaluator) numArg(n *call, i int, f *focus) (float64, error) {
+	v, err := e.arg(n, i, f)
+	if err != nil {
+		return 0, err
+	}
+	atoms := atomizeAll(v)
+	if len(atoms) != 1 {
+		return 0, errDynamic
+	}
+	x, ok := asNumber(atoms[0])
+	if !ok {
+		return 0, errDynamic
+	}
+	return x, nil
+}
+
+// xpathRound implements fn:round's rule of rounding a value of type
+// xs:decimal/float/double to the nearest integer, with ties rounded toward
+// positive infinity: round(2.5)=3, round(-2.5)=-2. That differs from Go's
+// math.Round (ties away from zero), so it is computed as floor(x+0.5). NaN and
+// the infinities are returned unchanged.
+func xpathRound(x float64) float64 {
+	if math.IsNaN(x) || math.IsInf(x, 0) {
+		return x
+	}
+	return math.Floor(x + 0.5)
 }
 
 // evalAggregateFn handles sequence aggregates.

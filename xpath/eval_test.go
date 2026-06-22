@@ -321,3 +321,92 @@ func TestEvalAxes(t *testing.T) {
 		}
 	}
 }
+
+// TestEvalNumericFns covers the abs/floor/ceiling/round/substring/
+// substring-before/substring-after/matches additions: correct values, the
+// fn:round half-to-positive-infinity rule, fn:substring's 1-based rounding
+// semantics, and that a type mismatch / bad pattern raises a DYNAMIC error
+// (assertion unsatisfied, a definite false) rather than failing open.
+func TestEvalNumericFns(t *testing.T) {
+	root := el("r")
+	root.attrs = []NodeAttr{
+		at("p", "2.5"), at("n", "-2.5"), at("q", "-4.2"), at("word", "abcde"),
+		at("bad", "xyz"),
+	}
+	ec := EvalContext{Castable: castInt}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		// abs
+		{"abs(@q) = 4.2", true, true},
+		{"abs(@n) = 2.5", true, true},
+		{"abs(-3) = 3", true, true},
+		// floor / ceiling
+		{"floor(@q) = -5", true, true},
+		{"ceiling(@q) = -4", true, true},
+		{"floor(2.5) = 2", true, true},
+		{"ceiling(2.5) = 3", true, true},
+		// round — ties go toward positive infinity, NOT away from zero
+		{"round(@p) = 3", true, true},    // round(2.5) = 3
+		{"round(@n) = -2", true, true},   // round(-2.5) = -2, not -3
+		{"round(2.4) = 2", true, true},   // below the half
+		{"round(-2.6) = -3", true, true}, // below the half on the negative side
+		// substring — 1-based, fn:round on args
+		{"substring(@word, 2) = 'bcde'", true, true},
+		{"substring(@word, 2, 3) = 'bcd'", true, true},
+		{"substring(@word, 0, 3) = 'ab'", true, true},      // round(0)<=p<3 → positions 1,2
+		{"substring(@word, 1.5, 2.6) = 'bcd'", true, true}, // round(1.5)=2, round(2.6)=3 → 2<=p<5
+		{"substring(@word, 6) = ''", true, true},           // start past end
+		{"substring(@word, -3, 5) = 'a'", true, true},      // -3<=p<2 → position 1
+		{"substring(@word, 3, -1) = ''", true, true},       // empty range
+		// substring-before / substring-after
+		{"substring-before(@word, 'c') = 'ab'", true, true},
+		{"substring-after(@word, 'c') = 'de'", true, true},
+		{"substring-before(@word, 'z') = ''", true, true}, // absent search string
+		{"substring-after(@word, 'z') = ''", true, true},
+		{"substring-before(@word, '') = ''", true, true}, // empty search string
+		// matches — unanchored substring test, XSD regex syntax
+		{"matches(@word, 'bcd')", true, true},      // substring, not anchored
+		{"matches(@word, 'b.d')", true, true},      // metacharacter
+		{"matches(@word, 'XYZ')", false, true},     // no match → definite false
+		{"matches(@word, 'BCD', 'i')", true, true}, // case-insensitive flag
+		// DYNAMIC errors: a type mismatch or bad pattern is NOT fail-open. ok is
+		// true (the expression is understood) and the value is a definite false,
+		// so a containing assertion is unsatisfied rather than silently passing.
+		{"abs(@bad) = 1", false, true}, // non-numeric operand → errDynamic
+		{"floor(@bad) = 1", false, true},
+		{"round(@bad) = 1", false, true},
+		{"substring(@word, @bad) = 'x'", false, true}, // non-numeric start
+		{"matches(@word, '[')", false, true},          // uncompilable pattern
+		{"matches(@word, 'b', 'q')", false, true},     // unknown flag → errDynamic
+		{"matches(@word, 'b', 's')", false, true},     // s/m unsupported on XSD-translated regex
+	}
+	for _, c := range cases {
+		got, ok := EvalBool(c.expr, root, ec)
+		if got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// TestEvalMatchesEndToEnd shows an assertion that was previously fail-open
+// (fn:matches was unsupported, so EvalBool returned ok=false and the caller
+// treated the assertion as satisfied) now evaluating correctly: a value that
+// violates the pattern yields a definite false, so the assertion is reported as
+// unsatisfied instead of silently passing.
+func TestEvalMatchesEndToEnd(t *testing.T) {
+	ec := EvalContext{
+		Vars: map[string][]string{"value": {"ABC-123"}},
+	}
+	// $value matches an upper-letters/dash/digits shape: satisfied.
+	if got, ok := EvalBool("matches($value, '[A-Z]+-[0-9]+')", el("r"), ec); !got || !ok {
+		t.Errorf("conforming value: got (%v,%v), want (true,true)", got, ok)
+	}
+	// A non-conforming value now evaluates to a definite false (not fail-open).
+	bad := EvalContext{Vars: map[string][]string{"value": {"abc"}}}
+	if got, ok := EvalBool("matches($value, '[A-Z]+-[0-9]+')", el("r"), bad); got || !ok {
+		t.Errorf("non-conforming value: got (%v,%v), want (false,true)", got, ok)
+	}
+}
