@@ -7,6 +7,49 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-06-22 — issue #45: expand XPath assertion-evaluator function coverage — ratchets HELD 5697/21497 <<<
+The assertion evaluator (xpath/eval.go) is fail-open: a construct outside its
+subset returns errUnsupported and the caller treats the assertion as satisfied
+(false-accept). Added the common XPath 2.0 numeric/string functions that were
+silently failing open. All additive — NO W3C assertion test exercises them, so
+ZERO ratchet movement (5697/21497 unchanged, expectations files untouched).
+ - NEW FNS (xpath/eval.go): `abs`, `floor`, `ceiling`, `round` (new
+   evalNumericFn, dispatched in evalCall before evalAggregateFn); `substring`
+   (2- and 3-arg), `substring-before`, `substring-after`, `matches` (2- and
+   3-arg) in evalStringFn.
+ - RESULT TYPE — the evaluator models every number as float64 (see formatNumber:
+   integral floats print without a fractional part), so abs/floor/ceiling/round
+   all return a numeric item, matching count/sum/number. No separate XDM integer
+   type to preserve.
+ - fn:round HALF-UP — XPath rounds ties toward +∞ (round(2.5)=3, round(-2.5)=-2),
+   which differs from Go math.Round (ties away from zero). Implemented as
+   `math.Floor(x+0.5)` in xpathRound (NaN/±Inf pass through). Same helper drives
+   fn:substring's argument rounding.
+ - fn:substring SEMANTICS — 1-based, per F&O: keep codepoints at position p with
+   round(start) <= p < round(start)+round(length); 2-arg form has no upper bound.
+   Operates on []rune (codepoints, not bytes); empty string / start-past-end /
+   negative / fractional all fall out of the range condition; NaN start ⇒ "".
+ - matches DELEGATION — new `xsdregex.Matches(pattern, flags, input)`. xsdregex
+   is a pure stdlib leaf, so xpath→xsdregex is DOWNWARD (no cycle; verified xpath
+   not already below it). Refactored TranslateRegex to share an unanchored
+   `translate` core: fn:matches is an UNANCHORED substring test, unlike the
+   pattern-facet \A…\z. No direct `regexp` import added to xpath.
+ - FLAGS SCOPE (honest) — only `i` is honoured. In XSD-regex syntax `.` already
+   translates to an explicit newline-excluding set and `^`/`$` are literal
+   characters, so `s`/`m` would have NO effect on the translated form; accepting
+   them would silently give wrong answers, and RE2 cannot express `x`
+   (free-spacing). So `s`/`m`/`x`/any other flag is an ERROR → errDynamic, not
+   silently ignored.
+ - DYNAMIC-ERROR DIRECTION — a type mismatch (non-numeric operand, non-numeric
+   substring start) or bad/uncompilable pattern / unsupported flag raises
+   errDynamic, NOT errUnsupported. EvalBool folds errDynamic into a definite
+   false, so a failed assertion is UNSATISFIED rather than fail-open. Getting
+   this backwards would flip a false-accept into a false-reject.
+ - TESTS — TestEvalNumericFns (values, round half-up incl. negatives, substring
+   rounding/boundaries, matches good/bad/flags) + TestEvalMatchesEndToEnd
+   (previously-fail-open assertion now a definite false). FuzzEvalXPath seeded
+   with the new fns; 10s run clean, no panic.
+
 ## >>> DONE 2026-06-22 — issue #36: IDC unprefixed name tests honor xpathDefaultNamespace — ratchets HELD 5697/21497 <<<
 Closes the unprefixed gap left by #31/PR #35 (which fixed only PREFIXED selector/field
 name tests). XSD 1.1 IDCs use XPath 2.0 (§3.11.1), whose static context sets a default
@@ -945,8 +988,10 @@ CONFORMANCE: parallel `testdata/instance-expectations.txt` ratchet (TAB-separate
 mirrors schema ratchet; `go test ./parser -run TestInstanceConformance
 -update-instance-expectations`). 21434 instance cases, 21231 verdict-correct.
 Schema ratchet unchanged (5672). cmd/goxsd5 gained `-validate doc.xml`.
-REMAINING GAPS (future, not blocking): richer XPath (parent axis `..`, more fns)
-for more assert/CTA cases; simple-type-level assertions; IDC
+REMAINING GAPS (future, not blocking): richer XPath for more assert/CTA cases
+(abs/floor/ceiling/round/substring/substring-before/substring-after/matches now
+covered — issue #45, 2026-06-22; parent axis `..` is done); simple-type-level
+assertions; IDC
 true namespace resolution; whitespace in empty content type (xsdvalidate gap —
 open012.n3); override + defaultOpenContent/defaultAttributes inheritance for types
 defined within xs:override (open043.n2, open045.n2). cos-aw-intersect +

@@ -32,6 +32,17 @@ func CompileRegex(pattern string) (*regexp.Regexp, error) {
 // TranslateRegex translates an XSD pattern into Go regexp syntax, wrapped
 // in \A(?:…)\z for the implicit anchoring of pattern facets.
 func TranslateRegex(pattern string) (string, error) {
+	s, err := translate(pattern)
+	if err != nil {
+		return "", err
+	}
+	return `\A(?:` + s + `)\z`, nil
+}
+
+// translate parses an XSD pattern into the equivalent RE2 source, without the
+// anchoring wrapper. Pattern facets anchor the whole value (TranslateRegex);
+// fn:matches is an unanchored substring test (Matches), so both share this core.
+func translate(pattern string) (string, error) {
 	p := &reParser{src: []rune(pattern)}
 	s, err := p.regExp()
 	if err != nil {
@@ -40,7 +51,49 @@ func TranslateRegex(pattern string) (string, error) {
 	if p.pos != len(p.src) {
 		return "", fmt.Errorf("invalid XSD regex %q: unexpected %q at offset %d", pattern, p.src[p.pos], p.pos)
 	}
-	return `\A(?:` + s + `)\z`, nil
+	return s, nil
+}
+
+// Matches implements fn:matches: it reports whether input contains a substring
+// matching the XSD-syntax pattern. Unlike a pattern facet the match is NOT
+// implicitly anchored, so the translated form is compiled without \A…\z.
+//
+// flags carries the fn:matches flag string. Only "i" (case-insensitive) is
+// honoured: in XSD regex syntax "." already translates to an explicit
+// newline-excluding set and "^"/"$" are ordinary characters, so the "s" and
+// "m" flags would have no effect on the translated form — accepting them would
+// silently give wrong answers. They, "x" (free-spacing, which RE2 cannot
+// express), and any other flag character are therefore rejected with an error,
+// which a caller surfaces as a dynamic error rather than ignoring the flag.
+func Matches(pattern, flags, input string) (bool, error) {
+	inline, err := inlineFlags(flags)
+	if err != nil {
+		return false, err
+	}
+	core, err := translate(pattern)
+	if err != nil {
+		return false, err
+	}
+	re, err := regexp.Compile(inline + `(?:` + core + `)`)
+	if err != nil {
+		return false, fmt.Errorf("XSD regex %q: translated form does not compile: %w", pattern, err)
+	}
+	return re.MatchString(input), nil
+}
+
+// inlineFlags translates an fn:matches flag string into an RE2 inline-flag
+// prefix like "(?i)". Only "i" is supportable against XSD-translated regexes;
+// any other flag is an error (see Matches).
+func inlineFlags(flags string) (string, error) {
+	for _, c := range flags {
+		if c != 'i' {
+			return "", fmt.Errorf("xsdregex: unsupported fn:matches flag %q", c)
+		}
+	}
+	if flags == "" {
+		return "", nil
+	}
+	return "(?i)", nil
 }
 
 type reParser struct {
