@@ -46,7 +46,7 @@ var (
 	SpecSrcAttributeGroup = ref(1, "src-attribute_group", "3.6.3", "src-attribute_group")
 	SpecSrcModelGroup     = ref(1, "src-model_group_defn", "3.7.3", "src-model_group_defn")
 	SpecSrcIdentity       = ref(1, "src-identity-constraint", "3.11.3", "src-identity-constraint")
-	SpecSrcExpredef       = ref(1, "src-expredef", "4.2.5", "src-expredef")
+	SpecSrcExpredef       = ref(1, "src-expredef", "4.2.4", "src-expredef")
 	SpecSrcSchema         = ref(1, "src-schema", "3.17.3", "src-schema")
 	SpecSrcAnnotation     = ref(1, "src-annotation", "3.15.3", "src-annotation")
 	SpecSrcWildcard       = ref(1, "src-wildcard", "3.10.3", "src-wildcard")
