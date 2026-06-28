@@ -9,13 +9,14 @@ Drive one Approved card from goxsd5's backlog to a merged change in a single
 session. See `MAINTENANCE.md` for the full system. Roles are defined in
 `.claude/agents/{implementor,evaluator}.md`.
 
-`$ARGUMENTS` may name an issue/card; if empty, **drain the Approved column** —
-ship cards back-to-back until it's empty or the session quota runs out.
+`$ARGUMENTS` may name an issue/card; if empty, **drain the Approved queue** —
+the open issues labeled both `maintenance` and `approved` — shipping them
+back-to-back until the queue is empty or the session quota runs out.
 
 ## Procedure
 
 **Outer loop — drain the queue.** Repeat steps 1–5 for successive Approved cards.
-Stop only when the Approved column is empty (report "nothing approved") **or the
+Stop only when the queue is empty (report "nothing approved") **or the
 session is cut off by quota/budget** — there is no fixed card limit per run. Don't
 try to estimate remaining quota; just keep pulling the next card until either the
 queue empties or the run is terminated mid-card. A single arg (`$ARGUMENTS`
@@ -23,21 +24,26 @@ naming one card) ships just that card, then stops. A mid-card cutoff is **not**
 guarded by guessing quota — it is *recovered* by step 0 on the next run.
 
 0. **Resume in-flight work first.** Before touching the Approved queue, look for a
-   card interrupted by a prior cutoff: one **In Progress** or **In Review** whose
-   issue has an **open, unmerged PR**. If found, read that PR's
-   `🔄 ship-checkpoint` comments to recover where the loop left off (last round,
-   outstanding findings) and **resume its review→fix loop (step 3) from there**
-   before picking any new Approved card.
+   card interrupted by a prior cutoff: an **open, unmerged PR** on a `maint/*`
+   branch (the agent can read PRs via the GitHub MCP server). If found, read that
+   PR's `🔄 ship-checkpoint` comments to recover where the loop left off (last
+   round, outstanding findings) and **resume its review→fix loop (step 3) from
+   there** before picking any new Approved card.
 
-1. **Pick the card.** `gh project item-list 1 --owner kud360 --format json` →
-   first item with status **Approved**. If the Approved column is empty, stop the
-   outer loop and report "nothing approved." Move the chosen card to
-   **In Progress**.
+1. **Pick the card.** Build the queue from open issues carrying **both** the
+   `maintenance` and `approved` labels, read via the GitHub MCP `list_issues`
+   tool with `labels: ["maintenance","approved"]` (no GraphQL / Project board
+   needed). Take the first such issue. If there are none, stop the outer loop and
+   report "nothing approved." Board Status is not writable by the agent here, so
+   the "move to **In Progress**" board action is best-effort/skipped — the durable
+   state is the issue (its `approved` label + open/closed) and, once opened, the
+   PR.
 
 2. **Implement.** Spawn the `implementor` agent with the issue number/body.
    It branches, implements, runs the gates, and opens a PR. Capture the PR #.
-   Move the card to **In Review**, and post the opening `🔄 ship-checkpoint`
-   comment on the PR (see Rules).
+   The "move to **In Review**" board action is best-effort/skipped (board Status
+   is not agent-writable); post the opening `🔄 ship-checkpoint` comment on the PR
+   instead (see Rules) — the PR is the in-review signal.
 
 3. **Review ⇄ fix loop** (max **5 rounds**):
    - Spawn the `evaluator` agent with the PR #.
@@ -61,15 +67,19 @@ guarded by guessing quota — it is *recovered* by step 0 on the next run.
      findings — so a cutoff mid-loop is resumable by step 0.
 
 4. **On GREEN:** squash-merge the PR (`gh pr merge <#> --squash --delete-branch`),
-   move the card to **Done**, and send a push notification:
+   which closes the linked issue (or close it explicitly); optionally remove the
+   `approved` label on completion. The "move card to **Done**" board action is
+   best-effort/skipped — the closed issue + merged PR are the durable Done state.
+   Send a push notification:
    *"shipped #<issue>: <title> — baseline held <schema>/<instance>."*
    **Append a log entry** for this PR to the open `maint-log` issue (see Rules),
    then **return to step 1** for the next Approved card.
 
 5. **On stuck** (5 rounds without GREEN, or the Implementor reports the work
    can't hold the baseline): do **not** merge. Leave the PR open with the
-   Evaluator's outstanding findings, move the card to a `blocked` label (not back
-   to Approved — it must not be re-picked), and push-notify:
+   Evaluator's outstanding findings, and add a `blocked` label to the issue
+   (removing `approved` so it is not re-picked — the board move is
+   best-effort/skipped), and push-notify:
    *"#<issue> stuck after N rounds — needs you."*
    **Log the stuck outcome** to the open `maint-log` issue (see Rules), then
    **return to step 1** for the next Approved card — one stuck card must not block
