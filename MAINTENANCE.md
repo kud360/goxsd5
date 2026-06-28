@@ -9,7 +9,7 @@ gate. This file is the contract every (cold-start) agent shares.
 | Role | Defined in | Trigger | Mandate |
 |---|---|---|---|
 | **Planner** | `.claude/agents/planner.md` | scheduled, 08:00 ET daily | Discover gaps/features (incl. architecture) → write proposals to **Proposed**; refine open proposals from reviewer comments. Read-only on code; never codes. |
-| *(you)* | — | manual | Triage **Proposed** → **Approved** (or reject). Add your own cards straight to **Approved**. |
+| *(you)* | — | manual | Triage **Proposed** → **Approved** (or reject). Add your own cards straight to **Approved**. Approving = add the **`approved` label** to the issue (alongside `maintenance`); the board Status is unreadable by the agent in this environment, so the label is the signal Ship reads. |
 | **Ship** | `.claude/skills/ship/SKILL.md` | scheduled, 02:00 / 14:00 / 20:00 ET | Pull one **Approved** card; run the Implementor ⇄ Evaluator loop to green; squash-merge. |
 | **Implementor** | `.claude/agents/implementor.md` | spawned by Ship | Build the change on a `maint/*` branch, open a PR, fix on findings. Never merges. |
 | **Evaluator** | `.claude/agents/evaluator.md` | spawned by Ship | Independently run the gate + review (correctness, conventions, **big-picture/pattern fit**), return GREEN/CHANGES. Never edits, never merges. |
@@ -30,9 +30,17 @@ Proposed ──(you approve)──► Approved ──(/ship picks up)──► I
 ```
 
 - The **only human gate is `Proposed → Approved`.** Nothing reaches code until a
-  human moves a card there. Your own ideas enter the same way.
+  human approves. Your own ideas enter the same way.
 - `maintenance` label on all auto-proposals; `needs-deep-review` on
   architecture/structural ones.
+- **Agent-readable Approved signal = the `approved` label.** The Projects v2
+  `Status` field is unreachable from the cloud agent (GraphQL is proxy-blocked;
+  `gh` REST and the Projects API are unavailable; only the repo-scoped GitHub MCP
+  server works, exposing Issues/PRs/labels but **no** Projects v2 API). So
+  approving a card means adding the **`approved` label** to its issue. The board
+  may remain as a human visual aid, but the loop no longer depends on it for
+  queue detection — Ship's queue is open issues labeled both `maintenance` **and**
+  `approved`.
 
 ## The objective gate
 
@@ -71,8 +79,9 @@ The loop's history lives in GitHub, not just the ephemeral cloud transcripts:
 
 ## Guardrails
 
-- **Ship drains the Approved queue** — after each merge it pulls the next
-  Approved card and repeats until the queue is empty or the session quota runs
+- **Ship drains the Approved queue** — the queue is the set of open issues
+  labeled **both `maintenance` and `approved`**. After each merge it pulls the
+  next such issue and repeats until the queue is empty or the session quota runs
   out. No fixed card limit per run; throughput is bounded by quota, not a count.
 - **Round cap: 5 (per card).** If the Implementor ⇄ Evaluator loop doesn't reach
   GREEN in 5 rounds, Ship leaves that PR open with findings, labels it `blocked`,
