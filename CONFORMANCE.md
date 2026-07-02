@@ -28,8 +28,8 @@ constant name in code.
 | Constraint ID | Section | Milestone | Status | Impl (file:line) |
 |---------------|---------|-----------|--------|------------------|
 | src-qname | §3.15.3 | M1 | done | parser/attrcheck.go:47 |
-| src-element | §3.3.3 | M5 | wip (4.3 → M6) | parser/elemtable.go:698 |
-| src-attribute | §3.2.3 | M5 | wip (6.3 → M6) | parser/elemtable.go:726 |
+| src-element | §3.3.3 | M5/M6 | done (4.3 in M6: a local <element> with a differing targetNamespace is allowed only inside a complexType restriction whose base ≠ xs:anyType — checkLocalDeclTargetNamespace in parser/validate.go:273) | parser/elemtable.go:412 |
+| src-attribute | §3.2.3 | M5/M6 | done (6.3 in M6: same constraint for a local <attribute>, via checkLocalDeclTargetNamespace in parser/validate.go:273) | parser/elemtable.go:491 |
 | src-ct | §3.4.3 | M5/M6 | done | parser/buildcomplex.go:134 |
 | src-simple-type | §3.16.3 | M5 | done | |
 | src-restriction-base-or-simpleType | §3.16.3 | M5 | done | parser/elemtable.go:207 |
@@ -45,7 +45,7 @@ constant name in code.
 | src-id | §3.17.3 | M5 | done | parser/validate.go:139 |
 | cip | §4.2.2 | M9 | done (conditional inclusion: vc:minVersion/maxVersion + typeAvailable/Unavailable + facetAvailable/Unavailable evaluation and value validity) | parser/validate.go:170 |
 | no-xmlns | §3.2.6.3 | M5 | done | parser/elemtable.go:750 |
-| no-xsi | §3.2.6.4 | M5 | wip (ref'd uses → M6) | parser/elemtable.go:754 |
+| no-xsi | §3.2.6.4 | M5/M6 | done (both cases in M6: pass-1 structural check for a local attribute with explicit targetNamespace=xsi (parser/elemtable.go:771) and pass-2 build check for a global attribute whose inherited targetNamespace is xsi (parser/buildterms.go:311)) | parser/elemtable.go:771 |
 | sch-props-correct.2 (unique globals) | §3.17.6 | M5 | done | |
 | p-props-correct.2.1 (min ≤ max) | §3.9.6 | M5 | done | |
 | n-props-correct (public/system) | §3.14.6 | M5 | done | |
