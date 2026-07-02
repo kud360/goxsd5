@@ -385,10 +385,10 @@ func TestEvalNumericFns(t *testing.T) {
 		{"floor(@bad) = 1", false, true},
 		{"round(@bad) = 1", false, true},
 		{"substring(@word, @bad) = 'x'", false, true}, // non-numeric start
-		{"matches(@word, '[')", false, true},      // uncompilable pattern
-		{"matches(@word, 'b', 'q')", false, true}, // q flag unsupported → errDynamic
-		{"matches(@word, 'b', 'm')", false, true}, // m flag not expressible → errDynamic
-		{"matches(@word, 'b', 's')", true, true},  // s (dot-all) IS supported in F&O
+		{"matches(@word, '[')", false, true},          // uncompilable pattern
+		{"matches(@word, 'b', 'q')", false, true},     // q flag unsupported → errDynamic
+		{"matches(@word, 'b', 'm')", false, true},     // m flag not expressible → errDynamic
+		{"matches(@word, 'b', 's')", true, true},      // s (dot-all) IS supported in F&O
 	}
 	for _, c := range cases {
 		got, ok := EvalBool(c.expr, root, ec)
