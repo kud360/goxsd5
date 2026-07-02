@@ -30,6 +30,7 @@ package xpath
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -1317,6 +1318,10 @@ func (e *evaluator) evalStringFn(n *call, f *focus) (seq, bool, error) {
 		return e.evalSubstringPart(n, f)
 	case "matches":
 		return e.evalMatches(n, f)
+	case "replace":
+		return e.evalReplace(n, f)
+	case "tokenize":
+		return e.evalTokenize(n, f)
 	}
 	return nil, false, nil
 }
@@ -1378,10 +1383,13 @@ func (e *evaluator) evalSubstring(n *call, f *focus) (seq, bool, error) {
 	return seq{b.String()}, true, nil
 }
 
-// evalMatches implements fn:matches($input, $pattern[, $flags]), delegating the
-// XSD-syntax regex to xsdregex (the same translator the pattern facet uses). A
-// bad/uncompilable pattern or unsupported flag is a dynamic error, so a failed
-// match in an assertion counts as unsatisfied rather than failing open.
+// evalMatches implements fn:matches($input, $pattern[, $flags]) with the
+// XPath/XQuery F&O regex flavor XSD 1.1 binds assertions to (via
+// xsdregex.TranslateFO): `^`/`$` anchor, `.` excludes newline unless the `s`
+// flag is set, and the `i` flag is case-insensitive. A bad/uncompilable
+// pattern or an unsupported flag (`m`/`x`/`q`, back-references) is a dynamic
+// error, so a failed match in an assertion counts as unsatisfied rather than
+// failing open.
 func (e *evaluator) evalMatches(n *call, f *focus) (seq, bool, error) {
 	a, err := e.arg(n, 0, f)
 	if err != nil {
@@ -1391,19 +1399,207 @@ func (e *evaluator) evalMatches(n *call, f *focus) (seq, bool, error) {
 	if err != nil {
 		return nil, true, err
 	}
-	flags := ""
-	if len(n.args) >= 3 {
-		fl, err := e.arg(n, 2, f)
-		if err != nil {
-			return nil, true, err
-		}
-		flags = seqString(fl)
+	flags, err := e.regexFlags(n, 2, f)
+	if err != nil {
+		return nil, true, err
 	}
-	ok, err := xsdregex.Matches(seqString(p), flags, seqString(a))
+	re, err := foCompile(seqString(p), flags)
 	if err != nil {
 		return nil, true, errDynamic
 	}
-	return seq{ok}, true, nil
+	return seq{re.MatchString(seqString(a))}, true, nil
+}
+
+// regexFlags reads the optional flag-string argument at position i (matches /
+// replace / tokenize all take it as their last argument), returning "" when the
+// argument is absent.
+func (e *evaluator) regexFlags(n *call, i int, f *focus) (string, error) {
+	if len(n.args) <= i {
+		return "", nil
+	}
+	fl, err := e.arg(n, i, f)
+	if err != nil {
+		return "", err
+	}
+	return seqString(fl), nil
+}
+
+// foCompile translates an F&O-flavor pattern+flags and compiles it to a Go
+// regexp. Translation rejects constructs RE2 cannot express (m/x/q flags,
+// back-references) so callers surface those as dynamic errors.
+func foCompile(pattern, flags string) (*regexp.Regexp, error) {
+	s, err := xsdregex.TranslateFO(pattern, flags)
+	if err != nil {
+		return nil, err
+	}
+	return regexp.Compile(s)
+}
+
+// evalReplace implements fn:replace($input, $pattern, $replacement[, $flags])
+// (F&O 7.6.4). Each non-overlapping match of the F&O-flavor pattern is replaced
+// by $replacement, in which `$N` (single digit) is the substring captured by
+// group N (`$0` is the whole match) and `\$`/`\\` are literal `$`/`\`. A
+// pattern that can match the zero-length string, an uncompilable pattern, or a
+// malformed replacement string is a dynamic error (assertion unsatisfied).
+func (e *evaluator) evalReplace(n *call, f *focus) (seq, bool, error) {
+	a, err := e.arg(n, 0, f)
+	if err != nil {
+		return nil, true, err
+	}
+	p, err := e.arg(n, 1, f)
+	if err != nil {
+		return nil, true, err
+	}
+	r, err := e.arg(n, 2, f)
+	if err != nil {
+		return nil, true, err
+	}
+	flags, err := e.regexFlags(n, 3, f)
+	if err != nil {
+		return nil, true, err
+	}
+	re, err := foCompile(seqString(p), flags)
+	if err != nil {
+		return nil, true, errDynamic
+	}
+	// F&O raises FORX0003 when the pattern matches the empty string.
+	if re.MatchString("") {
+		return nil, true, errDynamic
+	}
+	repl, err := goReplacement(seqString(r), re.NumSubexp())
+	if err != nil {
+		return nil, true, errDynamic
+	}
+	return seq{re.ReplaceAllString(seqString(a), repl)}, true, nil
+}
+
+// goReplacement rewrites an F&O 7.6.4 replacement string into Go's
+// Regexp.ReplaceAllString template. F&O uses `$N` for a group reference and `\`
+// to escape `$` or `\`; every other `\` or a `$` not followed by a digit is an
+// error. Go's template uses `${N}` for a group and `$$` for a literal `$`, so
+// group refs become `${N}` and literal `$` becomes `$$`.
+//
+// The group number is the longest sequence of digits after `$` that names a
+// valid group (0..ngroups); any remaining digits are copied literally. So with
+// 12 capturing groups `$12` is group 12, but with only 3 groups `$12` is group
+// 1 followed by the literal `2`. ngroups is the compiled regex's NumSubexp.
+func goReplacement(s string, ngroups int) (string, error) {
+	var b strings.Builder
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		c := runes[i]
+		switch c {
+		case '\\':
+			if i+1 >= len(runes) || (runes[i+1] != '\\' && runes[i+1] != '$') {
+				return "", fmt.Errorf("replace: invalid backslash in replacement")
+			}
+			i++
+			if runes[i] == '$' {
+				b.WriteString("$$")
+				continue
+			}
+			b.WriteByte('\\')
+		case '$':
+			if i+1 >= len(runes) || runes[i+1] < '0' || runes[i+1] > '9' {
+				return "", fmt.Errorf("replace: $ must be followed by a digit")
+			}
+			// Consume the maximal run of digits, then keep the longest
+			// prefix that is a valid group number (F&O 7.6.4).
+			j := i + 1
+			for j < len(runes) && runes[j] >= '0' && runes[j] <= '9' {
+				j++
+			}
+			digits := runes[i+1 : j]
+			n := longestGroupPrefix(digits, ngroups)
+			b.WriteString("${")
+			b.WriteString(string(digits[:n]))
+			b.WriteByte('}')
+			// Copy the leftover digits literally; they are not '$'/'\'.
+			b.WriteString(string(digits[n:]))
+			i = j - 1
+		default:
+			// A bare '$' would start a Go reference; c is never '$' here.
+			b.WriteRune(c)
+		}
+	}
+	return b.String(), nil
+}
+
+// longestGroupPrefix returns the length of the longest prefix of digits whose
+// decimal value is a valid group number (0..ngroups). digits is non-empty and
+// all-decimal, so at least the single leading digit is always considered (a
+// lone digit may exceed ngroups, in which case Go treats the ref as empty).
+func longestGroupPrefix(digits []rune, ngroups int) int {
+	best := 1
+	val := 0
+	for k := 0; k < len(digits); k++ {
+		val = val*10 + int(digits[k]-'0')
+		if val > ngroups {
+			break
+		}
+		best = k + 1
+	}
+	return best
+}
+
+// evalTokenize implements fn:tokenize($input[, $pattern[, $flags]]) (F&O
+// 7.6.6). It splits $input at each non-overlapping match of the separator
+// pattern and returns the sequence of pieces. The 1-arg form splits on
+// whitespace after collapsing (leading/trailing whitespace trimmed, runs of
+// whitespace treated as one separator). A pattern that matches the empty string
+// or fails to compile is a dynamic error.
+func (e *evaluator) evalTokenize(n *call, f *focus) (seq, bool, error) {
+	a, err := e.arg(n, 0, f)
+	if err != nil {
+		return nil, true, err
+	}
+	input := seqString(a)
+	if len(n.args) < 2 {
+		return tokenizeWhitespace(input), true, nil
+	}
+	p, err := e.arg(n, 1, f)
+	if err != nil {
+		return nil, true, err
+	}
+	flags, err := e.regexFlags(n, 2, f)
+	if err != nil {
+		return nil, true, err
+	}
+	re, err := foCompile(seqString(p), flags)
+	if err != nil {
+		return nil, true, errDynamic
+	}
+	// F&O raises FORX0003 when the separator can match the empty string.
+	if re.MatchString("") {
+		return nil, true, errDynamic
+	}
+	// F&O: tokenizing the empty string yields the empty sequence.
+	if input == "" {
+		return seq{}, true, nil
+	}
+	pieces := re.Split(input, -1)
+	out := make(seq, len(pieces))
+	for i, piece := range pieces {
+		out[i] = piece
+	}
+	return out, true, nil
+}
+
+// tokenizeWhitespace implements the 1-argument fn:tokenize: collapse whitespace
+// and split on it. The empty (or all-whitespace) input yields the empty
+// sequence per F&O — collapse trims the ends, so an empty result means no
+// tokens.
+func tokenizeWhitespace(input string) seq {
+	collapsed := collapse(input)
+	if collapsed == "" {
+		return seq{}
+	}
+	parts := strings.Split(collapsed, " ")
+	out := make(seq, len(parts))
+	for i, piece := range parts {
+		out[i] = piece
+	}
+	return out
 }
 
 // evalNumericFn handles the single-operand numeric functions. Each rounds or

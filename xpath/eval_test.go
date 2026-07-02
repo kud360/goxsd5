@@ -367,11 +367,17 @@ func TestEvalNumericFns(t *testing.T) {
 		{"substring-before(@word, 'z') = ''", true, true}, // absent search string
 		{"substring-after(@word, 'z') = ''", true, true},
 		{"substring-before(@word, '') = ''", true, true}, // empty search string
-		// matches — unanchored substring test, XSD regex syntax
+		// matches — unanchored substring test, F&O regex syntax
 		{"matches(@word, 'bcd')", true, true},      // substring, not anchored
 		{"matches(@word, 'b.d')", true, true},      // metacharacter
 		{"matches(@word, 'XYZ')", false, true},     // no match → definite false
 		{"matches(@word, 'BCD', 'i')", true, true}, // case-insensitive flag
+		// F&O anchors: `^`/`$` bound the whole string (not literals as in the
+		// XSD pattern-facet flavor).
+		{"matches(@word, '^abcde$')", true, true}, // whole-string anchor holds
+		{"matches(@word, '^bcd$')", false, true},  // anchored substring does not
+		{"matches(@word, '^abc')", true, true},    // start anchor
+		{"matches(@word, 'cde$')", true, true},    // end anchor
 		// DYNAMIC errors: a type mismatch or bad pattern is NOT fail-open. ok is
 		// true (the expression is understood) and the value is a definite false,
 		// so a containing assertion is unsatisfied rather than silently passing.
@@ -380,8 +386,9 @@ func TestEvalNumericFns(t *testing.T) {
 		{"round(@bad) = 1", false, true},
 		{"substring(@word, @bad) = 'x'", false, true}, // non-numeric start
 		{"matches(@word, '[')", false, true},          // uncompilable pattern
-		{"matches(@word, 'b', 'q')", false, true},     // unknown flag → errDynamic
-		{"matches(@word, 'b', 's')", false, true},     // s/m unsupported on XSD-translated regex
+		{"matches(@word, 'b', 'q')", false, true},     // q flag unsupported → errDynamic
+		{"matches(@word, 'b', 'm')", false, true},     // m flag not expressible → errDynamic
+		{"matches(@word, 'b', 's')", true, true},      // s (dot-all) IS supported in F&O
 	}
 	for _, c := range cases {
 		got, ok := EvalBool(c.expr, root, ec)
@@ -408,5 +415,77 @@ func TestEvalMatchesEndToEnd(t *testing.T) {
 	bad := EvalContext{Vars: map[string][]string{"value": {"abc"}}}
 	if got, ok := EvalBool("matches($value, '[A-Z]+-[0-9]+')", el("r"), bad); got || !ok {
 		t.Errorf("non-conforming value: got (%v,%v), want (false,true)", got, ok)
+	}
+}
+
+// TestEvalReplace exercises fn:replace: group substitution ($N / $0), literal
+// escapes, F&O anchors, and the dynamic-error cases (empty-string match, bad
+// replacement) that keep a containing assertion unsatisfied rather than open.
+func TestEvalReplace(t *testing.T) {
+	ec := EvalContext{Vars: map[string][]string{"v": {"abcde"}}}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		// Plain replacement of every match.
+		{"replace($v, 'b', 'X') = 'aXcde'", true, true},
+		// Group reference: swap the two captured letters.
+		{"replace('2004-12-31', '(\\d+)-(\\d+)-(\\d+)', '$3/$2/$1') = '31/12/2004'", true, true},
+		// $0 is the whole match.
+		{"replace('abc', 'b', '[$0]') = 'a[b]c'", true, true},
+		// Escaped literal dollar and backslash.
+		{"replace('abc', 'b', '\\$') = 'a$c'", true, true},
+		// F&O anchor in the pattern.
+		{"replace($v, '^a', 'Z') = 'Zbcde'", true, true},
+		// Multi-digit group ref: with only 3 groups, $12 is group 1 then a
+		// literal '2' (longest valid-group-number prefix rule, F&O 7.6.4).
+		{"replace('2004-12-31', '(\\d+)-(\\d+)-(\\d+)', '$12') = '20042'", true, true},
+		// With >=12 groups, $12 selects group 12 (each group captures one char).
+		{"replace('abcdefghijkl', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', '$12') = 'l'", true, true},
+		// Dynamic errors → definite false (assertion unsatisfied, not fail-open).
+		{"replace($v, 'x*', 'Q') = 'anything'", false, true}, // pattern matches empty string
+		{"replace($v, 'b', '$') = 'x'", false, true},         // bare $ not followed by a digit
+	}
+	for _, c := range cases {
+		if got, ok := EvalBool(c.expr, el("r"), ec); got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// TestEvalTokenize exercises fn:tokenize: separator splitting, the 1-argument
+// whitespace form, the empty-string-in → empty-sequence rule, and the
+// empty-match dynamic error.
+func TestEvalTokenize(t *testing.T) {
+	ec := EvalContext{Vars: map[string][]string{
+		"csv":   {"a,b,c"},
+		"ws":    {"  the  quick brown  "},
+		"empty": {""},
+	}}
+	cases := []struct {
+		expr string
+		want bool
+		ok   bool
+	}{
+		// Three comma-separated tokens; general '=' is existential over them.
+		{"count(tokenize($csv, ',')) = 3", true, true},
+		{"tokenize($csv, ',') = 'b'", true, true},
+		{"tokenize($csv, ',') = 'z'", false, true},
+		// Adjacent separators yield empty tokens (F&O keeps them).
+		{"count(tokenize('a,,b', ',')) = 3", true, true},
+		// 1-argument form collapses and splits on whitespace.
+		{"count(tokenize($ws)) = 3", true, true},
+		{"tokenize($ws) = 'quick'", true, true},
+		// Empty input → empty sequence.
+		{"count(tokenize($empty, ',')) = 0", true, true},
+		{"count(tokenize($empty)) = 0", true, true},
+		// Separator matches the empty string → dynamic error → definite false.
+		{"count(tokenize($csv, 'x*')) = 1", false, true},
+	}
+	for _, c := range cases {
+		if got, ok := EvalBool(c.expr, el("r"), ec); got != c.want || ok != c.ok {
+			t.Errorf("EvalBool(%q) = (%v,%v), want (%v,%v)", c.expr, got, ok, c.want, c.ok)
+		}
 	}
 }

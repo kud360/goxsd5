@@ -99,6 +99,15 @@ func inlineFlags(flags string) (string, error) {
 type reParser struct {
 	src []rune
 	pos int
+
+	// fo selects the XPath/XQuery Functions & Operators regex flavor used by
+	// fn:matches/replace/tokenize (see fo.go). In the default (false) XSD
+	// Appendix-G flavor `^`/`$` are ordinary characters and reluctant
+	// quantifiers and back-references do not exist; fo mode enables them.
+	fo bool
+	// dotAll reflects the F&O `s` flag: `.` matches every character including
+	// newlines. It is only consulted when fo is true.
+	dotAll bool
 }
 
 func (p *reParser) eof() bool { return p.pos >= len(p.src) }
@@ -161,16 +170,40 @@ func (p *reParser) piece() (string, error) {
 	}
 	switch p.peek() {
 	case '?', '*', '+':
-		return atom + string(p.next()), nil
+		return atom + string(p.next()) + p.reluctant(), nil
 	case '{':
 		p.pos++
 		min, max, err := p.quantity()
 		if err != nil {
 			return "", err
 		}
-		return applyQuant(atom, min, max), nil
+		return applyQuant(atom, min, max) + p.reluctant(), nil
 	}
 	return atom, nil
+}
+
+// reluctant consumes a trailing '?' reluctant-quantifier marker in F&O mode
+// (e.g. `a+?`, `a{2,3}?`) and returns it for RE2, which supports non-greedy
+// quantifiers natively. Outside F&O mode the XSD grammar has no reluctant
+// quantifiers, so nothing is consumed.
+func (p *reParser) reluctant() string {
+	if !p.fo || p.peek() != '?' {
+		return ""
+	}
+	p.pos++
+	return "?"
+}
+
+// backReference reports whether the position just past a consumed backslash
+// begins an F&O back-reference (\1..\9). RE2 cannot express back-references, so
+// the caller rejects them rather than mistranslating. The digit is not
+// consumed; it is returned for the error message.
+func (p *reParser) backReference() (rune, bool) {
+	c := p.peek()
+	if c < '1' || c > '9' {
+		return 0, false
+	}
+	return c, true
 }
 
 // quantity := digits (',' digits?)? '}'
@@ -274,6 +307,12 @@ func (p *reParser) atom() (string, error) {
 		if p.next() != ')' {
 			return "", fmt.Errorf("unterminated group")
 		}
+		if p.fo {
+			// F&O groups capture (fn:replace references them as $1, $2, …);
+			// the XSD flavor has no back-references, so it uses non-capturing
+			// groups to keep the emitted RE2 minimal.
+			return "(" + s + ")", nil
+		}
 		return "(?:" + s + ")", nil
 	case '[':
 		set, err := p.charClassExpr()
@@ -283,9 +322,38 @@ func (p *reParser) atom() (string, error) {
 		return emitSet(set), nil
 	case '.':
 		p.pos++
+		if p.fo {
+			// F&O/XQuery `.` excludes only #x0A (\n); with the `s`
+			// (dot-all) flag it matches every character. Unlike the XSD
+			// Part 2 Appendix-G pattern-facet `.` (dotSet, which also
+			// excludes \r), F&O `.` matches a carriage return.
+			if p.dotAll {
+				return emitSet(complement(nil)), nil
+			}
+			return emitSet(foDotSet()), nil
+		}
 		return emitSet(dotSet()), nil
+	case '^':
+		if p.fo {
+			p.pos++
+			return `\A`, nil
+		}
+		p.pos++
+		return escLiteral(c), nil
+	case '$':
+		if p.fo {
+			p.pos++
+			return `\z`, nil
+		}
+		p.pos++
+		return escLiteral(c), nil
 	case '\\':
 		p.pos++
+		if p.fo {
+			if r, ok := p.backReference(); ok {
+				return "", fmt.Errorf(`back-reference \%c is not supported`, r)
+			}
+		}
 		if lit, ok, err := p.singleCharEsc(); err != nil {
 			return "", err
 		} else if ok {
@@ -647,6 +715,13 @@ func escLiteral(c rune) string {
 
 func dotSet() rangeSet {
 	return complement(rangeSet{{'\n', '\n'}, {'\r', '\r'}})
+}
+
+// foDotSet is the F&O/XQuery default `.`: every character except #x0A (\n).
+// It differs from dotSet (the XSD Part 2 Appendix-G pattern-facet `.`) by
+// still matching a carriage return (\r). This equals RE2's own default `.`.
+func foDotSet() rangeSet {
+	return complement(rangeSet{{'\n', '\n'}})
 }
 
 func xmlSpaceSet() rangeSet {
