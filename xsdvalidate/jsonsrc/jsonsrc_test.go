@@ -231,6 +231,78 @@ func TestCollisionElementWinsWithWarning(t *testing.T) {
 	}
 }
 
+// xsiTypeSchema has a base type and a derived type in no namespace, plus an
+// element of the base type, so a $type directive can select the derived type.
+const xsiTypeSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:complexType name="Base">
+    <xs:sequence><xs:element name="a" type="xs:string"/></xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Derived">
+    <xs:complexContent>
+      <xs:extension base="Base">
+        <xs:sequence><xs:element name="b" type="xs:string"/></xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:element name="thing" type="Base"/>
+</xs:schema>`
+
+func TestTypeDirectiveSelectsDerivedType(t *testing.T) {
+	v := buildValidator(t, xsiTypeSchema)
+	// $type sets xsi:type to the derived type, which adds child "b"; the document
+	// supplies both children and must validate against the derived content model.
+	assertValid(t, v, `{"thing":{"$type":"Derived","a":"x","b":"y"}}`)
+	// Without the override the base type governs and "b" is not allowed.
+	assertInvalid(t, v, `{"thing":{"a":"x","b":"y"}}`, "cvc-particle")
+}
+
+func TestTypeDirectiveUnknownTypeFails(t *testing.T) {
+	v := buildValidator(t, xsiTypeSchema)
+	// $type names a type that does not exist: the engine rejects the xsi:type.
+	assertInvalid(t, v, `{"thing":{"$type":"Nonexistent","a":"x"}}`, "cvc-elt")
+}
+
+func TestTypeDirectiveNonDerivedTypeFails(t *testing.T) {
+	v := buildValidator(t, xsiTypeSchema)
+	// xs:int is a real type but not derived from Base, so cvc-elt.4.3 rejects it.
+	assertInvalid(t, v, `{"thing":{"$type":"xs:int","a":"x"}}`, "cvc-elt")
+}
+
+// nsTypeSchema puts a derived type in a target namespace so an xsi:type QName
+// must be prefixed to name it. Derived restricts Base to the same single child,
+// so selecting it changes only the type QName resolution, not the content shape:
+// this isolates whether a $xmlns prefix binding reaches the engine's Lookup.
+const nsTypeSchema = `<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:tns="urn:t" targetNamespace="urn:t">
+  <xs:complexType name="Base">
+    <xs:sequence><xs:element name="a" type="xs:string"/></xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Derived">
+    <xs:complexContent>
+      <xs:restriction base="tns:Base">
+        <xs:sequence><xs:element name="a" type="xs:string"/></xs:sequence>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:element name="thing" type="tns:Base"/>
+</xs:schema>`
+
+func TestXMLNSBindingResolvesTypeQName(t *testing.T) {
+	v := buildValidator(t, nsTypeSchema)
+	// $xmlns binds prefix "p" to the schema's target namespace; the $type QName
+	// "p:Derived" then resolves through the engine's in-scope Lookup, proving the
+	// $xmlns binding reaches resolveQNameInScope.
+	assertValid(t, v, `{"thing":{
+		"$xmlns": {"p": "urn:t"},
+		"$type": "p:Derived",
+		"a": "x"
+	}}`)
+	// An unbound prefix must fail to resolve, so the override is rejected.
+	assertInvalid(t, v, `{"thing":{"$type":"q:Derived","a":"x"}}`, "cvc-elt")
+}
+
 func TestSchemaAccessorAmbiguousLocal(t *testing.T) {
 	// Two globals share a local name across namespaces: an unprefixed root key
 	// is ambiguous and must not resolve.

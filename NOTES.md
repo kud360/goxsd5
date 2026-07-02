@@ -7,6 +7,57 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-07-02 — issue #39: JSON instance-document source adapter (xsdvalidate/jsonsrc) — ratchets HELD 5697/21497 <<<
+New leaf-ish adapter package `xsdvalidate/jsonsrc`: maps a JSON document onto the
+xsdvalidate abstract infoset (the JSON analogue of xmlsrc) so a JSON instance can
+be assessed against a compiled schema set. The validation engine never imports a
+JSON package; the adapter builds `xsdvalidate.Element`/`Attribute`/`Node` values
+and hands them to `Validator.Assess`. Files: decode.go (streaming
+`encoding/json` Decoder.Token walk into position-tagged jvalue nodes, source
+order preserved), map.go (schema-aware key classification + directive mapping),
+jsonsrc.go (infoset types + nsScope + `NewElement`/`Validate` entry points),
+jsonsrc_test.go (behaviour tests through the real parser).
+ - READ-ONLY SCHEMA ACCESSOR — new `xsdvalidate.Schema` interface + `(*Validator).Schema()`
+   view (validator.go). Narrowed on review to exactly the two lookups the adapter
+   uses: `ElementByName` and `ElementByLocal`. `TypeByName` was dropped — the
+   engine resolves xsi:type internally, so the adapter never needs to. The view
+   shares the Validator's compiled tables read-only; it exists so the adapter
+   resolves root element names without re-seeding builtins/xsi or reaching into
+   unexported state.
+ - DESIGN RULINGS (issue #39 open questions):
+   * OQ1 (attr vs element, no @-convention) — schema-aware: each object member is
+     matched by LOCAL NAME against the enclosing complex type, resolving to a
+     named attribute use OR a child element decl (content model + group refs
+     walked via xsdwalk.Elements). A local name declared as BOTH ⇒ element-wins +
+     a non-fatal `Warning` at build time (returned alongside the Result, never
+     affects the verdict).
+   * OQ2 (character content) — scalar-shorthand ONLY: a member with a JSON scalar
+     value IS the element's simple content ({"size":10} -> <size>10</size>). No
+     reserved text key. An object-valued member carries attrs/children and is
+     assumed to have no character content.
+   * OQ3 (structural mapping) — array value ⇒ repeated children under that key;
+     JSON null ⇒ synthesized `xsi:nil="true"` (nillability itself is left to the
+     engine's cvc-elt, so null on a non-nillable decl fails as it should); default
+     namespace = the matched declaration's own target namespace; reserved `$type`
+     ⇒ xsi:type attribute; reserved `$xmlns` ⇒ {prefix: uri} bindings for
+     QName-valued content, inherited by descendants.
+   * OQ4 (JSON library) — stdlib `encoding/json` streaming Decoder (Token loop),
+     NOT the experimental json/v2; keeps the dependency surface at stdlib and
+     preserves member order deterministically.
+ - nsScope CHAINING — immutable parent-linked prefix->uri environment. Each built
+   element gets a scope whose default (empty prefix) is ITS OWN target namespace;
+   $xmlns bindings layer on top, inner scopes shadowing outer. `element.Lookup`
+   feeds the engine's `resolveQNameInScope`, so $xmlns bindings genuinely reach
+   xsi:type / QName-content resolution (covered by a test binding a prefix the
+   $type QName then resolves through). NOTE (documented at nsScope.lookup): the
+   empty-prefix default is answered BEFORE $xmlns, so a `$xmlns {"":…}` override
+   is deliberately shadowed — an unprefixed QName always resolves to the
+   element's target namespace.
+ - PHASE 3 (a CLI subcommand) was optional in the work-split and is SKIPPED; the
+   library API (NewElement/Validate) is the deliverable.
+ - RATCHETS — purely additive new package + read-only accessor; no engine
+   behaviour changed. Schema 5697 / instance 21497 HELD, expectations untouched.
+
 ## >>> DONE 2026-06-22 — issue #45: expand XPath assertion-evaluator function coverage — ratchets HELD 5697/21497 <<<
 The assertion evaluator (xpath/eval.go) is fail-open: a construct outside its
 subset returns errUnsupported and the caller treats the assertion as satisfied

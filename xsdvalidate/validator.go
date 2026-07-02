@@ -78,9 +78,6 @@ type Schema interface {
 	// name is local, or nil when there is none or more than one (ambiguous
 	// across namespaces). It lets an adapter resolve an unprefixed root key.
 	ElementByLocal(local string) *xsd.ElementDecl
-	// TypeByName returns the type definition with name (including built-ins),
-	// or nil.
-	TypeByName(name xsd.QName) xsd.Type
 }
 
 // Schema returns a read-only lookup view over v's compiled components. The
@@ -90,7 +87,6 @@ func (v *Validator) Schema() Schema { return schemaView{v} }
 type schemaView struct{ v *Validator }
 
 func (s schemaView) ElementByName(name xsd.QName) *xsd.ElementDecl { return s.v.elements[name] }
-func (s schemaView) TypeByName(name xsd.QName) xsd.Type            { return s.v.types[name] }
 
 // ElementByLocal scans the global element table for the sole declaration with
 // the given local name. Two or more matches across namespaces are ambiguous and

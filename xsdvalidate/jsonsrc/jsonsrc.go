@@ -95,6 +95,11 @@ type nsScope struct {
 	hasDef   bool
 }
 
+// lookup resolves a prefix to a namespace URI. The empty prefix is answered by
+// this scope's own default (the matched declaration's target namespace) before
+// any $xmlns binding is consulted, so a $xmlns "" (empty-prefix) default-
+// namespace override is deliberately shadowed: an unprefixed QName in an
+// element's content always resolves to that element's target namespace.
 func (s nsScope) lookup(prefix string) (string, bool) {
 	if prefix == "" && s.hasDef {
 		return s.def, true
