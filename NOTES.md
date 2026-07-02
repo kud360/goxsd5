@@ -29,13 +29,22 @@ LITERAL characters — a false accept for anchored assertion patterns like
    expressible in RE2, so `TranslateFO` returns an error which `evalMatches`/replace/
    tokenize surface as `errDynamic` ⇒ assertion UNSATISFIED, never fail-open / never
    silently accept.
- - `.` SEMANTICS — F&O `.` matches every char EXCEPT newline by default (exactly
-   RE2's native `.`); the `s` flag makes it match newlines. Implemented spec-correct
-   (the issue's "matches newlines by default" was imprecise).
+ - `.` SEMANTICS — F&O `.` excludes ONLY #x0A (\n) by default, so it still matches a
+   carriage return `\r` — this equals RE2's own native `.` and DIFFERS from the XSD
+   Part 2 Appendix-G pattern-facet `.` (dotSet), which also excludes `\r`. fo mode
+   therefore uses a dedicated `foDotSet() = complement({\n})` (regex.go), leaving
+   `dotSet()` for the pattern-facet path; the `s` flag makes `.` match `\n` too
+   (`complement(nil)`). Pinned by TestTranslateFO (`a.c` matches `a\rc`; `.` matches
+   `\r`, not `\n`, but does under `s`). (The issue's "matches newlines by default"
+   was imprecise; round-1 review caught that the first impl still excluded `\r`.)
  - fn:replace (evalReplace, F&O 7.6.4) — F&O `$N`/`$0` replacement rewritten into
-   Go's `${N}`/`$$` template (goReplacement) so multi-digit greediness and literal
-   `$` are handled exactly; `\$`/`\\` escapes honoured, a bare `$`/`\` is a dynamic
-   error. A pattern that can match the empty string ⇒ dynamic error (F&O FORX0003).
+   Go's `${N}`/`$$` template (goReplacement) so literal `$` is handled exactly;
+   `\$`/`\\` escapes honoured, a bare `$`/`\` is a dynamic error. Multi-digit group
+   refs use the F&O longest-valid-group-number rule: goReplacement takes the compiled
+   regex's `NumSubexp()` and keeps the longest digit prefix that is ≤ that count
+   (longestGroupPrefix), copying any leftover digits literally — so `$12` is group 12
+   when ≥12 groups exist, else group 1 followed by literal `2`. A pattern that can
+   match the empty string ⇒ dynamic error (F&O FORX0003).
  - fn:tokenize (evalTokenize, F&O 7.6.6) — Split on separator matches; adjacent
    separators keep empty tokens; empty input ⇒ empty sequence; empty-match pattern
    ⇒ dynamic error. 1-arg form collapses whitespace and splits on it.

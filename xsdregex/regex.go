@@ -322,8 +322,15 @@ func (p *reParser) atom() (string, error) {
 		return emitSet(set), nil
 	case '.':
 		p.pos++
-		if p.fo && p.dotAll {
-			return emitSet(complement(nil)), nil
+		if p.fo {
+			// F&O/XQuery `.` excludes only #x0A (\n); with the `s`
+			// (dot-all) flag it matches every character. Unlike the XSD
+			// Part 2 Appendix-G pattern-facet `.` (dotSet, which also
+			// excludes \r), F&O `.` matches a carriage return.
+			if p.dotAll {
+				return emitSet(complement(nil)), nil
+			}
+			return emitSet(foDotSet()), nil
 		}
 		return emitSet(dotSet()), nil
 	case '^':
@@ -708,6 +715,13 @@ func escLiteral(c rune) string {
 
 func dotSet() rangeSet {
 	return complement(rangeSet{{'\n', '\n'}, {'\r', '\r'}})
+}
+
+// foDotSet is the F&O/XQuery default `.`: every character except #x0A (\n).
+// It differs from dotSet (the XSD Part 2 Appendix-G pattern-facet `.`) by
+// still matching a carriage return (\r). This equals RE2's own default `.`.
+func foDotSet() rangeSet {
+	return complement(rangeSet{{'\n', '\n'}})
 }
 
 func xmlSpaceSet() rangeSet {

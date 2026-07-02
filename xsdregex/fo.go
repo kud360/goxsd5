@@ -13,8 +13,10 @@ import "fmt"
 //     `^` → \A, `$` → \z. In default mode there are no line boundaries, so
 //     they anchor the whole string. (The `m` multi-line flag would change
 //     that, but RE2 cannot express F&O's line semantics — see TranslateFO.)
-//   - `.` matches every character EXCEPT newline by default; the `s`
-//     (dot-all) flag makes it match newlines too — exactly RE2's own `.`.
+//   - `.` matches every character EXCEPT #x0A (\n) by default — exactly RE2's
+//     own default `.`, so it still matches a carriage return (\r), unlike the
+//     XSD Part 2 Appendix-G pattern-facet `.` which excludes \r too. The `s`
+//     (dot-all) flag makes it match newlines as well.
 //   - Reluctant quantifiers (`a+?`, `a{2,3}?`) exist and map straight to RE2;
 //     back-references (`\1`) exist but RE2 cannot express them, so they are
 //     rejected rather than mistranslated.

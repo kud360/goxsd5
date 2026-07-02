@@ -1466,7 +1466,7 @@ func (e *evaluator) evalReplace(n *call, f *focus) (seq, bool, error) {
 	if re.MatchString("") {
 		return nil, true, errDynamic
 	}
-	repl, err := goReplacement(seqString(r))
+	repl, err := goReplacement(seqString(r), re.NumSubexp())
 	if err != nil {
 		return nil, true, errDynamic
 	}
@@ -1474,12 +1474,16 @@ func (e *evaluator) evalReplace(n *call, f *focus) (seq, bool, error) {
 }
 
 // goReplacement rewrites an F&O 7.6.4 replacement string into Go's
-// Regexp.ReplaceAllString template. F&O uses `$N` for a single-digit group
-// reference and `\` to escape `$` or `\`; every other `\` or a `$` not followed
-// by a digit is an error. Go's template uses `${N}` for a group and `$$` for a
-// literal `$`, so group refs become `${N}` (avoiding Go's greedy multi-digit
-// parse) and literal `$` becomes `$$`.
-func goReplacement(s string) (string, error) {
+// Regexp.ReplaceAllString template. F&O uses `$N` for a group reference and `\`
+// to escape `$` or `\`; every other `\` or a `$` not followed by a digit is an
+// error. Go's template uses `${N}` for a group and `$$` for a literal `$`, so
+// group refs become `${N}` and literal `$` becomes `$$`.
+//
+// The group number is the longest sequence of digits after `$` that names a
+// valid group (0..ngroups); any remaining digits are copied literally. So with
+// 12 capturing groups `$12` is group 12, but with only 3 groups `$12` is group
+// 1 followed by the literal `2`. ngroups is the compiled regex's NumSubexp.
+func goReplacement(s string, ngroups int) (string, error) {
 	var b strings.Builder
 	runes := []rune(s)
 	for i := 0; i < len(runes); i++ {
@@ -1499,16 +1503,43 @@ func goReplacement(s string) (string, error) {
 			if i+1 >= len(runes) || runes[i+1] < '0' || runes[i+1] > '9' {
 				return "", fmt.Errorf("replace: $ must be followed by a digit")
 			}
-			i++
+			// Consume the maximal run of digits, then keep the longest
+			// prefix that is a valid group number (F&O 7.6.4).
+			j := i + 1
+			for j < len(runes) && runes[j] >= '0' && runes[j] <= '9' {
+				j++
+			}
+			digits := runes[i+1 : j]
+			n := longestGroupPrefix(digits, ngroups)
 			b.WriteString("${")
-			b.WriteRune(runes[i])
+			b.WriteString(string(digits[:n]))
 			b.WriteByte('}')
+			// Copy the leftover digits literally; they are not '$'/'\'.
+			b.WriteString(string(digits[n:]))
+			i = j - 1
 		default:
 			// A bare '$' would start a Go reference; c is never '$' here.
 			b.WriteRune(c)
 		}
 	}
 	return b.String(), nil
+}
+
+// longestGroupPrefix returns the length of the longest prefix of digits whose
+// decimal value is a valid group number (0..ngroups). digits is non-empty and
+// all-decimal, so at least the single leading digit is always considered (a
+// lone digit may exceed ngroups, in which case Go treats the ref as empty).
+func longestGroupPrefix(digits []rune, ngroups int) int {
+	best := 1
+	val := 0
+	for k := 0; k < len(digits); k++ {
+		val = val*10 + int(digits[k]-'0')
+		if val > ngroups {
+			break
+		}
+		best = k + 1
+	}
+	return best
 }
 
 // evalTokenize implements fn:tokenize($input[, $pattern[, $flags]]) (F&O

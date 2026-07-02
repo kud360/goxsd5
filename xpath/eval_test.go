@@ -438,6 +438,11 @@ func TestEvalReplace(t *testing.T) {
 		{"replace('abc', 'b', '\\$') = 'a$c'", true, true},
 		// F&O anchor in the pattern.
 		{"replace($v, '^a', 'Z') = 'Zbcde'", true, true},
+		// Multi-digit group ref: with only 3 groups, $12 is group 1 then a
+		// literal '2' (longest valid-group-number prefix rule, F&O 7.6.4).
+		{"replace('2004-12-31', '(\\d+)-(\\d+)-(\\d+)', '$12') = '20042'", true, true},
+		// With >=12 groups, $12 selects group 12 (each group captures one char).
+		{"replace('abcdefghijkl', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', '$12') = 'l'", true, true},
 		// Dynamic errors → definite false (assertion unsatisfied, not fail-open).
 		{"replace($v, 'x*', 'Q') = 'anything'", false, true}, // pattern matches empty string
 		{"replace($v, 'b', '$') = 'x'", false, true},         // bare $ not followed by a digit

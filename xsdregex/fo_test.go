@@ -40,10 +40,16 @@ func TestTranslateFO(t *testing.T) {
 		// Unanchored: matches a substring.
 		{"abc", "", "xxabcyy", true},
 		{"abc", "", "ab", false},
-		// `.` excludes newline by default; the `s` flag makes it match.
+		// `.` excludes only #x0A (\n) by default; the `s` flag makes it
+		// match \n too. Unlike the Appendix-G pattern-facet `.`, F&O `.`
+		// matches a carriage return (\r) even in default mode.
 		{"a.c", "", "abc", true},
 		{"a.c", "", "a\nc", false},
 		{"a.c", "s", "a\nc", true},
+		{"a.c", "", "a\rc", true},
+		{".", "", "\r", true},
+		{".", "", "\n", false},
+		{".", "s", "\n", true},
 		// `i` flag: case-insensitive.
 		{"^abc$", "i", "ABC", true},
 		{"^abc$", "", "ABC", false},
