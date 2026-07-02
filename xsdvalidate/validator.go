@@ -66,6 +66,49 @@ func (v *Validator) globalElement(name xsd.QName) *xsd.ElementDecl { return v.el
 
 func (v *Validator) typeByName(name xsd.QName) xsd.Type { return v.types[name] }
 
+// Schema is a minimal, read-only view of a Validator's compiled component
+// tables. It exists so a format adapter (e.g. xsdvalidate/jsonsrc) can resolve
+// element and type names for schema-aware infoset construction without the
+// adapter re-seeding builtins/xsi or reaching into unexported state. It exposes
+// only lookups; it cannot mutate the Validator.
+type Schema interface {
+	// ElementByName returns the global element declaration with name, or nil.
+	ElementByName(name xsd.QName) *xsd.ElementDecl
+	// ElementByLocal returns the unique global element declaration whose local
+	// name is local, or nil when there is none or more than one (ambiguous
+	// across namespaces). It lets an adapter resolve an unprefixed root key.
+	ElementByLocal(local string) *xsd.ElementDecl
+	// TypeByName returns the type definition with name (including built-ins),
+	// or nil.
+	TypeByName(name xsd.QName) xsd.Type
+}
+
+// Schema returns a read-only lookup view over v's compiled components. The
+// returned value shares v's tables and stays valid for v's lifetime.
+func (v *Validator) Schema() Schema { return schemaView{v} }
+
+type schemaView struct{ v *Validator }
+
+func (s schemaView) ElementByName(name xsd.QName) *xsd.ElementDecl { return s.v.elements[name] }
+func (s schemaView) TypeByName(name xsd.QName) xsd.Type            { return s.v.types[name] }
+
+// ElementByLocal scans the global element table for the sole declaration with
+// the given local name. Two or more matches across namespaces are ambiguous and
+// yield nil; the scan is order-independent so the result is deterministic.
+func (s schemaView) ElementByLocal(local string) *xsd.ElementDecl {
+	var found *xsd.ElementDecl
+	for name, decl := range s.v.elements {
+		if name.Local != local {
+			continue
+		}
+		if found != nil {
+			return nil // ambiguous
+		}
+		found = decl
+	}
+	return found
+}
+
 // Assess validates root against the schema set and returns the result.
 func (v *Validator) Assess(root Element) *Result {
 	a := &assessor{v: v, res: newResult()}
