@@ -7,6 +7,44 @@ Implement PLAN.md (XSD 1.1 parser, packages `xsd`, `builtin`, `parser`,
 `parser/xmltree`), then run the W3C suite via the M9 ratchet harness and
 baseline `testdata/xsd11-expectations.txt`.
 
+## >>> DONE 2026-07-02 — issue #52: F&O-flavor regex for assertion fn:matches + fn:replace / fn:tokenize — ratchets HELD 5697/21497 <<<
+XSD 1.1 normatively binds assertion `fn:matches`/`fn:replace`/`fn:tokenize` to the
+XPath/XQuery 2.0 Functions & Operators regex grammar (F&O Appendix F), NOT the
+XSD Part 2 Appendix-G pattern-facet flavor that pattern facets use. The prior
+`evalMatches` delegated to `xsdregex.Matches` (Appendix-G), where `^`/`$` are
+LITERAL characters — a false accept for anchored assertion patterns like
+`^[A-Z]+$`. Now fixed:
+ - NEW TRANSLATOR `xsdregex.TranslateFO(pattern, flags)` (xsdregex/fo.go) — reuses
+   the existing recursive-descent parser (regex.go) via a new `reParser.fo` flavor
+   flag rather than forking the grammar. In fo mode: `^`→`\A`, `$`→`\z` (real
+   anchors); groups `(…)` CAPTURE (`(…)`, not the XSD path's non-capturing `(?:…)`)
+   so fn:replace can reference `$1`,`$2`; reluctant quantifiers (`a+?`, `a{2,3}?`)
+   pass straight to RE2. Character-class handling (\d \w \p{…}, [a-z-[m]]) is shared
+   with the Appendix-G path unchanged. The returned pattern is UNANCHORED (F&O
+   matches a substring unless the pattern anchors itself). xsdregex stays a PURE
+   stdlib-only leaf — no new imports.
+ - FLAG / ERROR DECISIONS — `i`→`(?i)` case-insensitive, `s`→dot-all (`.` becomes an
+   all-characters set at translate time). `m` (multi-line line boundaries), `x`
+   (free-spacing), `q` (literal), any other flag, and back-references (`\1`) are NOT
+   expressible in RE2, so `TranslateFO` returns an error which `evalMatches`/replace/
+   tokenize surface as `errDynamic` ⇒ assertion UNSATISFIED, never fail-open / never
+   silently accept.
+ - `.` SEMANTICS — F&O `.` matches every char EXCEPT newline by default (exactly
+   RE2's native `.`); the `s` flag makes it match newlines. Implemented spec-correct
+   (the issue's "matches newlines by default" was imprecise).
+ - fn:replace (evalReplace, F&O 7.6.4) — F&O `$N`/`$0` replacement rewritten into
+   Go's `${N}`/`$$` template (goReplacement) so multi-digit greediness and literal
+   `$` are handled exactly; `\$`/`\\` escapes honoured, a bare `$`/`\` is a dynamic
+   error. A pattern that can match the empty string ⇒ dynamic error (F&O FORX0003).
+ - fn:tokenize (evalTokenize, F&O 7.6.6) — Split on separator matches; adjacent
+   separators keep empty tokens; empty input ⇒ empty sequence; empty-match pattern
+   ⇒ dynamic error. 1-arg form collapses whitespace and splits on it.
+ - RATCHETS — schema 5697 / instance 21497 HELD EXACTLY (no W3C case anchors an F&O
+   pattern, so zero movement, as issue #52 predicted). New coverage via unit tests
+   TestTranslateFO/TestTranslateFOErrors (xsdregex), TestEvalReplace/TestEvalTokenize
+   and adjusted matches cases (xpath). `xsdregex.Matches` (Appendix-G fn:matches)
+   retained but no longer has a non-test caller.
+
 ## >>> DONE 2026-07-02 — issue #39: JSON instance-document source adapter (xsdvalidate/jsonsrc) — ratchets HELD 5697/21497 <<<
 New leaf-ish adapter package `xsdvalidate/jsonsrc`: maps a JSON document onto the
 xsdvalidate abstract infoset (the JSON analogue of xmlsrc) so a JSON instance can
@@ -91,16 +129,10 @@ ZERO ratchet movement (5697/21497 unchanged, expectations files untouched).
    them would silently give wrong answers, and RE2 cannot express `x`
    (free-spacing). So `s`/`m`/`x`/`q`/any other flag is an ERROR → errDynamic, not
    silently ignored.
- - REGEX-FLAVOR GAP (DISCLOSED) — XSD 1.1 normatively binds assertion `fn:matches`
-   to the F&O (XQuery/XPath 2.0 Functions & Operators) regex grammar, but this
-   implementation reuses the XSD Part 2 Appendix-G flavor via xsdregex. The two
-   flavors diverge: in the XSD flavor `^`/`$` are LITERAL characters (no
-   anchoring), there are no back-references or reluctant quantifiers, and only the
-   `i` flag is meaningful. So an anchored F&O pattern silently means something
-   different here — disclosed in CONFORMANCE.md's cvc-assertion V4 row rather than
-   left as a silent wrong-answer. A full F&O-flavor fn:matches (honouring anchor
-   metacharacters and the `s`/`m` flags) would need an F&O-flavor translator
-   distinct from xsdregex's pattern-facet path; left as a documented future gap.
+ - REGEX-FLAVOR GAP (CLOSED 2026-07-02, issue #52) — assertion fn:matches/replace/
+   tokenize now use the F&O (XQuery/XPath 2.0 Functions & Operators) regex flavor
+   XSD 1.1 binds them to, via `xsdregex.TranslateFO` (not the Appendix-G
+   pattern-facet path). See the DONE block at the top of this file.
  - DYNAMIC-ERROR DIRECTION — a type mismatch (non-numeric operand, non-numeric
    substring start) or bad/uncompilable pattern / unsupported flag raises
    errDynamic, NOT errUnsupported. EvalBool folds errDynamic into a definite
